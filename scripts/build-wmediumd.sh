@@ -2,9 +2,9 @@
 set -euo pipefail
 
 ROOT=$(cd "$(dirname "$0")/.." && pwd)
+. "$ROOT/manifests/lab.env"
 SOURCE="$ROOT/build/wmediumd-source"
 UPSTREAM=https://github.com/bcopeland/wmediumd
-COMMIT=717e5d7fcc23eecbc8e32bd897a8fd4b1e3ba640
 PATCHES=(
     0001-wmediumd-multichannel-per-freq-interference.patch
     0002-wmediumd-use-learned-vif-owner-for-delivery.patch
@@ -24,7 +24,7 @@ if [ ! -d "$SOURCE/.git" ]; then
 fi
 
 git -C "$SOURCE" fetch origin
-git -C "$SOURCE" reset --hard "$COMMIT"
+git -C "$SOURCE" checkout --detach "$WMEDIUMD_COMMIT"
 git -C "$SOURCE" clean -fdx
 
 for name in "${PATCHES[@]}"; do
@@ -36,4 +36,4 @@ done
 make -C "$SOURCE" -j"$(nproc)"
 install -D -m 0755 "$SOURCE/wmediumd/wmediumd" \
     "$ROOT/build/bin/wmediumd"
-echo "Built $ROOT/build/bin/wmediumd from $COMMIT"
+echo "Built $ROOT/build/bin/wmediumd from $WMEDIUMD_COMMIT"

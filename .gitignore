@@ -1,5 +1,6 @@
 /build/
-/artifacts/
+/artifacts/*
+!/artifacts/README.md
 /controller-ui/bin/
 /evidence/**/*.pcap
 /evidence/**/*.pcapng

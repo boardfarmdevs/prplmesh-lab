@@ -3,9 +3,11 @@ set -euo pipefail
 
 source_dir=/opt/prpl-deps/hostapd-src/hostapd-2.10
 test -d "$source_dir/.git"
+: "${HOSTAP_COMMIT:?}"
 
 git -C "$source_dir" clean -fdx
-git -C "$source_dir" reset --hard hostap_2_10
+git -C "$source_dir" checkout --detach "$HOSTAP_COMMIT"
+test "$(git -C "$source_dir" rev-parse HEAD)" = "$HOSTAP_COMMIT"
 
 cp "$source_dir/hostapd/defconfig" "$source_dir/hostapd/.config"
 sed -i \

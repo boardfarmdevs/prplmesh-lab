@@ -3,6 +3,7 @@ set -euo pipefail
 
 : "${PRPL_RELEASE:?}"
 : "${PRPL_COMMIT:?}"
+: "${HOSTAP_COMMIT:?}"
 : "${BWL_TYPE:?}"
 
 export DEBIAN_FRONTEND=noninteractive
@@ -92,8 +93,14 @@ ldconfig
 if [ "$BWL_TYPE" = NL80211 ] && \
    [ ! -d /opt/prpl-deps/hostapd-src/hostapd-2.10/.git ]; then
     mkdir -p /opt/prpl-deps/hostapd-src
-    git clone --branch hostap_2_10 --depth 1 https://git.w1.fi/hostap.git \
+    git clone https://git.w1.fi/hostap.git \
         /opt/prpl-deps/hostapd-src/hostapd-2.10
+fi
+if [ "$BWL_TYPE" = NL80211 ]; then
+    git -C /opt/prpl-deps/hostapd-src/hostapd-2.10 fetch origin "$HOSTAP_COMMIT"
+    git -C /opt/prpl-deps/hostapd-src/hostapd-2.10 checkout --detach "$HOSTAP_COMMIT"
+    test "$(git -C /opt/prpl-deps/hostapd-src/hostapd-2.10 rev-parse HEAD)" = \
+        "$HOSTAP_COMMIT"
 fi
 
 lower=$(printf '%s' "$BWL_TYPE" | tr '[:upper:]' '[:lower:]')

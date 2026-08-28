@@ -4,7 +4,7 @@ set -euo pipefail
 CONTROLLER=prpl-controller
 client_name=${1:?client name: sta-NN or iot-NN}
 target_name=${2:?target: controller or agent-N}
-steering_ui=${PRPL_STEERING_UI:-http://192.168.2.140:8091/api/v1/steering-event}
+steering_ui=${PRPL_STEERING_UI:-http://127.0.0.1:8091/api/v1/steering-event}
 preview_seconds=${PRPL_STEERING_PREVIEW_SECONDS:-3}
 
 case "$client_name" in

@@ -21,5 +21,6 @@ for patch_file in "$ROOT"/patches/prplmesh/*.patch; do
         "$BUILD_CONTAINER/root/prplmesh-patches/$(basename "$patch_file")"
 done
 lxc exec "$BUILD_CONTAINER" -- env \
-    PRPL_RELEASE="$PRPL_RELEASE" PRPL_COMMIT="$PRPL_COMMIT" BWL_TYPE="$BWL" \
+    PRPL_RELEASE="$PRPL_RELEASE" PRPL_COMMIT="$PRPL_COMMIT" \
+    HOSTAP_COMMIT="$HOSTAP_COMMIT" BWL_TYPE="$BWL" \
     /root/build-inside.sh

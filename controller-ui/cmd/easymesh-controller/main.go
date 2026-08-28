@@ -14,7 +14,7 @@ import (
 
 func main() {
 	listen := flag.String("listen", env("EASYMESH_UI_LISTEN", "0.0.0.0:8091"), "HTTP listen address")
-	sourceURL := flag.String("source", env("EASYMESH_TOPOLOGY_URL", "http://192.168.2.140:8090/api/topology"), "external prplMesh topology API")
+	sourceURL := flag.String("source", env("EASYMESH_TOPOLOGY_URL", "http://127.0.0.1:8090/api/topology"), "external prplMesh topology API")
 	networkPath := flag.String("networks", env("EASYMESH_NETWORKS_FILE", "config/networks-untagged.json"), "network presentation configuration")
 	flag.Parse()
 

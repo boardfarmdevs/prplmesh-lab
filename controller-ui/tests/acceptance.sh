@@ -1,7 +1,7 @@
 #!/bin/bash
 set -euo pipefail
 
-base=${EASYMESH_UI_URL:-http://192.168.2.140:8091}
+base=${EASYMESH_UI_URL:-http://127.0.0.1:8091}
 work=$(mktemp -d)
 trap 'rm -rf "$work"' EXIT
 

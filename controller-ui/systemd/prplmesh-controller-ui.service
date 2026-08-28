@@ -5,12 +5,12 @@ Wants=network-online.target
 
 [Service]
 Type=simple
-User=rev
-WorkingDirectory=/home/rev/prplmesh-lab/0827/controller-ui
+User=@SERVICE_USER@
+WorkingDirectory=@PROJECT_ROOT@/controller-ui
 Environment=EASYMESH_UI_LISTEN=0.0.0.0:8091
-Environment=EASYMESH_TOPOLOGY_URL=http://192.168.2.140:8090/api/topology
+Environment=EASYMESH_TOPOLOGY_URL=http://127.0.0.1:8090/api/topology
 Environment=EASYMESH_NETWORKS_FILE=config/networks-untagged.json
-ExecStart=/home/rev/prplmesh-lab/0827/controller-ui/bin/easymesh-controller
+ExecStart=@PROJECT_ROOT@/controller-ui/bin/easymesh-controller
 Restart=on-failure
 RestartSec=2
 NoNewPrivileges=true

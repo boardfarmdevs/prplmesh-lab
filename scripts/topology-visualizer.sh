@@ -1,6 +1,7 @@
 #!/bin/bash
 set -euo pipefail
 
+ROOT=$(cd "$(dirname "$0")/.." && pwd)
 CONTROLLER=prpl-controller
 UNIT=prpl-topology.service
 PROXY_UNIT=prpl-topology-proxy.service
@@ -15,7 +16,7 @@ case "$ACTION" in
            python3 -c \
                 "import urllib.request; urllib.request.urlopen('http://127.0.0.1:${PORT}/health', timeout=1)" \
                 >/dev/null 2>&1; then
-            address=$(ip -4 -o address show dev enp5s0 | awk '{print $4}' | cut -d/ -f1)
+            address=$(hostname -I | awk '{print $1}')
             echo "prplMesh topology visualizer: http://${address}:${PORT}/"
             exit 0
         fi
@@ -42,14 +43,14 @@ case "$ACTION" in
             sed -n 's/ .*//p' | head -n 1)
         systemctl stop "$PROXY_UNIT" 2>/dev/null || true
         systemd-run --unit "${PROXY_UNIT%.service}" --property Restart=on-failure \
-            /usr/bin/python3 /opt/prplmesh-lab/visualizer/proxy.py \
+            /usr/bin/python3 "$ROOT/visualizer/proxy.py" \
             --listen 0.0.0.0 --port "$PORT" --target-host "$target" \
             --target-port "$PORT" >/dev/null
         for unused in $(seq 1 50); do
             if python3 -c \
                 "import urllib.request; urllib.request.urlopen('http://127.0.0.1:${PORT}/health', timeout=1)" \
                 >/dev/null 2>&1; then
-                address=$(ip -4 -o address show dev enp5s0 | awk '{print $4}' | cut -d/ -f1)
+                address=$(hostname -I | awk '{print $1}')
                 echo "prplMesh topology visualizer: http://${address}:${PORT}/"
                 exit 0
             fi
