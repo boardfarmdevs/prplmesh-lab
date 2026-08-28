@@ -15,7 +15,8 @@ The current scale profile contains:
 - both SSIDs represented independently on 2.4, 5 and 6 GHz;
 - 40 permanently identified hwsim radios registered once with wmediumd;
 - NBAPI topology, ownership and RCPI telemetry; and
-- a read-only topology Web application at `http://192.168.2.140:8090/`.
+- a read-only topology Web application on port 8090; and
+- a host EasyMesh Controller UI on port 8091.
 
 The four-hop chain, 20 clients, all metrics, 30-cell tri-band/two-SSID
 steering matrix, leaf-agent outage/rejoin, and global RCPI medium step all
@@ -26,7 +27,7 @@ reconstruction.
 
 ## Daily commands
 
-Run inside the radio VM from `/opt/prplmesh-lab`:
+Run from the repository root on the dedicated radio host:
 
 ```sh
 # Start four agents in a wireless chain, then admit 20 clients.
@@ -83,6 +84,7 @@ AL-MAC and BSSID identities plus fixed process counts.
 - `manifests/` — fixed inventory, SSIDs, credentials and medium baseline.
 - `patches/` — small hwsim, wmediumd and prplMesh NL80211 deltas.
 - `scripts/` — build, provisioning, lifecycle, named steering and visualizer.
+- `artifacts/` — ignored, reproducibly generated runtime archives.
 - `tests/` — acceptance, scale, steering, outage, metrics and resource tests.
 - `visualizer/` — read-only NBAPI adapter and SVG Web UI.
 - `controller-ui/` — host Go port of the RDK EM CLI topology application.
@@ -90,9 +92,9 @@ AL-MAC and BSSID identities plus fixed process counts.
 - `docs/controller-ui.md` — host UI adapter, API and multi-network model.
 - `docs/software-architecture.md` — prplMesh processes, IEEE 1905 and APIs.
 - `docs/validation.md` — accepted results and remaining gaps.
-- `docs/progress.md` — dated engineering findings.
+- `docs/from-scratch.md` — complete host-to-accepted-lab build procedure.
 
 Builds use pinned upstream prplMesh release 6.0.0 commit
 `2e153c7e00cbcab6b8ee35082f494a364e23f018`. Runtime containers use a sanitized
-Ubuntu 22.04 image without snapd or unattended upgrades; radio acceptance runs
-inside the isolated Ubuntu 24.04/Linux 7.0 VM on rev140.
+Ubuntu 22.04 image without snapd or unattended upgrades. The radio host is
+Ubuntu 24.04 with Linux 7.0. See `docs/from-scratch.md` for the complete build.

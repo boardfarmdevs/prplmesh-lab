@@ -2,11 +2,11 @@
 
 ## Isolation boundary
 
-The experiment lives at `/home/rev/prplmesh-lab/0827` on rev140. Every name is
+The experiment lives in this repository on a dedicated radio host. Every name is
 prefixed with `prpl-`. Native userspace builds run in a dedicated LXD build
 container. Radio acceptance runs in an Ubuntu 24.04/Linux 7.0 LXD virtual
 machine, with the prplMesh controller, agent, and station placed in nested LXD
-containers. This avoids changing rev140's host kernel and gives the experiment
+containers. This avoids changing the workstation's host kernel and gives the experiment
 its own bridges, hwsim pool, wmediumd process, configuration, PID, and log. No
 RDK container, image alias, bridge, radio, wmediumd process, or database is
 reused.

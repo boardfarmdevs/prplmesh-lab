@@ -1,27 +1,35 @@
 # Host EasyMesh Controller UI
 
 This is the RDK EM CLI network-topology experience ported to a standalone Go
-process on rev140. It uses the external prplMesh topology API rather than CGo,
+process on the radio host. It uses the external prplMesh topology API rather than CGo,
 RBUS, MariaDB, or files inside the controller container.
 
 ## Run
 
+Install the tested binary and a path-correct systemd unit from any checkout:
+
 ```sh
-cd /home/rev/prplmesh-lab/0827/controller-ui
+./install.sh
+```
+
+For foreground development:
+
+```sh
+cd /path/to/prplmesh-lab/controller-ui
 mkdir -p bin
 go test ./...
 go build -o bin/easymesh-controller ./cmd/easymesh-controller
 bin/easymesh-controller
 ```
 
-Open `http://192.168.2.140:8091/`. Network Topology is the default page and
+Open `http://HOST-IP:8091/`. Network Topology is the default page and
 refreshes every two seconds. Mesh Devices and Connected Clients also consume
 live data. All other pages are explicit placeholders.
 
 The default source is:
 
 ```text
-http://192.168.2.140:8090/api/topology
+http://127.0.0.1:8090/api/topology
 ```
 
 Override it with `-source` or `EASYMESH_TOPOLOGY_URL`. The EM CLI-compatible

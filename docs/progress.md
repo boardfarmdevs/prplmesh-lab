@@ -2,8 +2,7 @@
 
 ## 2026-08-27 — experiment created
 
-- Created an independent local repository on rev140 at
-  `/home/rev/prplmesh-lab/0827`.
+- Created an independent local repository for the prplMesh experiment.
 - Added the official prplMesh repository as a submodule and pinned release
   `6.0.0`, commit `2e153c7e00cbcab6b8ee35082f494a364e23f018`.
 - Confirmed upstream still provides a native Linux target, DUMMY and NL80211
@@ -47,7 +46,7 @@ Known upstream build findings:
   steering. Its client-event file is useful only as a control-path simulator.
 
 Next: complete the NL80211 build against pinned hostap 2.10 headers. Build an
-isolated Ubuntu 24.04/Linux 7.0 radio VM on rev140 and use the reviewed hwsim
+isolated Ubuntu 24.04/Linux 7.0 radio host and use the reviewed hwsim
 6 GHz and wmediumd multichannel changes without the control-plane extensions.
 Attach tri-band radios to the agent and a dedicated radio to one client, then
 require physical association and controller ownership to agree before

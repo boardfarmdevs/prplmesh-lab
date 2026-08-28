@@ -9,7 +9,7 @@ The tests compare three independent views instead of accepting a Web UI alone:
 Run the complete currently active profile from the radio-lab VM:
 
 ```sh
-cd /opt/prplmesh-lab
+cd /path/to/prplmesh-lab
 PRPL_AGENT_COUNT=4 PRPL_CLIENT_COUNT=20 PRPL_TOPOLOGY=chain \
   tests/run-acceptance.sh
 ```

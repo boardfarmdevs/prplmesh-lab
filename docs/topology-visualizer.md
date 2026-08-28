@@ -29,15 +29,15 @@ and are not counted or mislabeled as ordinary WLAN clients.
 Start and check it inside the radio VM:
 
 ```sh
-/opt/prplmesh-lab/scripts/topology-visualizer.sh start
-/opt/prplmesh-lab/scripts/topology-visualizer.sh status
+/path/to/prplmesh-lab/scripts/topology-visualizer.sh start
+/path/to/prplmesh-lab/scripts/topology-visualizer.sh status
 curl http://127.0.0.1:8090/api/topology
 ```
 
 The start command prints the VM address. The backend runs inside the controller
 container to use the local ubus socket; the VM proxy only forwards TCP and does
-not interpret model data. The rev140 host proxy currently exposes the page at
-`http://192.168.2.140:8090/`.
+not interpret model data. The host proxy exposes the page at
+`http://HOST-IP:8090/`.
 
 The current UI is diagnostic. It intentionally has no steering controls until
 the read-only model and multihop representation are accepted. A later control

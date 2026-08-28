@@ -2,7 +2,7 @@
 
 The host controller UI reuses the RDK EM CLI Web application and its topology
 renderer while replacing the embedded RDK backend with a standalone Go
-adapter. It runs on rev140 rather than inside an EasyMesh node.
+adapter. It runs on the radio host rather than inside an EasyMesh node.
 
 ```text
  prplMesh controller container
@@ -89,8 +89,8 @@ The service is `prplmesh-controller-ui.service`. Check it with:
 
 ```sh
 systemctl status prplmesh-controller-ui
-curl http://192.168.2.140:8091/health
-cd /home/rev/prplmesh-lab/0827/controller-ui
+curl http://127.0.0.1:8091/health
+cd /path/to/prplmesh-lab/controller-ui
 tests/acceptance.sh
 ```
 
