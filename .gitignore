@@ -1,5 +1,6 @@
 /build/
 /artifacts/
+/controller-ui/bin/
 /evidence/**/*.pcap
 /evidence/**/*.pcapng
 /evidence/**/*.log

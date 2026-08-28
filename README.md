@@ -85,7 +85,9 @@ AL-MAC and BSSID identities plus fixed process counts.
 - `scripts/` — build, provisioning, lifecycle, named steering and visualizer.
 - `tests/` — acceptance, scale, steering, outage, metrics and resource tests.
 - `visualizer/` — read-only NBAPI adapter and SVG Web UI.
+- `controller-ui/` — host Go port of the RDK EM CLI topology application.
 - `docs/architecture.md` — lab topology, state boundaries and optimizer seam.
+- `docs/controller-ui.md` — host UI adapter, API and multi-network model.
 - `docs/software-architecture.md` — prplMesh processes, IEEE 1905 and APIs.
 - `docs/validation.md` — accepted results and remaining gaps.
 - `docs/progress.md` — dated engineering findings.
