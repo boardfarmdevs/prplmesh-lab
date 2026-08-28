@@ -7,6 +7,46 @@ set -euo pipefail
 : "${BWL_TYPE:?}"
 
 export DEBIAN_FRONTEND=noninteractive
+
+retry()
+{
+    local attempt
+    for attempt in 1 2 3; do
+        if "$@"; then
+            return 0
+        fi
+        if [ "$attempt" -eq 3 ]; then
+            return 1
+        fi
+        echo "network operation failed; retrying ($attempt/3): $*" >&2
+        sleep $((attempt * 5))
+    done
+}
+
+clone_retry()
+{
+    local url=$1 directory=$2 attempt
+    shift 2
+
+    if [ -d "$directory/.git" ] &&
+       git -C "$directory" rev-parse --verify HEAD >/dev/null 2>&1 &&
+       git -C "$directory" fsck --connectivity-only >/dev/null 2>&1; then
+        return 0
+    fi
+
+    for attempt in 1 2 3; do
+        rm -rf "$directory"
+        if git clone "$@" "$url" "$directory"; then
+            return 0
+        fi
+        if [ "$attempt" -eq 3 ]; then
+            return 1
+        fi
+        echo "clone failed; retrying ($attempt/3): $url" >&2
+        sleep $((attempt * 5))
+    done
+}
+
 apt-get update
 apt-get install -y \
     bison bridge-utils build-essential ca-certificates clang-format cmake curl \
@@ -23,10 +63,8 @@ if [ ! -x /usr/local/bin/repo ]; then
     chmod 0755 /usr/local/bin/repo
 fi
 
-if [ ! -d /opt/prplMesh/.git ]; then
-    git clone https://gitlab.com/prpl-foundation/prplmesh/prplMesh.git /opt/prplMesh
-fi
-git -C /opt/prplMesh fetch --tags origin
+clone_retry https://gitlab.com/prpl-foundation/prplmesh/prplMesh.git /opt/prplMesh
+retry git -C /opt/prplMesh fetch --tags origin
 git -C /opt/prplMesh checkout --detach "$PRPL_COMMIT"
 git -C /opt/prplMesh reset --hard "$PRPL_COMMIT"
 test "$(git -C /opt/prplMesh rev-parse HEAD)" = "$PRPL_COMMIT"
@@ -36,18 +74,14 @@ for patch_file in /root/prplmesh-patches/*.patch; do
 done
 
 mkdir -p /opt/prpl-deps
-if [ ! -d /opt/prpl-deps/libubox/.git ]; then
-    git clone https://git.openwrt.org/project/libubox.git /opt/prpl-deps/libubox
-fi
+clone_retry https://git.openwrt.org/project/libubox.git /opt/prpl-deps/libubox
 git -C /opt/prpl-deps/libubox checkout 9e52171d70def760a6949676800d0b73f85ee22d
 cmake -S /opt/prpl-deps/libubox -B /opt/prpl-deps/libubox/build \
     -DCMAKE_INSTALL_PREFIX=/usr
 cmake --build /opt/prpl-deps/libubox/build --parallel
 cmake --install /opt/prpl-deps/libubox/build
 
-if [ ! -d /opt/prpl-deps/ubus/.git ]; then
-    git clone https://git.openwrt.org/project/ubus.git /opt/prpl-deps/ubus
-fi
+clone_retry https://git.openwrt.org/project/ubus.git /opt/prpl-deps/ubus
 git -C /opt/prpl-deps/ubus reset --hard 13a4438b4ebdf85d301999e0a615640ac4c9b0a8
 if ! git -C /opt/prpl-deps/ubus apply --check \
     /opt/prplMesh/tools/docker/builder/ubuntu/bionic/ubus/0001-ubusd-convert-tx_queue-to-linked-list.patch 2>/dev/null
@@ -66,11 +100,11 @@ ldconfig
 if [ ! -d /opt/prpl-deps/ambiorix/.repo ]; then
     mkdir -p /opt/prpl-deps/ambiorix
     cd /opt/prpl-deps/ambiorix
-    repo init -u https://gitlab.com/prpl-foundation/components/ambiorix/ambiorix.git \
+    retry repo init -u https://gitlab.com/prpl-foundation/components/ambiorix/ambiorix.git \
         -b refs/tags/v7.1.0 </dev/null
-    repo sync
 fi
 cd /opt/prpl-deps/ambiorix
+retry repo sync
 for component in \
     libraries/libamxc libraries/libamxp libraries/libamxd libraries/libamxb \
     libraries/libamxs libraries/libamxo libraries/libamxj libraries/libamxrt \
@@ -81,11 +115,9 @@ do
     make install -C "$component"
 done
 
-if [ ! -d /opt/prpl-deps/mod-dmext/.git ]; then
-    git clone --branch v0.11.12 \
-        https://gitlab.com/prpl-foundation/components/core/modules/mod-dmext.git \
-        /opt/prpl-deps/mod-dmext
-fi
+clone_retry \
+    https://gitlab.com/prpl-foundation/components/core/modules/mod-dmext.git \
+    /opt/prpl-deps/mod-dmext --branch v0.11.12
 make -C /opt/prpl-deps/mod-dmext
 make install -C /opt/prpl-deps/mod-dmext
 ldconfig
@@ -93,11 +125,12 @@ ldconfig
 if [ "$BWL_TYPE" = NL80211 ] && \
    [ ! -d /opt/prpl-deps/hostapd-src/hostapd-2.10/.git ]; then
     mkdir -p /opt/prpl-deps/hostapd-src
-    git clone https://git.w1.fi/hostap.git \
+    clone_retry https://git.w1.fi/hostap.git \
         /opt/prpl-deps/hostapd-src/hostapd-2.10
 fi
 if [ "$BWL_TYPE" = NL80211 ]; then
-    git -C /opt/prpl-deps/hostapd-src/hostapd-2.10 fetch origin "$HOSTAP_COMMIT"
+    retry git -C /opt/prpl-deps/hostapd-src/hostapd-2.10 \
+        fetch origin "$HOSTAP_COMMIT"
     git -C /opt/prpl-deps/hostapd-src/hostapd-2.10 checkout --detach "$HOSTAP_COMMIT"
     test "$(git -C /opt/prpl-deps/hostapd-src/hostapd-2.10 rev-parse HEAD)" = \
         "$HOSTAP_COMMIT"
