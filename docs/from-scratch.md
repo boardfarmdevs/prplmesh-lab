@@ -54,6 +54,14 @@ From the repository root:
 scripts/build-all.sh
 ```
 
+The nested management network uses `1.1.1.1` and `1.0.0.1` by default so its
+containers do not depend on a host-local resolver stub. Environments that
+require different resolvers can supply a comma-separated list:
+
+```sh
+PRPL_DNS_SERVERS=192.0.2.53,192.0.2.54 scripts/build-all.sh
+```
+
 The command performs these reproducible stages:
 
 1. creates an Ubuntu 22.04 LXD build container;
