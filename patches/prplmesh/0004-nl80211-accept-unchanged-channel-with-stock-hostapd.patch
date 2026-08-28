@@ -1,0 +1,31 @@
+From: prplMesh virtual-radio lab
+Subject: [PATCH] nl80211: tolerate unsupported reload when channel is unchanged
+
+The NL80211 AP HAL persists the requested hostapd configuration and then uses
+the non-standard `UPDATE` control command. Stock hostapd rejects that command.
+During wireless-backhaul selection prplMesh reapplies the radio's existing
+channel; treating the rejected no-op as fatal terminates the AP manager and
+leaves AP autoconfiguration permanently incomplete.
+
+Accept the operation when the requested channel and bandwidth already match
+the live radio. Keep failing a genuine channel change so an unsupported
+operation is never reported as successful.
+
+--- a/common/beerocks/bwl/nl80211/ap_wlan_hal_nl80211.cpp
++++ b/common/beerocks/bwl/nl80211/ap_wlan_hal_nl80211.cpp
+@@ -626,6 +626,13 @@ bool ap_wlan_hal_nl80211::set_channel(int chan, beerocks::eWiFiBandwidth bw, int
+     // make hostapd reload its configuration file:
+     const std::string cmd{"UPDATE "};
+     if (!wpa_ctrl_send_msg(cmd)) {
++        if (m_radio_info.channel == chan &&
++            (bw == beerocks::eWiFiBandwidth::BANDWIDTH_UNKNOWN ||
++             m_radio_info.bandwidth == bw)) {
++            LOG(WARNING) << "Hostapd does not support '" << cmd
++                         << "'; live channel and bandwidth already match";
++            return true;
++        }
+         LOG(ERROR) << "'" << cmd << "' command to hostapd failed";
+         return false;
+     }
+-- 
+2.43.0

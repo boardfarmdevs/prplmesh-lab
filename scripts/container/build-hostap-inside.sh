@@ -10,9 +10,13 @@ git -C "$source_dir" reset --hard hostap_2_10
 cp "$source_dir/hostapd/defconfig" "$source_dir/hostapd/.config"
 sed -i \
     -e 's/^#CONFIG_WNM=y/CONFIG_WNM=y/' \
+    -e 's/^#CONFIG_IEEE80211AC=y/CONFIG_IEEE80211AC=y/' \
     -e 's/^#CONFIG_IEEE80211AX=y/CONFIG_IEEE80211AX=y/' \
+    -e 's/^#CONFIG_SAE=y/CONFIG_SAE=y/' \
     -e 's/^#CONFIG_MBO=y/CONFIG_MBO=y/' \
     "$source_dir/hostapd/.config"
+grep -qx 'CONFIG_SAE=y' "$source_dir/hostapd/.config" ||
+    echo 'CONFIG_SAE=y' >> "$source_dir/hostapd/.config"
 make -C "$source_dir/hostapd" -j"$(nproc)"
 
 cp "$source_dir/wpa_supplicant/defconfig" "$source_dir/wpa_supplicant/.config"
