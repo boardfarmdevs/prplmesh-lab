@@ -15,7 +15,7 @@ if ! lxc network show "$BACKHAUL_NETWORK" >/dev/null 2>&1; then
 fi
 
 if ! lxc info "$BUILD_CONTAINER" >/dev/null 2>&1; then
-    lxc launch images:ubuntu/22.04 "$BUILD_CONTAINER" \
+    lxc launch ubuntu:22.04 "$BUILD_CONTAINER" \
         --network "$MANAGEMENT_NETWORK"
 fi
 
