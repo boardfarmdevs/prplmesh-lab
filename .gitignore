@@ -1,0 +1,7 @@
+/build/
+/artifacts/
+/evidence/**/*.pcap
+/evidence/**/*.pcapng
+/evidence/**/*.log
+*.pyc
+__pycache__/

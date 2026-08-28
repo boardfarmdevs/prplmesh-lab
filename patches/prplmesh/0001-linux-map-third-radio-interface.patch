@@ -1,0 +1,20 @@
+From: prplMesh virtual-radio lab
+Subject: [PATCH] platform: map the configured third Linux radio
+
+The native Linux build already exposes BEEROCKS_WLAN3_IFACE and emits
+wlan4 hostapd/supplicant paths in the platform database. The Linux BPL
+helper nevertheless rejects radio number 2, preventing the otherwise
+configured third radio from being instantiated.
+
+--- a/framework/platform/bpl/cfg/linux/bpl_cfg_ifaces.cpp.in
++++ b/framework/platform/bpl/cfg/linux/bpl_cfg_ifaces.cpp.in
+@@ -31,6 +31,7 @@ bool radio_num_to_wlan_iface_name(const int32_t radio_num, std::string& iface_s
+     switch (radio_num) {
+         case 0: iface_str = "@BEEROCKS_WLAN1_IFACE@"; break;
+         case 1: iface_str = "@BEEROCKS_WLAN2_IFACE@"; break;
++        case 2: iface_str = "@BEEROCKS_WLAN3_IFACE@"; break;
+         default:
+             return false;
+     }
+-- 
+2.43.0
