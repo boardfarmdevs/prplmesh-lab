@@ -4,6 +4,8 @@ set -euo pipefail
 CONTROLLER=prpl-controller
 client_name=${1:?client name: sta-NN or iot-NN}
 target_name=${2:?target: controller or agent-N}
+steering_ui=${PRPL_STEERING_UI:-http://192.168.2.140:8091/api/v1/steering-event}
+preview_seconds=${PRPL_STEERING_PREVIEW_SECONDS:-3}
 
 case "$client_name" in
     sta-*) cohort=private; prefix=10; cohort_ordinal=$((10#${client_name#sta-})); ordinal=$((cohort_ordinal * 2 - 1)) ;;
@@ -51,6 +53,14 @@ physical_bssid()
     lxc exec "$container" -- wpa_cli -i wlan0 status 2>/dev/null | sed -n 's/^bssid=//p'
 }
 
+announce_steering()
+{
+    local phase=$1
+    curl -fsS --max-time 2 -X POST -H 'Content-Type: application/json' \
+        --data "{\"sta_mac\":\"$mac\",\"client_name\":\"$client_name\",\"target_name\":\"$target_name\",\"phase\":\"$phase\"}" \
+        "$steering_ui" >/dev/null 2>&1 || true
+}
+
 source=$(physical_bssid)
 radio_octet=$(printf '%s\n' "$source" | cut -d: -f5)
 local_radio=$((16#$radio_octet % 3))
@@ -63,6 +73,9 @@ if [ "$source" != "$target" ]; then
         '{"DisassociationImminent":false,"DisassociationTimer":0,"BSSTerminationDuration":0,"ValidityInterval":10,"SteeringTimer":50,"TargetBSS":"%s"}' \
         "$target")
     echo "$client_name ($mac): $source -> $target ($target_name)"
+    announce_steering planned
+    sleep "$preview_seconds"
+    announce_steering moving
     lxc exec "$CONTROLLER" -- ubus call "${object}.MultiAPSTA" \
         BTMRequest "$request" >/dev/null
 else
@@ -73,10 +86,12 @@ for attempt in $(seq 1 45); do
     physical=$(physical_bssid || true)
     modeled=$(model_bssid || true)
     if [ "$physical" = "$target" ] && [ "$modeled" = "$target" ]; then
+        announce_steering completed
         echo "PASS: $client_name converged physically and in NBAPI on $target_name"
         exit 0
     fi
     sleep 1
 done
+announce_steering failed
 echo "steering timeout: physical=${physical:-none} modeled=${modeled:-none} target=$target" >&2
 exit 1

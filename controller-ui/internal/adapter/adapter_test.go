@@ -53,6 +53,11 @@ func TestTransformDualSSIDTriBandTopology(t *testing.T) {
 	if snapshot.Clients[0].Hostname != "sta-10" || snapshot.Clients[1].Hostname != "iot-10" {
 		t.Fatalf("client names=%q,%q", snapshot.Clients[0].Hostname, snapshot.Clients[1].Hostname)
 	}
+	if snapshot.Topology.Nodes[0].STAList[0].Name != "sta-10" ||
+		snapshot.Topology.Nodes[1].STAList[0].Name != "iot-10" {
+		t.Fatalf("topology client names=%q,%q", snapshot.Topology.Nodes[0].STAList[0].Name,
+			snapshot.Topology.Nodes[1].STAList[0].Name)
+	}
 	if snapshot.Topology.Edges[0].Band != 1 || snapshot.Topology.Edges[0].Channel != 36 {
 		t.Fatalf("backhaul edge=%+v", snapshot.Topology.Edges[0])
 	}

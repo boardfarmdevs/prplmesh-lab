@@ -41,6 +41,29 @@ the graph with an empty topology.
 Dashboard, coverage, policy, performance, security, firmware, reports and
 system settings are explicit placeholders. They do not display canned data.
 
+`Optimize Layout` is aware of the live backhaul graph. A star places the
+controller at the center, a complete chain follows parent-child order across
+an upper and lower row, and a branched graph uses a depth-aware landscape
+layout. The topology pane is bounded to the visible browser area and does not
+grow in response to SVG resize events.
+
+## Steering visualization
+
+The client association reported by NBAPI only changes after a roam. To make an
+operator-driven steer observable from its beginning, `scripts/steer-client.sh`
+publishes a short-lived intent event to the UI before sending BTM:
+
+1. the current client receives an orange pulse and a `NEXT` badge for three
+   seconds;
+2. the badge changes to `MOVING` while BTM and convergence are in progress;
+3. a purple client marker follows the path to the new AP; and
+4. the authoritative NBAPI ownership redraw places and pulses the client at
+   its new position.
+
+The hint is visualization metadata only. Physical association and NBAPI
+convergence remain the acceptance criteria. If port 8091 is unavailable,
+steering continues without the preview rather than failing the control action.
+
 ## Network model
 
 Every observed BSS is joined to a declarative network by SSID:

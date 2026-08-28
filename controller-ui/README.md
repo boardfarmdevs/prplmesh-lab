@@ -35,7 +35,13 @@ GET /api/v1/clients
 GET /api/v1/bsses
 GET /api/v1/networks
 GET /api/v1/config
+GET /api/v1/steering-event
+POST /api/v1/steering-event
 ```
+
+The steering endpoint carries a short-lived `planned`, `moving`, `completed`,
+or `failed` visualization event. `scripts/steer-client.sh` uses it to identify
+the next client before BTM; it is not a steering control API.
 
 ## Multiple networks and VLANs
 

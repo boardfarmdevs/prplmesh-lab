@@ -137,7 +137,7 @@ func Transform(source model.PrplTopology, networks []model.Network, observed tim
 					states[network.ID].ClientCount++
 					name, kind := clientIdentity(station)
 					staList = append(staList, model.STAVisual{
-						STAMAC: normalizeMAC(station.ID), ClientType: kind, Band: band,
+						STAMAC: normalizeMAC(station.ID), Name: name, ClientType: kind, Band: band,
 						Channel: radio.Channel, BSSID: normalizeMAC(bss.BSSID), SSID: bss.SSID,
 					})
 					connected := observed.Add(-time.Duration(station.LastConnectSeconds) * time.Second)

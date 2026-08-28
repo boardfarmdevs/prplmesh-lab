@@ -79,8 +79,23 @@ type Snapshot struct {
 }
 
 type Topology struct {
-	Nodes []TopologyNode `json:"nodes"`
-	Edges []TopologyEdge `json:"edges"`
+	Nodes         []TopologyNode `json:"nodes"`
+	Edges         []TopologyEdge `json:"edges"`
+	SteeringEvent *SteeringEvent `json:"steeringEvent,omitempty"`
+}
+
+// SteeringEvent is an operator intent hint for the topology renderer. The
+// controller model can only report a roam after it happens, so steering tools
+// publish this short-lived event before issuing BTM. It does not alter the
+// EasyMesh model or perform the steer itself.
+type SteeringEvent struct {
+	ID         string    `json:"id"`
+	STAMAC     string    `json:"sta_mac"`
+	ClientName string    `json:"client_name"`
+	TargetName string    `json:"target_name"`
+	Phase      string    `json:"phase"`
+	ReceivedAt time.Time `json:"received_at"`
+	ExpiresAt  time.Time `json:"expires_at"`
 }
 
 type TopologyNode struct {
@@ -126,6 +141,7 @@ type BSSVisual struct {
 
 type STAVisual struct {
 	STAMAC     string `json:"staMAC"`
+	Name       string `json:"name,omitempty"`
 	ClientType string `json:"clientType"`
 	MLDAddr    string `json:"MLDAddr"`
 	Band       int    `json:"band"`

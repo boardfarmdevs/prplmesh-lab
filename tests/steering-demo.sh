@@ -39,7 +39,7 @@ for ordinal in $(seq 1 "$agents"); do targets+=("agent-$ordinal"); done
 targets+=(controller)
 
 echo "Steering demo: ${#clients[@]} clients, ${#targets[@]} targets, $cycles cycle(s), ${delay}s pause"
-echo "Web UI: http://192.168.2.140:8090/"
+echo "Web UI: http://192.168.2.140:8091/"
 failures=0
 moves=0
 for cycle in $(seq 1 "$cycles"); do

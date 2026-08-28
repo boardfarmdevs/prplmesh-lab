@@ -7,6 +7,7 @@ import (
 	"log"
 	"net/http"
 	"strings"
+	"sync"
 	"time"
 
 	"prplmesh-lab/controller-ui/internal/adapter"
@@ -20,10 +21,12 @@ type Source interface {
 }
 
 type Server struct {
-	source   Source
-	networks []model.Network
-	logger   *log.Logger
-	handler  http.Handler
+	source     Source
+	networks   []model.Network
+	logger     *log.Logger
+	handler    http.Handler
+	steeringMu sync.Mutex
+	steering   *model.SteeringEvent
 }
 
 func New(source Source, networks []model.Network, logger *log.Logger) (*Server, error) {
@@ -36,6 +39,7 @@ func New(source Source, networks []model.Network, logger *log.Logger) (*Server, 
 	mux.Handle("/static/", http.StripPrefix("/static/", http.FileServer(http.FS(staticFS))))
 	mux.HandleFunc("/health", s.health)
 	mux.HandleFunc("/api/v1/topology", s.topology)
+	mux.HandleFunc("/api/v1/steering-event", s.steeringEvent)
 	mux.HandleFunc("/api/v1/devices", s.devices)
 	mux.HandleFunc("/api/v1/clients", s.clients)
 	mux.HandleFunc("/api/v1/bsses", s.bsses)
@@ -77,7 +81,84 @@ func (s *Server) topology(w http.ResponseWriter, r *http.Request) {
 		writeError(w, err)
 		return
 	}
+	value.Topology.SteeringEvent = s.currentSteeringEvent(time.Now().UTC())
 	writeJSON(w, http.StatusOK, value.Topology)
+}
+
+func (s *Server) steeringEvent(w http.ResponseWriter, r *http.Request) {
+	now := time.Now().UTC()
+	if r.Method == http.MethodGet {
+		writeJSON(w, http.StatusOK, map[string]any{"event": s.currentSteeringEvent(now)})
+		return
+	}
+	if r.Method == http.MethodDelete {
+		s.steeringMu.Lock()
+		s.steering = nil
+		s.steeringMu.Unlock()
+		w.WriteHeader(http.StatusNoContent)
+		return
+	}
+	if r.Method != http.MethodPost {
+		w.Header().Set("Allow", "GET, POST, DELETE")
+		writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "method not allowed"})
+		return
+	}
+
+	var request struct {
+		STAMAC     string `json:"sta_mac"`
+		ClientName string `json:"client_name"`
+		TargetName string `json:"target_name"`
+		Phase      string `json:"phase"`
+	}
+	decoder := json.NewDecoder(http.MaxBytesReader(w, r.Body, 4096))
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(&request); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid steering event: " + err.Error()})
+		return
+	}
+	request.STAMAC = strings.ToLower(strings.TrimSpace(request.STAMAC))
+	request.ClientName = strings.TrimSpace(request.ClientName)
+	request.TargetName = strings.TrimSpace(request.TargetName)
+	request.Phase = strings.ToLower(strings.TrimSpace(request.Phase))
+	if request.STAMAC == "" || request.ClientName == "" || request.TargetName == "" {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "sta_mac, client_name and target_name are required"})
+		return
+	}
+	ttl := 45 * time.Second
+	switch request.Phase {
+	case "planned":
+		ttl = 15 * time.Second
+	case "moving":
+	case "completed", "failed":
+		ttl = 8 * time.Second
+	default:
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "phase must be planned, moving, completed or failed"})
+		return
+	}
+	event := &model.SteeringEvent{
+		ID:     now.Format("20060102T150405.000000000Z07:00"),
+		STAMAC: request.STAMAC, ClientName: request.ClientName,
+		TargetName: request.TargetName, Phase: request.Phase,
+		ReceivedAt: now, ExpiresAt: now.Add(ttl),
+	}
+	s.steeringMu.Lock()
+	s.steering = event
+	s.steeringMu.Unlock()
+	writeJSON(w, http.StatusAccepted, event)
+}
+
+func (s *Server) currentSteeringEvent(now time.Time) *model.SteeringEvent {
+	s.steeringMu.Lock()
+	defer s.steeringMu.Unlock()
+	if s.steering == nil {
+		return nil
+	}
+	if !now.Before(s.steering.ExpiresAt) {
+		s.steering = nil
+		return nil
+	}
+	copy := *s.steering
+	return &copy
 }
 
 func (s *Server) devices(w http.ResponseWriter, r *http.Request) {

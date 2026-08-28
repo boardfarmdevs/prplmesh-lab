@@ -1,7 +1,9 @@
 package httpapi
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"io"
 	"log"
 	"net/http"
@@ -38,5 +40,34 @@ func TestLiveAndStubRoutes(t *testing.T) {
 	server.Handler().ServeHTTP(response, request)
 	if response.Code != http.StatusNotImplemented {
 		t.Fatalf("stub returned %d", response.Code)
+	}
+}
+
+func TestSteeringEventAppearsInTopology(t *testing.T) {
+	source := fakeSource{value: model.PrplTopology{Source: "test", Devices: []model.PrplDevice{{
+		ID: "02:00:00:27:01:01", Name: "controller", Role: "controller",
+	}}}}
+	server, err := New(source, nil, log.New(io.Discard, "", 0))
+	if err != nil {
+		t.Fatal(err)
+	}
+	body := bytes.NewBufferString(`{"sta_mac":"02:00:00:10:01:00","client_name":"sta-01","target_name":"agent-1","phase":"planned"}`)
+	request := httptest.NewRequest(http.MethodPost, "/api/v1/steering-event", body)
+	response := httptest.NewRecorder()
+	server.Handler().ServeHTTP(response, request)
+	if response.Code != http.StatusAccepted {
+		t.Fatalf("event returned %d: %s", response.Code, response.Body.String())
+	}
+
+	request = httptest.NewRequest(http.MethodGet, "/api/v1/topology", nil)
+	response = httptest.NewRecorder()
+	server.Handler().ServeHTTP(response, request)
+	var topology model.Topology
+	if err := json.NewDecoder(response.Body).Decode(&topology); err != nil {
+		t.Fatal(err)
+	}
+	if topology.SteeringEvent == nil || topology.SteeringEvent.Phase != "planned" ||
+		topology.SteeringEvent.STAMAC != "02:00:00:10:01:00" {
+		t.Fatalf("topology steering event=%+v", topology.SteeringEvent)
 	}
 }
