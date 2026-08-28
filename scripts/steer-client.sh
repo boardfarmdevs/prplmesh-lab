@@ -3,7 +3,7 @@ set -euo pipefail
 
 CONTROLLER=prpl-controller
 client_name=${1:?client name: sta-NN or iot-NN}
-target_name=${2:?target: controller or agent-N}
+target_name=${2:?target: controller, agent-N or extender-N}
 steering_ui=${PRPL_STEERING_UI:-http://127.0.0.1:8091/api/v1/steering-event}
 preview_seconds=${PRPL_STEERING_PREVIEW_SECONDS:-3}
 
@@ -15,7 +15,8 @@ esac
 case "$target_name" in
     controller) target_node=0 ;;
     agent-*) target_node=$((10#${target_name#agent-})) ;;
-    *) echo "target must be controller or agent-N" >&2; exit 2 ;;
+    extender-*) target_node=$((10#${target_name#extender-})) ;;
+    *) echo "target must be controller, agent-N or extender-N" >&2; exit 2 ;;
 esac
 printf -v container 'prpl-client-%02d' "$ordinal"
 printf -v mac '02:00:00:%s:%02x:00' "$prefix" "$cohort_ordinal"
