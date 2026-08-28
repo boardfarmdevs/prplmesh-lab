@@ -35,6 +35,16 @@ and 6 GHz across the controller and every active agent. Each matrix cell
 requires the BTM request, station association and controller ownership record
 to agree.
 
+`steering-demo.sh` performs the same representative two-SSID/tri-band movement
+at observer speed. It pauses eight seconds between clients by default so every
+move is visible in the Web UI, which refreshes every two seconds. One cycle
+takes roughly four minutes with four agents:
+
+```sh
+tests/steering-demo.sh
+tests/steering-demo.sh --cycles 2 --delay 5
+```
+
 `data-plane.sh` checks the deterministic `192.168.77.0/24` lab data network
 from every active WLAN client. It then places `iot-06` on the deepest active
 agent and sends a longer ping through the complete wireless backhaul to the
