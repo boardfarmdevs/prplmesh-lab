@@ -39,8 +39,23 @@ case "$ACTION" in
                 echo "topology visualizer did not become ready" >&2
                 exit 1
             }
-        target=$(lxc list "$CONTROLLER" -c 4 --format csv | \
-            sed -n 's/ .*//p' | head -n 1)
+        # The tabular/CSV address column can contain several interfaces and is
+        # quoted when it spans lines.  Select the controller's management
+        # address from structured state instead of depending on display order.
+        target=$(lxc list "$CONTROLLER" --format json | python3 -c '
+import json
+import sys
+
+network = json.load(sys.stdin)[0]["state"]["network"]
+addresses = network.get("eth0", {}).get("addresses", [])
+print(next(address["address"] for address in addresses
+           if address.get("family") == "inet"
+           and address.get("scope") == "global"))
+')
+        if [ -z "$target" ]; then
+            echo "controller management address is unavailable" >&2
+            exit 1
+        fi
         systemctl stop "$PROXY_UNIT" 2>/dev/null || true
         systemd-run --unit "${PROXY_UNIT%.service}" --property Restart=on-failure \
             /usr/bin/python3 "$ROOT/visualizer/proxy.py" \
