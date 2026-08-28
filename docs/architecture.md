@@ -11,33 +11,35 @@ its own bridges, hwsim pool, wmediumd process, configuration, PID, and log. No
 RDK container, image alias, bridge, radio, wmediumd process, or database is
 reused.
 
-## First milestone
+## Accepted runtime
 
 ```text
-                       dedicated L2 management/backhaul bridge
-                 +----------------------------------------------+
-                 |                                              |
-        +--------+---------+                           +---------+--------+
-        | prpl-controller  |  IEEE 1905.1 / EasyMesh  |   prpl-agent    |
-        | controller only  |<------------------------>| agent + hostapd |
-        +------------------+                           +--------+---------+
-                                                                |
-                                                        hwsim AP radio
-                                                                |
-                 +---------------- dedicated wmediumd -----------+
-                 |                                              |
-          hwsim station radio                                   |
-                 |                                              |
-        +--------+---------+                                    |
-        | prpl-client-01  |-------------------------------------+
-        | wpa_supplicant  |          802.11 association
-        +-----------------+
+ +------------------------- Ubuntu 24.04 / Linux 7.0 radio VM -------------------------+
+ |                                                                                     |
+ |  +-------------------+    5 GHz wireless BH    +---------+    +---------+            |
+ |  | prpl-controller   |<------------------------| agent-1 |<---| agent-2 |<--- ...     |
+ |  | controller + agent|                         +---------+    +---------+  agent-4    |
+ |  | 2.4 / 5 / 6 GHz   |                              each agent: 2.4 / 5 / 6 GHz      |
+ |  +-------------------+                                                               |
+ |          ^                         IEEE 1905 / EasyMesh over selected backhaul        |
+ |          |                                                                          |
+ |  +-------+---------------- patched multichannel wmediumd -------------------------+  |
+ |  | sees every hwsim frame; applies frequency context and SNR/PER model           |  |
+ |  +-------+------------------------------------------------------------------------+  |
+ |          |                                                                          |
+ |  +-------+----------------------------+                                             |
+ |  | 20 WLAN client containers         |  private_ssid + iot_ssid                    |
+ |  | wpa_supplicant; 2.4 / 5 / 6 GHz   |                                             |
+ |  +------------------------------------+                                             |
+ |                                                                                     |
+ |  NBAPI -> read-only visualizer :8090     NBAPI BTM <- named steering/tests          |
+ +-------------------------------------------------------------------------------------+
 ```
 
-The controller and agent share only the dedicated L2 backhaul. The station has
-only its assigned hwsim radio. This makes onboarding and WLAN behavior separate
-observations and prevents a host-side shortcut from masquerading as wireless
-success.
+Each station has only its assigned hwsim radio. External agents use a separate
+bSTA VIF on their 5 GHz PHY. `star`, `branch` and `chain` change only the
+selected parent BSSID; permanent radio ownership and the wmediumd roster do not
+change.
 
 ## Incremental acceptance
 
@@ -45,15 +47,25 @@ success.
   build container.
 - **M1 — onboarding:** one controller discovers one agent, completes WSC/M1-M2,
   and reports the agent operational.
-- **M2 — client:** one client associates, passes traffic, and is visible to the
-  controller with an unambiguous BSSID owner.
+- **M2 — client:** clients associate on all three bands and are visible to the
+  controller with unambiguous BSSID ownership. Association, ownership and an
+  isolated deterministic data plane are accepted.
 - **M3 — steering:** a controller-issued mandate moves the client to a second
   agent and the physical association matches controller topology.
-- **M4 — multihop:** the second agent onboards through the first agent's
-  wireless backhaul and recovers without identity duplication.
+- **M4 — multihop:** four external agents onboard through star, branch and
+  chain wireless backhauls and recover without identity duplication.
+- **M5 — scale and telemetry:** 20 clients across two SSIDs and three bands
+  report associated RCPI and survive a live medium step.
+- **M6 — resilience:** a leaf agent ages out, its client roams, and the same
+  identity rejoins without medium regeneration.
 
 For each milestone, record convergence time, retries, manual interventions,
 process restarts, stale topology records, and identity mismatches.
+
+M1 through M6 are accepted for the bounded test suite. Basic traffic through
+the deepest four-hop chain is also accepted. Sustained traffic profiles,
+candidate-link metrics, optimizer integration and long-duration soak remain
+open.
 
 ## Radio and medium baseline
 
@@ -82,5 +94,6 @@ acceptance evidence   <- kernel association + controller ownership (shared)
 ```
 
 This permits identical RF sequences and acceptance definitions on both stacks.
-The prplMesh adapter is a later milestone, after its native steering path and
-telemetry are proven independently.
+Native associated-client telemetry and named steering are now proven; the next
+integration milestone is to implement this adapter without coupling the shared
+optimizer to prplMesh-specific object paths.

@@ -1,7 +1,7 @@
 # prplMesh software architecture
 
-This document describes the existing prplMesh 6.0.0 native Linux software
-used by this experiment. It does not propose or add a WebUI.
+This document describes the prplMesh 6.0.0 native Linux software used by this
+experiment and the separate read-only topology visualizer layered over NBAPI.
 
 ## Complete process and protocol view
 
@@ -12,6 +12,8 @@ flowchart LR
         PMCLI[prplmesh_cli]
         UBUSCLI[ubus / Ambiorix clients]
         UCC[EasyMesh certification client]
+        VIZ[read-only topology visualizer]
+        BROWSER[Web browser]
     end
 
     subgraph CTRL[Controller LXD container]
@@ -21,6 +23,7 @@ flowchart LR
         CA[beerocks_agent<br/>colocated agent]
         CFH0[beerocks_fronthaul<br/>radio 0]
         CFH1[beerocks_fronthaul<br/>radio 1]
+        CFH2[beerocks_fronthaul<br/>radio 2]
         CNB[NBAPI adapter]
         CUBUS[ubusd + Ambiorix<br/>DataElements model]
         CHAP[hostapd instances]
@@ -29,27 +32,32 @@ flowchart LR
         CA <-->|agent/backhaul UDS| C1905
         CA --> CFH0
         CA --> CFH1
+        CA --> CFH2
         CFH0 <-->|hostap control| CHAP
         CFH1 <-->|hostap control| CHAP
+        CFH2 <-->|hostap control| CHAP
         CTL <--> CNB
         CNB <--> CUBUS
         CTRLBR --- C1905
     end
 
-    subgraph AGENT[Separate Agent LXD container]
+    subgraph AGENT[Each of four external Agent LXD containers]
         ABR[br-lan]
         A1905[ieee1905_transport]
         AA[beerocks_agent<br/>platform + backhaul manager]
         AFH0[beerocks_fronthaul<br/>radio 0]
         AFH1[beerocks_fronthaul<br/>radio 1]
+        AFH2[beerocks_fronthaul<br/>radio 2]
         AHAP[hostapd instances]
         AWPA[wpa_supplicant<br/>wireless backhaul STA]
 
         AA <-->|platform / backhaul / agent UDS| A1905
         AA --> AFH0
         AA --> AFH1
+        AA --> AFH2
         AFH0 <-->|hostap control| AHAP
         AFH1 <-->|hostap control| AHAP
+        AFH2 <-->|hostap control| AHAP
         AA <-->|supplicant control| AWPA
         ABR --- A1905
     end
@@ -81,7 +89,12 @@ flowchart LR
     PMCLI -->|controller/agent status| CTL
     UBUSCLI -->|ubus socket| CUBUS
     UCC -->|TCP 8002 when enabled| CTL
+    VIZ -->|DataElements _get_instances / _get| CUBUS
+    BROWSER -->|HTTP JSON + SVG| VIZ
 ```
+
+The three per-agent fronthaul processes map to `wlan0`/2.4 GHz,
+`wlan2`/5 GHz and `wlan4`/6 GHz in this native Linux profile.
 
 ## Controller stack
 
@@ -195,8 +208,11 @@ orchestrates these daemons; it does not replace their 802.11 state machines.
 ### BML
 
 The Beerocks Management Layer supplies the existing controller CLI and test
-interface. `beerocks_cli -c bml_conn_map` queries the controller's network map,
-and BML commands expose existing management and steering operations.
+interface. BML commands configure credentials and expose management actions.
+At the full wireless-backhaul/client scale, `beerocks_cli -c bml_conn_map` can
+wait indefinitely for its asynchronous callback, so it is not used as an
+acceptance state API. Bounded NBAPI instance queries are the authoritative
+test interface.
 
 ### NBAPI and Ambiorix/ubus
 
@@ -213,7 +229,22 @@ The principal socket is:
 
 NBAPI is not an optimizer and is not a second topology database. It is a
 structured management representation of controller state and supported
-actions.
+actions. The tested steering action is the per-STA
+`MultiAPSTA.BTMRequest`; it produces an EasyMesh Client Steering Request,
+hostapd `BSS_TM_REQ`, station response, and controller-model update.
+
+### Topology visualizer
+
+`visualizer/server.py` is a separate process, not controller code. It runs in
+the controller container because ubus is a local Unix-domain interface. It
+uses only `_get_instances` and `_get`, normalizes Device/Radio/BSS/STA objects
+to `/api/topology`, and serves a dependency-free responsive SVG page. A small
+TCP forwarder in the radio VM makes the read-only service reachable without
+placing Web concerns in prplMesh.
+
+Dynamic instances must be discovered through the DataElements
+`_get_instances` method. `ubus list` describes registered object endpoints but
+is not a reliable inventory of moved STA instances.
 
 ### prplMesh CLI and UCC
 
@@ -251,9 +282,11 @@ channel contexts and uses the 6 GHz-capable `regtest=5` regulatory profile.
 
 wmediumd receives 802.11 frames from hwsim over generic netlink, schedules and
 delivers them within their frequency context, applies the configured SNR/PER
-model, and returns transmit status. The first prplMesh experiment uses a static
-configuration only. No scenario-control or observer socket extension is
-required for initial onboarding.
+model, and returns transmit status. The normal prplMesh profile uses a complete
+static 40-radio roster. The RCPI acceptance test replaces only the global SNR
+configuration and restarts wmediumd, proving that all telemetry follows the
+medium without restarting containers. Dynamic scenario-control and observer
+sockets remain future shared-lab integration work.
 
 This boundary is deliberately below prplMesh: the controller and agent see
 normal hostapd, wpa_supplicant and NL80211 behavior and should not need to know
