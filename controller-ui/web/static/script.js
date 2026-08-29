@@ -2449,13 +2449,32 @@ async handleWebSocketMessage(data) {
     const controller = rendered.find(node => /^controller$/i.test(String(node?.name || '')))
       || roots[0];
     const controllerId = String(controller?.id || '');
-    const directChildren = children.get(controllerId)?.size || 0;
+    const directChildren = children.get(controllerId) || new Set();
     const starThreshold = Math.max(2, Math.ceil(Math.max(0, rendered.length - 1) * 0.6));
+    let starDetected = directChildren.size >= starThreshold;
+
+    // The controller and its colocated Agent are separate EasyMesh model
+    // nodes. In the common star, the rendered graph is consequently
+    // Controller -> Agent-1 -> every extender even though the gateway is the
+    // semantic center. Collapse that single colocated hop for layout
+    // classification only; the API model and the rendered links stay exact.
+    if (!starDetected && directChildren.size === 1) {
+      const colocatedId = [...directChildren][0];
+      const colocatedChildren = children.get(colocatedId) || new Set();
+      const covered = new Set([colocatedId, ...colocatedChildren]);
+      const requiredExtenders = Math.max(2,
+        Math.ceil(Math.max(0, rendered.length - 2) * 0.6));
+      const coversMesh = rendered.every(node =>
+        String(node.id) === controllerId || covered.has(String(node.id)));
+      const leavesOnly = [...colocatedChildren].every(id =>
+        (children.get(id)?.size || 0) === 0);
+      starDetected = colocatedChildren.size >= requiredExtenders && coversMesh && leavesOnly;
+    }
 
     // A star is easiest to read with its semantic center at the visual center.
     // Include "mostly star" graphs so one non-direct extender does not push
     // the gateway back to an otherwise mostly empty left edge.
-    if (controller && rendered.length >= 3 && directChildren >= starThreshold) {
+    if (controller && rendered.length >= 3 && starDetected) {
       const positions = new Map([[controllerId, { x: 0, y: 0 }]]);
       const satellites = rendered.filter(node => String(node.id) !== controllerId)
         .sort(nodeOrder);
