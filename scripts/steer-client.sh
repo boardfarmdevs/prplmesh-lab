@@ -2,24 +2,47 @@
 set -euo pipefail
 
 CONTROLLER=prpl-controller
-client_name=${1:?client name: sta-NN or iot-NN}
-target_name=${2:?target: controller, agent-N or extender-N}
+client_name=${1:?client: sta-NN, iot-NN or STA MAC}
+target_name=${2:?target: controller, agent-N, extender-N or BSSID}
 steering_ui=${PRPL_STEERING_UI:-http://127.0.0.1:8091/api/v1/steering-event}
 preview_seconds=${PRPL_STEERING_PREVIEW_SECONDS:-3}
 
-case "$client_name" in
-    sta-*) cohort=private; prefix=10; cohort_ordinal=$((10#${client_name#sta-})); ordinal=$((cohort_ordinal * 2 - 1)) ;;
-    iot-*) cohort=iot; prefix=20; cohort_ordinal=$((10#${client_name#iot-})); ordinal=$((cohort_ordinal * 2)) ;;
-    *) echo "client must be sta-NN or iot-NN" >&2; exit 2 ;;
-esac
-case "$target_name" in
-    controller) target_node=0 ;;
-    agent-*) target_node=$((10#${target_name#agent-})) ;;
-    extender-*) target_node=$((10#${target_name#extender-})) ;;
-    *) echo "target must be controller, agent-N or extender-N" >&2; exit 2 ;;
-esac
+if [[ "$client_name" =~ ^([[:xdigit:]]{2}:){5}[[:xdigit:]]{2}$ ]]; then
+    mac=${client_name,,}
+    prefix=$(printf '%s\n' "$mac" | cut -d: -f4)
+    cohort_ordinal=$((16#$(printf '%s\n' "$mac" | cut -d: -f5)))
+    case "$prefix" in
+        10) cohort=private; ordinal=$((cohort_ordinal * 2 - 1)); printf -v client_name 'sta-%02x' "$cohort_ordinal" ;;
+        20) cohort=iot; ordinal=$((cohort_ordinal * 2)); printf -v client_name 'iot-%02x' "$cohort_ordinal" ;;
+        *) echo "unsupported prplMesh STA identity: $mac" >&2; exit 2 ;;
+    esac
+else
+    case "$client_name" in
+        sta-*) cohort=private; prefix=10; cohort_ordinal=$((10#${client_name#sta-})); ordinal=$((cohort_ordinal * 2 - 1)) ;;
+        iot-*) cohort=iot; prefix=20; cohort_ordinal=$((10#${client_name#iot-})); ordinal=$((cohort_ordinal * 2)) ;;
+        *) echo "client must be sta-NN, iot-NN or a prplMesh STA MAC" >&2; exit 2 ;;
+    esac
+    printf -v mac '02:00:00:%s:%02x:00' "$prefix" "$cohort_ordinal"
+fi
+target_override=
+if [[ "$target_name" =~ ^([[:xdigit:]]{2}:){5}[[:xdigit:]]{2}$ ]]; then
+    target_override=${target_name,,}
+    radio_octet=$(printf '%s\n' "$target_override" | cut -d: -f5)
+    target_node=$((16#$radio_octet / 3))
+    if [ "$target_node" -eq 0 ]; then
+        target_name=controller
+    else
+        target_name=agent-$target_node
+    fi
+else
+    case "$target_name" in
+        controller) target_node=0 ;;
+        agent-*) target_node=$((10#${target_name#agent-})) ;;
+        extender-*) target_node=$((10#${target_name#extender-})); target_name=agent-$target_node ;;
+        *) echo "target must be controller, agent-N, extender-N or a BSSID" >&2; exit 2 ;;
+    esac
+fi
 printf -v container 'prpl-client-%02d' "$ordinal"
-printf -v mac '02:00:00:%s:%02x:00' "$prefix" "$cohort_ordinal"
 
 station_object()
 {
@@ -66,7 +89,11 @@ source=$(physical_bssid)
 radio_octet=$(printf '%s\n' "$source" | cut -d: -f5)
 local_radio=$((16#$radio_octet % 3))
 [ "$cohort" = iot ] && bss_suffix=01 || bss_suffix=00
-printf -v target '02:00:00:00:%02x:%s' "$((target_node * 3 + local_radio))" "$bss_suffix"
+if [ -n "$target_override" ]; then
+    target=$target_override
+else
+    printf -v target '02:00:00:00:%02x:%s' "$((target_node * 3 + local_radio))" "$bss_suffix"
+fi
 
 if [ "$source" != "$target" ]; then
     object=$(station_object)

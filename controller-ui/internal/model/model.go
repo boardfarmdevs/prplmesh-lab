@@ -64,6 +64,7 @@ type PrplClient struct {
 	Cohort             string  `json:"cohort"`
 	SignalRaw          int     `json:"signal_raw"`
 	SignalDBM          float64 `json:"signal_dbm"`
+	SignalUpdatedAt    string  `json:"signal_updated_at"`
 	IPv4               string  `json:"ipv4"`
 	LastConnectSeconds int64   `json:"last_connect_seconds"`
 }

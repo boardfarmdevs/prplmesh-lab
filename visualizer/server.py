@@ -162,6 +162,7 @@ def topology():
                             "cohort": cohort,
                             "signal_raw": raw_signal,
                             "signal_dbm": rcpi_dbm(raw_signal),
+                            "signal_updated_at": sta.get("TimeStamp"),
                             "ipv4": sta.get("IPV4Address"),
                             "last_connect_seconds": sta.get("LastConnectTime"),
                         }

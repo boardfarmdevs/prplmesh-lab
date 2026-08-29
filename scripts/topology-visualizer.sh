@@ -8,6 +8,17 @@ PROXY_UNIT=prpl-topology-proxy.service
 PORT=${PRPL_TOPOLOGY_PORT:-8090}
 ACTION=${1:-status}
 
+stop_visualizer()
+{
+    systemctl stop "$PROXY_UNIT" 2>/dev/null || true
+    lxc exec "$CONTROLLER" -- systemctl stop "$UNIT" 2>/dev/null || true
+}
+
+if [ "$ACTION" = restart ]; then
+    stop_visualizer
+    ACTION=start
+fi
+
 case "$ACTION" in
     start)
         if lxc exec "$CONTROLLER" -- python3 -c \
@@ -75,12 +86,11 @@ print(next(address["address"] for address in addresses
         exit 1
         ;;
     stop)
-        systemctl stop "$PROXY_UNIT" 2>/dev/null || true
-        lxc exec "$CONTROLLER" -- systemctl stop "$UNIT"
+        stop_visualizer
         ;;
     status)
         systemctl --no-pager status "$PROXY_UNIT" || true
         lxc exec "$CONTROLLER" -- systemctl --no-pager status "$UNIT"
         ;;
-    *) echo "usage: $0 {start|stop|status}" >&2; exit 2 ;;
+    *) echo "usage: $0 {start|stop|restart|status}" >&2; exit 2 ;;
 esac

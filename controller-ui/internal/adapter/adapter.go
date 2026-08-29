@@ -141,6 +141,10 @@ func Transform(source model.PrplTopology, networks []model.Network, observed tim
 						Channel: radio.Channel, BSSID: normalizeMAC(bss.BSSID), SSID: bss.SSID,
 					})
 					connected := observed.Add(-time.Duration(station.LastConnectSeconds) * time.Second)
+					metricObserved := observed
+					if parsed, err := time.Parse(time.RFC3339Nano, station.SignalUpdatedAt); err == nil {
+						metricObserved = parsed
+					}
 					rssi := 0
 					quality := 0
 					if station.SignalRaw > 0 {
@@ -157,7 +161,7 @@ func Transform(source model.PrplTopology, networks []model.Network, observed tim
 						Band: band, Channel: radio.Channel, ConnectionTime: connected,
 						DeviceType: kind, Manufacturer: "hwsim", LastActivity: observed,
 						ClientMetrics: model.ClientMetrics{
-							RCPI: station.SignalRaw, RSSI: rssi, LastUpdated: observed,
+							RCPI: station.SignalRaw, RSSI: rssi, LastUpdated: metricObserved,
 							LinkQuality: quality, AssociationUptime: station.LastConnectSeconds,
 						},
 					})
