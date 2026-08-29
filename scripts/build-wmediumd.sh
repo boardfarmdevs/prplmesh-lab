@@ -21,6 +21,7 @@ PATCHES=(
     0013-wmediumd-add-read-only-multi-client-metrics-socket.patch
     0014-wmediumd-add-bounded-observer-telemetry.patch
     0015-wmediumd-resolve-learned-vif-control-identities.patch
+    0016-wmediumd-index-hot-path-lookups.patch
 )
 
 if [ ! -d "$SOURCE/.git" ]; then

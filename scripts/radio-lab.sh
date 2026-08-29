@@ -17,6 +17,18 @@ WMEDIUMD_CONTROL=${PRPL_WMEDIUMD_CONTROL:-$WMEDIUMD_RUNTIME/control.sock}
 WMEDIUMD_METRICS=${PRPL_WMEDIUMD_METRICS:-$WMEDIUMD_RUNTIME/metrics.sock}
 WMEDIUMD_OBSERVER=${PRPL_WMEDIUMD_OBSERVER:-$WMEDIUMD_RUNTIME/telemetry.sock}
 WMEDIUMD_LOG=${PRPL_WMEDIUMD_LOG:-/tmp/prpl-wmediumd.log}
+WMEDIUMD_CPU_AFFINITY=${PRPL_WMEDIUMD_CPU_AFFINITY:-}
+
+if [ -n "$WMEDIUMD_CPU_AFFINITY" ]; then
+    [[ "$WMEDIUMD_CPU_AFFINITY" =~ ^[0-9]+([,-][0-9]+)*$ ]] || {
+        echo "invalid PRPL_WMEDIUMD_CPU_AFFINITY: $WMEDIUMD_CPU_AFFINITY" >&2
+        exit 2
+    }
+    command -v taskset >/dev/null 2>&1 || {
+        echo "PRPL_WMEDIUMD_CPU_AFFINITY requires taskset" >&2
+        exit 2
+    }
+fi
 
 require_count()
 {
@@ -222,6 +234,8 @@ stop_medium()
 
 start_medium()
 {
+    local command
+
     if [ -r "$WMEDIUMD_PIDFILE" ] &&
        kill -0 "$(cat "$WMEDIUMD_PIDFILE")" 2>/dev/null &&
        [ -S "$WMEDIUMD_CONTROL" ] && [ -S "$WMEDIUMD_METRICS" ] &&
@@ -230,9 +244,16 @@ start_medium()
     fi
     stop_medium
     install -d -m 0755 "$WMEDIUMD_RUNTIME"
-    "$ROOT/build/bin/wmediumd" -l 6 -c "$ROOT/manifests/wmediumd.conf" \
-        -C "$WMEDIUMD_CONTROL" -R "$WMEDIUMD_METRICS" \
-        -O "$WMEDIUMD_OBSERVER" > "$WMEDIUMD_LOG" 2>&1 &
+    command=("$ROOT/build/bin/wmediumd" -l 6
+        -c "$ROOT/manifests/wmediumd.conf"
+        -C "$WMEDIUMD_CONTROL" -R "$WMEDIUMD_METRICS"
+        -O "$WMEDIUMD_OBSERVER")
+    if [ -n "$WMEDIUMD_CPU_AFFINITY" ]; then
+        taskset -c "$WMEDIUMD_CPU_AFFINITY" "${command[@]}" \
+            > "$WMEDIUMD_LOG" 2>&1 &
+    else
+        "${command[@]}" > "$WMEDIUMD_LOG" 2>&1 &
+    fi
     echo $! > "$WMEDIUMD_PIDFILE"
     sleep 1
     if ! kill -0 "$(cat "$WMEDIUMD_PIDFILE")" 2>/dev/null; then
@@ -545,11 +566,26 @@ case "$ACTION" in
         stop_agent "${2:?agent ordinal required}"
         start_agent "$2"
         ;;
+    restart-medium)
+        stop_medium
+        start_medium
+        pid=$(cat "$WMEDIUMD_PIDFILE")
+        affinity=$(taskset -pc "$pid" 2>/dev/null | sed 's/.*: //' || true)
+        echo "wmediumd restarted (pid $pid); affinity ${affinity:-unknown}"
+        ;;
     stop)
         stop_all
         ;;
     status)
         lxc list '^prpl-(controller$|agent-|client-)' -c ns4
+        if [ -r "$WMEDIUMD_PIDFILE" ] &&
+           kill -0 "$(cat "$WMEDIUMD_PIDFILE")" 2>/dev/null; then
+            pid=$(cat "$WMEDIUMD_PIDFILE")
+            affinity=$(taskset -pc "$pid" 2>/dev/null | sed 's/.*: //' || true)
+            echo "wmediumd: running (pid $pid), affinity ${affinity:-unknown}"
+        else
+            echo "wmediumd: stopped"
+        fi
         if [ "$(lxc list "$CONTROLLER" -c s --format csv)" = RUNNING ]; then
             timeout 15 lxc exec "$CONTROLLER" -- \
                 /opt/prpl-install-nl80211/bin/beerocks_cli \
@@ -565,7 +601,7 @@ case "$ACTION" in
         done
         ;;
     *)
-        echo "usage: $0 {radio-pool|deploy|start|clients|steering-test|start-agent N|stop-agent N|restart-agent N|stop|status}" >&2
+        echo "usage: $0 {radio-pool|deploy|start|clients|steering-test|start-agent N|stop-agent N|restart-agent N|restart-medium|stop|status}" >&2
         exit 2
         ;;
 esac

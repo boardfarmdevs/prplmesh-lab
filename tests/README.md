@@ -6,6 +6,11 @@ The tests compare three independent views instead of accepting a Web UI alone:
 2. the controller's EasyMesh Data Elements model exposed through NBAPI; and
 3. the intended fixed hwsim identity and selected topology.
 
+`wmediumd-performance.py` separately measures daemon CPU/RSS and drives
+concurrent WLAN traffic from active clients. Its JSON output is intended for
+build and affinity comparisons; `docs/wmediumd-performance.md` records the
+accepted 0828 measurements.
+
 Run the complete currently active profile from the radio-lab VM:
 
 ```sh

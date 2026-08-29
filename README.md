@@ -106,6 +106,7 @@ AL-MAC and BSSID identities plus fixed process counts.
 - `docs/software-architecture.md` — prplMesh processes, IEEE 1905 and APIs.
 - `docs/optimizer-configurator.md` — closed-loop operation and extension guide.
 - `docs/validation.md` — accepted results and remaining gaps.
+- `docs/wmediumd-performance.md` — CPU, affinity and overload measurements.
 - `docs/from-scratch.md` — complete host-to-accepted-lab build procedure.
 - `deploy/README.md` — bare-metal, LXD-VM and VirtualBox appliance deployment.
 
