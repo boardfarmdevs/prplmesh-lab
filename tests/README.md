@@ -55,6 +55,27 @@ satisfy this test.
 requires all active clients to move from RCPI 118 to 88, then restores SNR 40
 and RCPI 118. No controller, agent or client container is restarted.
 
+`optimizer-dynamic.sh` is the closed-loop policy acceptance. It discovers the
+selected client's current node, SSID and band, then compiles a five-node
+crossover in which one requested target becomes uniquely stronger while the
+other three candidates remain weak. The optimizer sees only prplMesh NBAPI and
+Unassociated STA Link Metrics results; it is not given the plan or target.
+
+```sh
+tests/optimizer-dynamic.sh recommend prpl-client-07 prpl-agent-02
+tests/optimizer-dynamic.sh act prpl-client-07 prpl-agent-02
+```
+
+Recommendation mode requires the exact expected BSSID in the optimizer
+journal. Act mode additionally requires a successful BTM action and observed
+target ownership. Both modes wait for and verify the configurator's exact
+restore. The selected target must differ from the client's current owner.
+
+`wmediumd/configurator/run-rcpi-monitor.sh` is the simpler measurement-path
+acceptance. It varies one associated link between 45 and 25 dB SNR, keeps
+traffic flowing, and requires at least a 30-RCPI observed span before restoring
+the captured link.
+
 `churn-soak.sh` performs three bounded leaf-agent restart and steering cycles.
 It requires topology/physical ownership and process cardinality on every cycle,
 and proves that the hwsim inventory hash and wmediumd PID do not change. Set

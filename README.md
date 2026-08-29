@@ -15,6 +15,10 @@ The current scale profile contains:
 - both SSIDs represented independently on 2.4, 5 and 6 GHz;
 - 40 permanently identified hwsim radios registered once with wmediumd;
 - NBAPI topology, ownership and RCPI telemetry; and
+- complete same-band candidate RCPI through the standard Unassociated STA
+  Link Metrics transaction;
+- dynamic scenario execution through the live wmediumd control plane;
+- an external reference optimizer with recommend and bounded act modes;
 - a read-only topology Web application on port 8090; and
 - a host EasyMesh Controller UI on port 8091.
 
@@ -23,7 +27,9 @@ steering matrix, leaf-agent outage/rejoin, and global RCPI medium step all
 pass. All 20 clients also pass isolated data-plane reachability; a leaf client
 crosses the complete four-hop wireless chain with zero packet loss in the
 acceptance sample. Star, branch and chain pass full stopped-state
-reconstruction.
+reconstruction. A five-node dynamic RF crossover has passed both
+recommendation-only and acting optimizer acceptance, including exact target
+selection, BTM convergence, and medium restoration.
 
 ## Daily commands
 
@@ -60,6 +66,9 @@ PRPL_AGENT_COUNT=4 tests/steering-matrix.sh
 PRPL_AGENT_COUNT=4 PRPL_TOPOLOGY=chain tests/ap-recovery.sh
 PRPL_CLIENT_COUNT=20 tests/rcpi-gradient.sh
 PRPL_AGENT_COUNT=4 PRPL_CLIENT_COUNT=20 tests/topology-modes.sh
+wmediumd/configurator/run-rcpi-monitor.sh prpl-client-01
+tests/optimizer-dynamic.sh recommend prpl-client-07 prpl-agent-02
+tests/optimizer-dynamic.sh act prpl-client-07 prpl-agent-02
 ```
 
 Stop all lab nodes and wmediumd with:
@@ -86,11 +95,16 @@ AL-MAC and BSSID identities plus fixed process counts.
 - `scripts/` — build, provisioning, lifecycle, named steering and visualizer.
 - `artifacts/` — ignored, reproducibly generated runtime archives.
 - `tests/` — acceptance, scale, steering, outage, metrics and resource tests.
+- `optimizer/` — normalized observations, policies, replay, journals and
+  bounded actuation.
+- `wmediumd/configurator/` — scenario language, world compiler and atomic
+  dynamic-medium runner.
 - `visualizer/` — read-only NBAPI adapter and SVG Web UI.
 - `controller-ui/` — host Go port of the RDK EM CLI topology application.
 - `docs/architecture.md` — lab topology, state boundaries and optimizer seam.
 - `docs/controller-ui.md` — host UI adapter, API and multi-network model.
 - `docs/software-architecture.md` — prplMesh processes, IEEE 1905 and APIs.
+- `docs/optimizer-configurator.md` — closed-loop operation and extension guide.
 - `docs/validation.md` — accepted results and remaining gaps.
 - `docs/from-scratch.md` — complete host-to-accepted-lab build procedure.
 

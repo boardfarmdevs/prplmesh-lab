@@ -1,6 +1,6 @@
 # Validation status
 
-## Accepted on 2026-08-28
+## Accepted on 2026-08-29
 
 | Area | Accepted result |
 |---|---|
@@ -13,8 +13,12 @@
 | Security | WPA2 on 2.4/5 GHz; SAE/PMF on 6 GHz |
 | Model | 5 devices, 15 radios, 45 BSSs and 20 unique client owners in NBAPI |
 | Metrics | 20/20 associated-client RCPI values after the reporting interval |
+| Candidate metrics | 80/80 same-band STA/alternate-AP measurements complete and fresh: 16 on 2.4, 40 on 5, 24 on 6 GHz |
 | Steering | 30/30 matrix cells: 6 clients × 5 targets across both SSIDs and all bands |
 | Medium step | 20/20 RCPI 118 → 88 → 118 without a container restart |
+| Per-link scenario | Associated RCPI followed 45 → 25 → 45 dB SNR as 128 → 88 → 128 RCPI; exact restore passed |
+| Optimizer recommend | Five-node crossover selected only the independently designated target from NBAPI metrics |
+| Optimizer act | Target BSSID recommendation, BTM action, ownership verification and medium restore all passed |
 | Data plane | 20/20 clients reached the controller; deepest-chain sample lost 0/10 packets |
 | Outage | Leaf aged from active topology within 10 s; client roamed; same agent identity rejoined |
 | Bounded churn | Three leaf restart/steering cycles; inventory hash and wmediumd PID unchanged |
@@ -66,6 +70,14 @@ identity rather than treating CLI acknowledgement or Web rendering as proof.
 - Reapplying a different band profile could retain the existing association.
   Client setup now explicitly disconnects and applies both scan and allowed
   frequency constraints.
+- The controller accumulated query TLVs across Agents and treated the
+  EasyMesh measurement-age delta as an epoch timestamp. Queries now use a
+  fresh CMDU per Agent/opclass and reconstruct measurement time as
+  `receipt time - age`, keeping all candidate facts current and correctly
+  attributed.
+- The host topology adapter initially stamped associated RCPI with HTTP poll
+  time. It now carries the NBAPI STA `TimeStamp` through both Web APIs and the
+  optimizer, so freshness reflects the controller metric record.
 
 ## Remaining gaps
 
@@ -75,15 +87,14 @@ identity rather than treating CLI acknowledgement or Web rendering as proof.
 - The lab has passed a three-cycle bounded churn gate but not a long-duration
   soak. Current evidence is reconstruction, churn, steering, outage and
   metrics checks.
-- Candidate-link/unassociated-STA metrics and per-link dynamic medium scenarios
-  are not yet connected to the RDK configurator/optimizer. The adapter seam is
-  ready, but this was intentionally a later phase.
 - Stock-hostapd raw association-frame compatibility and noisy 6 GHz channel
   classification diagnostics remain candidates for upstream-quality cleanup.
 - The topology visualizer is read-only and deliberately smaller than the RDK
   EM CLI. It is an observability aid, not a policy or optimizer component.
 
-This is now sufficient for comparative onboarding, multihop, associated
-telemetry, outage and steering experiments. It is not yet equivalent to the
-RDK optimizer research lab's traffic generator, scenario configurator,
-wmediumd console, optimizer adapter or soak history.
+This is now sufficient for comparative onboarding, multihop, associated and
+candidate telemetry, outage, steering, dynamic-medium and reference-policy
+experiments. The same optimizer/configurator source is intentionally duplicated
+in both mesh repositories for this phase. The wmediumd Console and long soak
+history remain RDK-only, and mixed sustained traffic/congestion work remains
+open in both labs.
