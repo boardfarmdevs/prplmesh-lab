@@ -107,6 +107,7 @@ AL-MAC and BSSID identities plus fixed process counts.
 - `docs/optimizer-configurator.md` — closed-loop operation and extension guide.
 - `docs/validation.md` — accepted results and remaining gaps.
 - `docs/from-scratch.md` — complete host-to-accepted-lab build procedure.
+- `deploy/README.md` — bare-metal, LXD-VM and VirtualBox appliance deployment.
 
 Builds use pinned upstream prplMesh release 6.0.0 commit
 `2e153c7e00cbcab6b8ee35082f494a364e23f018`. Runtime containers use a sanitized

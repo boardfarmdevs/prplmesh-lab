@@ -1,0 +1,18 @@
+[Unit]
+Description=prplMesh virtual-radio research lab
+Wants=network-online.target
+After=network-online.target snap.lxd.daemon.service
+Requires=snap.lxd.daemon.service
+ConditionPathExists=/opt/prplmesh-lab/scripts/radio-lab.sh
+
+[Service]
+Type=oneshot
+Environment=PRPLMESH_ROOT=/opt/prplmesh-lab
+ExecStart=/usr/local/sbin/prplmesh-lab-start start
+ExecStop=/usr/local/sbin/prplmesh-lab-start stop
+RemainAfterExit=yes
+TimeoutStartSec=30min
+TimeoutStopSec=5min
+
+[Install]
+WantedBy=multi-user.target
