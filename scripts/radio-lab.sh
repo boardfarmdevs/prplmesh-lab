@@ -11,6 +11,12 @@ CONTROLLER=$CONTROLLER_CONTAINER
 ACTIVE_AGENTS=${PRPL_AGENT_COUNT:-$ACTIVE_AGENT_COUNT}
 ACTIVE_CLIENTS=${PRPL_CLIENT_COUNT:-$ACTIVE_CLIENT_COUNT}
 TOPOLOGY=${PRPL_TOPOLOGY:-$DEFAULT_TOPOLOGY}
+WMEDIUMD_RUNTIME=${PRPL_WMEDIUMD_RUNTIME:-/run/prpl-wmediumd}
+WMEDIUMD_PIDFILE=$WMEDIUMD_RUNTIME/wmediumd.pid
+WMEDIUMD_CONTROL=${PRPL_WMEDIUMD_CONTROL:-$WMEDIUMD_RUNTIME/control.sock}
+WMEDIUMD_METRICS=${PRPL_WMEDIUMD_METRICS:-$WMEDIUMD_RUNTIME/metrics.sock}
+WMEDIUMD_OBSERVER=${PRPL_WMEDIUMD_OBSERVER:-$WMEDIUMD_RUNTIME/telemetry.sock}
+WMEDIUMD_LOG=${PRPL_WMEDIUMD_LOG:-/tmp/prpl-wmediumd.log}
 
 require_count()
 {
@@ -77,6 +83,32 @@ name_radio_pool()
     [ "$count" -eq "$HWSIM_RADIOS" ]
 }
 
+radio_pool_ready()
+{
+    local ordinal expected address_file iface
+    for ordinal in $(seq 0 $((HWSIM_RADIOS - 1))); do
+        printf -v expected '02:00:00:00:%02x:00' "$ordinal"
+        address_file=$(grep -Fl "$expected" /sys/class/net/*/address 2>/dev/null | head -1 || true)
+        iface=${address_file%/address}
+        iface=${iface##*/}
+        [ "$iface" = "$(radio_host_name "$ordinal")" ] || return 1
+    done
+}
+
+ensure_radio_pool()
+{
+    radio_pool_ready && return 0
+    if lxc list '^prpl-(controller$|agent-|client-)' -c s --format csv | grep -q RUNNING; then
+        echo "hwsim pool is incomplete while a prplMesh node is running" >&2
+        echo "stop the lab before reconstructing the radio pool" >&2
+        return 1
+    fi
+    modprobe -r mac80211_hwsim 2>/dev/null || true
+    modprobe mac80211_hwsim radios="$HWSIM_RADIOS" \
+        channels="$HWSIM_CHANNELS" regtest=5
+    name_radio_pool
+}
+
 agent_al()
 {
     printf '02:00:00:27:%02x:01' "$(( $1 + 1 ))"
@@ -94,6 +126,20 @@ ensure_project_mount()
     local name=$1
     if ! lxc config device show "$name" | grep -q '^project:'; then
         lxc config device add "$name" project disk source="$ROOT" path=/mnt/project
+    fi
+}
+
+ensure_metrics_mount()
+{
+    local name=$1
+    install -d -m 0755 "$WMEDIUMD_RUNTIME"
+    if lxc config device show "$name" | grep -q '^wmediumd-metrics:'; then
+        lxc config device set "$name" wmediumd-metrics source "$WMEDIUMD_RUNTIME"
+        lxc config device set "$name" wmediumd-metrics path /opt/prpl-wmediumd
+        lxc config device set "$name" wmediumd-metrics readonly true
+    else
+        lxc config device add "$name" wmediumd-metrics disk \
+            source="$WMEDIUMD_RUNTIME" path=/opt/prpl-wmediumd readonly=true
     fi
 }
 
@@ -137,6 +183,7 @@ create_node()
         return 1
     }
     ensure_project_mount "$name"
+    ensure_metrics_mount "$name"
     ensure_radio_device "$name" radio0 "$(radio_host_name "$first_radio")" wlan0
     ensure_radio_device "$name" radio1 "$(radio_host_name "$((first_radio + 1))")" wlan2
     ensure_radio_device "$name" radio2 "$(radio_host_name "$((first_radio + 2))")" wlan4
@@ -165,24 +212,40 @@ create_client()
 
 stop_medium()
 {
-    if [ -r /run/prpl-wmediumd.pid ]; then
-        kill "$(cat /run/prpl-wmediumd.pid)" 2>/dev/null || true
-        rm -f /run/prpl-wmediumd.pid
+    if [ -r "$WMEDIUMD_PIDFILE" ]; then
+        kill "$(cat "$WMEDIUMD_PIDFILE")" 2>/dev/null || true
     fi
     pkill -x wmediumd 2>/dev/null || true
+    rm -f "$WMEDIUMD_PIDFILE" "$WMEDIUMD_CONTROL" \
+        "$WMEDIUMD_METRICS" "$WMEDIUMD_OBSERVER"
 }
 
 start_medium()
 {
-    if [ -r /run/prpl-wmediumd.pid ] &&
-       kill -0 "$(cat /run/prpl-wmediumd.pid)" 2>/dev/null; then
+    if [ -r "$WMEDIUMD_PIDFILE" ] &&
+       kill -0 "$(cat "$WMEDIUMD_PIDFILE")" 2>/dev/null &&
+       [ -S "$WMEDIUMD_CONTROL" ] && [ -S "$WMEDIUMD_METRICS" ] &&
+       [ -S "$WMEDIUMD_OBSERVER" ]; then
         return
     fi
+    stop_medium
+    install -d -m 0755 "$WMEDIUMD_RUNTIME"
     "$ROOT/build/bin/wmediumd" -l 6 -c "$ROOT/manifests/wmediumd.conf" \
-        > /tmp/prpl-wmediumd.log 2>&1 &
-    echo $! > /run/prpl-wmediumd.pid
+        -C "$WMEDIUMD_CONTROL" -R "$WMEDIUMD_METRICS" \
+        -O "$WMEDIUMD_OBSERVER" > "$WMEDIUMD_LOG" 2>&1 &
+    echo $! > "$WMEDIUMD_PIDFILE"
     sleep 1
-    kill -0 "$(cat /run/prpl-wmediumd.pid)"
+    if ! kill -0 "$(cat "$WMEDIUMD_PIDFILE")" 2>/dev/null; then
+        tail -30 "$WMEDIUMD_LOG" >&2 || true
+        return 1
+    fi
+    for socket in "$WMEDIUMD_CONTROL" "$WMEDIUMD_METRICS" "$WMEDIUMD_OBSERVER"; do
+        [ -S "$socket" ] || {
+            echo "wmediumd socket did not appear: $socket" >&2
+            stop_medium
+            return 1
+        }
+    done
 }
 
 start_container()
@@ -414,10 +477,7 @@ stop_all()
 case "$ACTION" in
     radio-pool)
         stop_all
-        modprobe -r mac80211_hwsim
-        modprobe mac80211_hwsim radios="$HWSIM_RADIOS" \
-            channels="$HWSIM_CHANNELS" regtest=5
-        name_radio_pool
+        ensure_radio_pool
         count=$(iw dev | awk '$1 == "Interface" { count++ } END { print count+0 }')
         [ "$count" -eq "$HWSIM_RADIOS" ] || {
             echo "expected $HWSIM_RADIOS base hwsim interfaces, found $count" >&2
@@ -439,6 +499,7 @@ case "$ACTION" in
         done
         ;;
     start)
+        ensure_radio_pool
         start_medium
         start_container "$CONTROLLER"
         lxc exec "$CONTROLLER" -- \

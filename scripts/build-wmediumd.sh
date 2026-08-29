@@ -13,9 +13,14 @@ PATCHES=(
     0005-wmediumd-handle-linux-7-rate-flags.patch
     0006-wmediumd-filter-multicast-by-frequency.patch
     0007-wmediumd-enlarge-netlink-receive-buffer.patch
+    0008-wmediumd-add-atomic-scenario-control-socket.patch
     0009-wmediumd-honor-configured-default-snr.patch
     0010-wmediumd-require-tx-learning-before-multicast.patch
     0011-wmediumd-classify-transient-clone-rejections.patch
+    0012-wmediumd-add-frequency-qualified-snr-control.patch
+    0013-wmediumd-add-read-only-multi-client-metrics-socket.patch
+    0014-wmediumd-add-bounded-observer-telemetry.patch
+    0015-wmediumd-resolve-learned-vif-control-identities.patch
 )
 
 if [ ! -d "$SOURCE/.git" ]; then
@@ -25,6 +30,7 @@ fi
 
 git -C "$SOURCE" fetch origin
 git -C "$SOURCE" checkout --detach "$WMEDIUMD_COMMIT"
+git -C "$SOURCE" reset --hard "$WMEDIUMD_COMMIT"
 git -C "$SOURCE" clean -fdx
 
 for name in "${PATCHES[@]}"; do

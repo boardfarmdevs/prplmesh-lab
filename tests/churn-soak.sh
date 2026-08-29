@@ -17,7 +17,7 @@ inventory_hash()
 }
 
 before_hash=$(inventory_hash)
-medium_pid=$(cat /run/prpl-wmediumd.pid)
+medium_pid=$(cat /run/prpl-wmediumd/wmediumd.pid)
 kill -0 "$medium_pid"
 
 for iteration in $(seq 1 "$iterations"); do
@@ -29,7 +29,7 @@ for iteration in $(seq 1 "$iterations"); do
         --agents "$agents" --clients "$clients" --topology "$topology"
     PRPL_AGENT_COUNT=$agents PRPL_CLIENT_COUNT=$clients \
         "$ROOT/tests/resource-acceptance.sh" >/tmp/prpl-resource-iteration.txt
-    [ "$(cat /run/prpl-wmediumd.pid)" = "$medium_pid" ]
+    [ "$(cat /run/prpl-wmediumd/wmediumd.pid)" = "$medium_pid" ]
     kill -0 "$medium_pid"
 done
 

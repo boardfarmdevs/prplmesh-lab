@@ -43,7 +43,7 @@ for ordinal in $(seq 1 "$clients"); do
         '! pgrep -f "[/](snapd|unattended-upgrade)" >/dev/null'
 done
 
-medium_pid=$(cat /run/prpl-wmediumd.pid)
+medium_pid=$(cat /run/prpl-wmediumd/wmediumd.pid)
 kill -0 "$medium_pid"
 medium_rss=$(awk '/^VmRSS:/ {print $2}' "/proc/$medium_pid/status")
 echo "wmediumd RSS_KB=$medium_rss pid=$medium_pid"
