@@ -2,7 +2,7 @@
 set -euo pipefail
 
 ROOT=$(cd "$(dirname "$0")/.." && pwd)
-baseline="$ROOT/manifests/wmediumd.conf"
+baseline=${PRPL_WMEDIUMD_CONFIG:-$ROOT/manifests/wmediumd.conf}
 temporary=$(mktemp /tmp/prpl-wmediumd-gradient.XXXXXX.conf)
 clients=${PRPL_CLIENT_COUNT:-20}
 runtime=${PRPL_WMEDIUMD_RUNTIME:-/run/prpl-wmediumd}

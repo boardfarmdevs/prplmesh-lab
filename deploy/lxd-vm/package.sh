@@ -2,12 +2,19 @@
 set -euo pipefail
 
 ROOT=$(cd "$(dirname "$0")/../.." && pwd)
-NAME=${PRPLMESH_VM_NAME:-prplmesh-lab-0829}
+# shellcheck source=profile.sh
+source "$ROOT/deploy/lxd-vm/profile.sh"
+PROFILE=$(prplmesh_profile_name "${PRPLMESH_LAB_PROFILE:-20}")
+CLIENTS=$(prplmesh_profile_clients "$PROFILE")
+RADIOS=$(prplmesh_profile_radios "$PROFILE")
+NAME=${PRPLMESH_VM_NAME:-prplmesh-${CLIENTS}-0829}
 OUTPUT_DIR=${1:-$ROOT/release/0829}
 SHORT=$(git -C "$ROOT" rev-parse --short=7 HEAD)
-BUNDLE="$OUTPUT_DIR/prplmesh-lab-0829-${SHORT}-lxd"
-OUTPUT="$BUNDLE/prplmesh-lab-0829-${SHORT}-lxd.tar.zst"
+BUNDLE="$OUTPUT_DIR/prplmesh-${CLIENTS}-0829-${SHORT}-lxd"
+OUTPUT="$BUNDLE/prplmesh-${CLIENTS}-0829-${SHORT}-lxd.tar.zst"
 WAS_RUNNING=false
+
+command -v jq >/dev/null 2>&1 || { echo 'jq is required for release metadata' >&2; exit 1; }
 
 [ -z "$(git -C "$ROOT" status --porcelain)" ] || {
     echo "source checkout must be clean before packaging" >&2
@@ -44,6 +51,12 @@ guest_commit=$(lxc exec "$NAME" -- git -C /opt/prplmesh-lab rev-parse HEAD)
     echo "guest source $guest_commit does not match release source" >&2
     exit 1
 }
+guest_clients=$(lxc exec "$NAME" -- bash -lc \
+    '. /etc/default/prplmesh-lab; printf "%s" "$PROVISIONED_CLIENT_COUNT"')
+[ "$guest_clients" = "$CLIENTS" ] || {
+    echo "guest has $guest_clients clients; requested release profile has $CLIENTS" >&2
+    exit 1
+}
 PRPLMESH_VM_NAME="$NAME" "$ROOT/deploy/lxd-vm/build.sh" check
 
 if [ "$(lxc list "$NAME" -c s --format csv)" = RUNNING ]; then
@@ -59,10 +72,36 @@ trap restart EXIT
 lxc export "$NAME" "$OUTPUT" --instance-only --compression zstd
 install -m 0755 "$ROOT/deploy/lxd-vm/import.sh" "$BUNDLE/import.sh"
 install -m 0755 "$ROOT/deploy/lxd-vm/install-host.sh" "$BUNDLE/install-host.sh"
+install -m 0755 "$ROOT/deploy/lxd-vm/package-release.sh" "$BUNDLE/package-release.sh"
 install -m 0644 "$ROOT/deploy/lxd-vm/README.md" "$BUNDLE/README.md"
+cat > "$BUNDLE/release.env" <<EOF
+LAB_STACK=prplmesh
+LAB_PROFILE=$PROFILE
+LAB_CLIENTS=$CLIENTS
+LAB_HWSIM_RADIOS=$RADIOS
+LAB_DEFAULT_NAME=$NAME
+LAB_DEFAULT_CPUS=$(prplmesh_profile_cpus "$PROFILE")
+LAB_DEFAULT_MEMORY=$(prplmesh_profile_memory "$PROFILE")
+LAB_DEFAULT_DISK=$(prplmesh_profile_disk "$PROFILE")
+LAB_SOURCE_COMMIT=$(git -C "$ROOT" rev-parse HEAD)
+EOF
+jq -n \
+    --arg stack prplmesh --arg profile "$PROFILE" \
+    --argjson clients "$CLIENTS" --argjson radios "$RADIOS" \
+    --arg source_commit "$(git -C "$ROOT" rev-parse HEAD)" \
+    --arg created_at "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+    --arg archive "$(basename "$OUTPUT")" --arg instance "$NAME" \
+    --arg cpus "$(prplmesh_profile_cpus "$PROFILE")" \
+    --arg memory "$(prplmesh_profile_memory "$PROFILE")" \
+    --arg disk "$(prplmesh_profile_disk "$PROFILE")" \
+    '{schema_version:1,stack:$stack,profile:$profile,clients:$clients,
+      hwsim_radios:$radios,source_commit:$source_commit,created_at:$created_at,
+      archive:$archive,defaults:{instance:$instance,cpus:$cpus,memory:$memory,disk:$disk},
+      status:"candidate"}' > "$BUNDLE/release.json"
 (
     cd "$BUNDLE"
-    sha256sum "$(basename "$OUTPUT")" import.sh install-host.sh README.md \
+    sha256sum "$(basename "$OUTPUT")" import.sh install-host.sh \
+        package-release.sh README.md release.env release.json \
         > SHA256SUMS
 )
 echo "$BUNDLE"

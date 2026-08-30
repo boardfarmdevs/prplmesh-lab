@@ -16,61 +16,75 @@ it has no storage pool. Review its output before importing a VM.
 
 ## Build a clean appliance
 
-Release builders provide the three checksum-verified runtime archives and let
-the builder create the Ubuntu 24.04/Linux 7 guest, nested LXD inventory,
-userspace wmediumd, controller, four Agents, twenty clients, both UIs, and boot
-service:
+Release builders select an immutable client profile, provide the three
+checksum-verified runtime archives, and let the builder create the Ubuntu
+24.04/Linux 7 guest, nested LXD inventory, generated wmediumd roster,
+controller, four Agents, both UIs, and boot service:
 
 ```sh
+PRPLMESH_LAB_PROFILE=20 \
 PRPL_RUNTIME_DEPS_ARCHIVE=/absolute/path/prpl-runtime-deps-6.0.0.tar.gz \
 PRPL_INSTALL_ARCHIVE=/absolute/path/prpl-install-nl80211-6.0.0.tar.gz \
 PRPL_HOSTAP_ARCHIVE=/absolute/path/hostap-runtime-2.10.tar.gz \
-  ./build.sh build
-./build.sh check
+  deploy/lxd-vm/build.sh build
+PRPLMESH_LAB_PROFILE=20 deploy/lxd-vm/build.sh check
 ```
 
-The source checkout must be clean. Source enters the VM as a commit-bounded
+Profiles `20`, `50`, and `100` produce separate, pre-provisioned appliances.
+Do not resize an imported appliance: use the artifact matching the required
+roster so cold start only reconstructs runtime state. The source checkout must
+be clean. Source enters the VM as a commit-bounded
 Git bundle; runtime archives enter as checksummed files. The result has no host
 source mount, Git credential, fixed host address, or dependency on the build
 directory. Use `build.sh status|start|stop|restart|delete` for the named build
 instance.
 
-From any empty working directory, copy the exported bundle directory. It
-contains the backup, installer, importer, this README, and `SHA256SUMS`. Verify
-and import the portable 0829 backup:
+Package a checked export for Google Drive with:
 
 ```sh
+PRPLMESH_LAB_PROFILE=20 deploy/lxd-vm/package.sh
+deploy/lxd-vm/package-release.sh \
+  release/0829/prplmesh-20-0829-COMMIT-lxd
+```
+
+Upload the resulting `*-bundle.tar` and `.sha256`. From any empty working
+directory, download the selected profile, verify and extract it:
+
+```sh
+sha256sum -c prplmesh-20-0829-COMMIT-lxd-bundle.tar.sha256
+tar -xf prplmesh-20-0829-COMMIT-lxd-bundle.tar
+cd prplmesh-20-0829-COMMIT-lxd
 sha256sum -c SHA256SUMS
-PRPLMESH_UI_HOST_IP=127.0.0.1 \
-  ./import.sh prplmesh-lab-0829-COMMIT-lxd.tar.zst
+PRPLMESH_UI_HOST_IP=127.0.0.1 ./import.sh
 ```
 
 To expose both UIs on a lab LAN, select an address owned by the outer host:
 
 ```sh
 PRPLMESH_UI_HOST_IP=192.168.2.140 \
-  ./import.sh prplmesh-lab-0829-COMMIT-lxd.tar.zst
+  ./import.sh
 ```
 
-The defaults are instance `prplmesh-lab-0829`, host port `8090` for the raw
-adapter, and `8091` for the Controller UI. Override them with
+The release metadata selects instance `prplmesh-CLIENTS-0829` and its tested
+CPU/RAM limits. Host port `8090` serves the raw adapter and `8091` serves the
+Controller UI. Override them with
 `PRPLMESH_VM_NAME`, `PRPLMESH_TOPOLOGY_HOST_PORT`, and
 `PRPLMESH_UI_HOST_PORT`.
 
 Monitor cold reconstruction:
 
 ```sh
-lxc console prplmesh-lab-0829 --show-log
-lxc exec prplmesh-lab-0829 -- journalctl -fu prplmesh-lab.service
-lxc exec prplmesh-lab-0829 -- prplmesh-lab-start status
+lxc console prplmesh-20-0829 --show-log
+lxc exec prplmesh-20-0829 -- journalctl -fu prplmesh-lab.service
+lxc exec prplmesh-20-0829 -- prplmesh-lab-start status
 ```
 
 Lifecycle and removal:
 
 ```sh
-lxc stop prplmesh-lab-0829
-lxc start prplmesh-lab-0829
-lxc delete prplmesh-lab-0829       # destructive; removes the imported VM
+lxc stop prplmesh-20-0829
+lxc start prplmesh-20-0829
+lxc delete prplmesh-20-0829       # destructive; removes the imported VM
 ```
 
 The lab automatically reconstructs after a guest reboot. Imported appliances
@@ -78,17 +92,17 @@ default to `boot.autostart=true`, so an existing VM also returns after an outer
 host reboot. Disable it explicitly when that is not wanted:
 
 ```sh
-lxc config set prplmesh-lab-0829 boot.autostart false
+lxc config set prplmesh-20-0829 boot.autostart false
 ```
 
 Run a post-import acceptance check after cold reconstruction:
 
 ```sh
-lxc exec prplmesh-lab-0829 -- prplmesh-lab-start status
+lxc exec prplmesh-20-0829 -- prplmesh-lab-start status
 curl -fsS http://127.0.0.1:8090/api/topology >/dev/null
 curl -fsS http://127.0.0.1:8091/api/topology >/dev/null
 ```
 
-Release engineering runs `./build.sh check` before
-`./package.sh`, then imports the emitted backup under a different instance name
-and host ports and repeats the same acceptance.
+Release engineering runs `deploy/lxd-vm/build.sh check` before
+`deploy/lxd-vm/package.sh`, then imports the emitted backup under a different
+instance name and host ports and repeats the same acceptance.

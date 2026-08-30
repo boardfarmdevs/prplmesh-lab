@@ -2,6 +2,12 @@
 set -euo pipefail
 
 ROOT=$(cd "$(dirname "$0")/.." && pwd)
+if [ -r /etc/default/prplmesh-lab ]; then
+    set -a
+    # shellcheck disable=SC1091
+    source /etc/default/prplmesh-lab
+    set +a
+fi
 # shellcheck source=../../manifests/lab.env
 source "$ROOT/manifests/lab.env"
 
@@ -17,6 +23,7 @@ WMEDIUMD_CONTROL=${PRPL_WMEDIUMD_CONTROL:-$WMEDIUMD_RUNTIME/control.sock}
 WMEDIUMD_METRICS=${PRPL_WMEDIUMD_METRICS:-$WMEDIUMD_RUNTIME/metrics.sock}
 WMEDIUMD_OBSERVER=${PRPL_WMEDIUMD_OBSERVER:-$WMEDIUMD_RUNTIME/telemetry.sock}
 WMEDIUMD_LOG=${PRPL_WMEDIUMD_LOG:-/tmp/prpl-wmediumd.log}
+WMEDIUMD_CONFIG=${PRPL_WMEDIUMD_CONFIG:-${PRPLMESH_APPLIANCE_WMEDIUMD_CONFIG:-$ROOT/manifests/wmediumd.conf}}
 WMEDIUMD_CPU_AFFINITY=${PRPL_WMEDIUMD_CPU_AFFINITY:-}
 MEDIUM_BACKEND=${PRPL_MEDIUM_BACKEND:-userspace}
 KERNEL_MEDIUM_PROXY_PIDFILE=$WMEDIUMD_RUNTIME/kernel-metrics-proxy.pid
@@ -294,7 +301,7 @@ start_userspace_medium()
     stop_medium
     install -d -m 0755 "$WMEDIUMD_RUNTIME"
     command=("$ROOT/build/bin/wmediumd" -l 6
-        -c "$ROOT/manifests/wmediumd.conf"
+        -c "$WMEDIUMD_CONFIG"
         -C "$WMEDIUMD_CONTROL" -R "$WMEDIUMD_METRICS"
         -O "$WMEDIUMD_OBSERVER")
     if [ -n "$WMEDIUMD_CPU_AFFINITY" ]; then

@@ -2,12 +2,17 @@
 set -euo pipefail
 
 ROOT=$(cd "$(dirname "$0")/../.." && pwd)
-NAME=${PRPLMESH_VM_NAME:-prplmesh-lab-0829}
+# shellcheck source=profile.sh
+source "$ROOT/deploy/lxd-vm/profile.sh"
+PROFILE=$(prplmesh_profile_name "${PRPLMESH_LAB_PROFILE:-20}")
+CLIENTS=$(prplmesh_profile_clients "$PROFILE")
+RADIOS=$(prplmesh_profile_radios "$PROFILE")
+NAME=${PRPLMESH_VM_NAME:-prplmesh-${CLIENTS}-0829}
 IMAGE=${PRPLMESH_VM_IMAGE:-ubuntu:24.04}
 NETWORK=${PRPLMESH_LXD_NETWORK:-lxdbr0}
-CPUS=${PRPLMESH_VM_CPUS:-6}
-MEMORY=${PRPLMESH_VM_MEMORY:-8GiB}
-DISK=${PRPLMESH_VM_DISK:-80GiB}
+CPUS=${PRPLMESH_VM_CPUS:-$(prplmesh_profile_cpus "$PROFILE")}
+MEMORY=${PRPLMESH_VM_MEMORY:-$(prplmesh_profile_memory "$PROFILE")}
+DISK=${PRPLMESH_VM_DISK:-$(prplmesh_profile_disk "$PROFILE")}
 KERNEL=${PRPLMESH_KERNEL:-7.0.0-30-generic}
 HOST_IP=${PRPLMESH_UI_HOST_IP:-$(ip -4 route get 1.1.1.1 2>/dev/null |
     awk '{for (i=1; i<=NF; i++) if ($i == "src") {print $(i+1); exit}}')}
@@ -29,6 +34,7 @@ Clean-build inputs:
   PRPL_HOSTAP_ARCHIVE=/path/to/hostap-runtime-2.10.tar.gz
 
 Site overrides:
+  PRPLMESH_LAB_PROFILE=$CLIENTS (20, 50 or 100)
   PRPLMESH_VM_NAME=$NAME
   PRPLMESH_UI_HOST_IP=$HOST_IP
   PRPLMESH_TOPOLOGY_HOST_PORT=$TOPOLOGY_PORT
@@ -92,9 +98,13 @@ stop_vm()
 check_vm()
 {
     start_vm
-    run env PRPL_AGENT_COUNT=4 PRPL_CLIENT_COUNT=20 PRPL_TOPOLOGY=star \
+    run env PRPL_AGENT_COUNT=4 PRPL_CLIENT_COUNT="$CLIENTS" PRPL_TOPOLOGY=star \
+        PROVISIONED_CLIENT_COUNT="$CLIENTS" HWSIM_RADIOS="$RADIOS" \
+        PRPL_WMEDIUMD_CONFIG=/var/lib/prplmesh-lab/wmediumd.conf \
         /opt/prplmesh-lab/tests/run-acceptance.sh
-    run env PRPL_AGENT_COUNT=4 PRPL_CLIENT_COUNT=20 PRPL_TOPOLOGY=star \
+    run env PRPL_AGENT_COUNT=4 PRPL_CLIENT_COUNT="$CLIENTS" PRPL_TOPOLOGY=star \
+        PROVISIONED_CLIENT_COUNT="$CLIENTS" HWSIM_RADIOS="$RADIOS" \
+        PRPL_WMEDIUMD_CONFIG=/var/lib/prplmesh-lab/wmediumd.conf \
         /opt/prplmesh-lab/tests/optimizer-dynamic.sh recommend \
         prpl-client-07 prpl-agent-02
 }
@@ -169,6 +179,20 @@ build_vm()
         git clone prplmesh-lab.bundle /opt/prplmesh-lab
     '
     [ "$(run git -C /opt/prplmesh-lab rev-parse HEAD)" = "$commit" ]
+    run install -d -m 0755 /var/lib/prplmesh-lab
+    run python3 /opt/prplmesh-lab/scripts/generate-wmediumd-config.py \
+        --radios "$RADIOS" --output /var/lib/prplmesh-lab/wmediumd.conf
+    run bash -c "cat > /etc/default/prplmesh-lab <<'EOF'
+PRPLMESH_LAB_PROFILE=$PROFILE
+PROVISIONED_AGENT_COUNT=4
+PROVISIONED_CLIENT_COUNT=$CLIENTS
+ACTIVE_AGENT_COUNT=4
+ACTIVE_CLIENT_COUNT=$CLIENTS
+DEFAULT_TOPOLOGY=star
+HWSIM_RADIOS=$RADIOS
+HWSIM_CHANNELS=3
+PRPLMESH_APPLIANCE_WMEDIUMD_CONFIG=/var/lib/prplmesh-lab/wmediumd.conf
+EOF"
     run install -m 0644 "/opt/prplmesh-stage/$(basename "$RUNTIME_DEPS")" \
         /opt/prplmesh-lab/artifacts/prpl-runtime-deps-6.0.0.tar.gz
     run install -m 0644 "/opt/prplmesh-stage/$(basename "$PRPL_INSTALL")" \

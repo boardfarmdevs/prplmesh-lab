@@ -4,7 +4,17 @@ set -euo pipefail
 ROOT=${PRPLMESH_ROOT:-/opt/prplmesh-lab}
 ACTION=${1:-status}
 LOCK=/run/lock/prplmesh-lab.lock
-PROFILE=(PRPL_AGENT_COUNT=4 PRPL_CLIENT_COUNT=20 PRPL_TOPOLOGY=star)
+if [ -r /etc/default/prplmesh-lab ]; then
+    set -a
+    # shellcheck disable=SC1091
+    source /etc/default/prplmesh-lab
+    set +a
+fi
+PROFILE=(
+    PRPL_AGENT_COUNT="${PRPL_AGENT_COUNT:-${ACTIVE_AGENT_COUNT:-4}}"
+    PRPL_CLIENT_COUNT="${PRPL_CLIENT_COUNT:-${ACTIVE_CLIENT_COUNT:-20}}"
+    PRPL_TOPOLOGY="${PRPL_TOPOLOGY:-${DEFAULT_TOPOLOGY:-star}}"
+)
 
 phase()
 {
