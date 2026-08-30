@@ -1,0 +1,37 @@
+From: prplMesh virtual-radio lab
+Subject: [PATCH] nl80211: preserve the outer band iterator
+
+The NL80211 wiphy parser reused the outer `nl_band` iterator while walking
+NL80211_BAND_ATTR_IFTYPE_DATA.  After the nested loop the outer iterator no
+longer referred to its band attribute, so following bands could be skipped or
+assembled without their channel list.  Tri-band hwsim exposed this as an
+empty/missing 5 GHz band and a repeated fronthaul attach failure.
+
+Use a dedicated nested iterator so every advertised band is parsed intact.
+
+--- a/common/beerocks/bwl/shared/nl80211_client_impl.cpp
++++ b/common/beerocks/bwl/shared/nl80211_client_impl.cpp
+@@ -378,6 +378,7 @@ void nl80211_client_impl::parse_radio_info(struct nl_msg *msg, radio_info &radio_
+ #if LINUX_VERSION_CODE > KERNEL_VERSION(4, 19, 1)
+                 int rem_iftype;
+                 struct nlattr *tb_iftype[NL80211_BAND_IFTYPE_ATTR_MAX + 1];
++                struct nlattr *nl_iftype;
+ #endif
+ 
+                 if (last_band != nl_band->nla_type) {
+@@ -389,10 +390,10 @@ void nl80211_client_impl::parse_radio_info(struct nl_msg *msg, radio_info &radio_
+                     band.wifi6_capability = band.wifi6_capability | (1 << 4);
+ 
+                     const struct nlattr *nl_he_cap = tb_band[NL80211_BAND_ATTR_IFTYPE_DATA];
+-                    nla_for_each_attr(nl_band, static_cast<struct nlattr *>(nla_data(nl_he_cap)),
++                    nla_for_each_attr(nl_iftype, static_cast<struct nlattr *>(nla_data(nl_he_cap)),
+                                       nla_len(nl_he_cap), rem_iftype)
+                     {
+                         nla_parse(tb_iftype, NL80211_BAND_IFTYPE_ATTR_MAX,
+-                                  static_cast<nlattr *>(nla_data(nl_band)), nla_len(nl_band), NULL);
++                                  static_cast<nlattr *>(nla_data(nl_iftype)), nla_len(nl_iftype), NULL);
+ 
+                         //Check whether TWT Requester and Responder are supported.
+                         if (tb_iftype[NL80211_BAND_IFTYPE_ATTR_HE_CAP_MAC]) {
+-- 
+2.43.0
