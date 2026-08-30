@@ -64,11 +64,15 @@ traffic and scenario plans.
 
 ## Startup concurrency
 
-`PRPL_START_MODE=overlap` boots the controller and active Agent containers
-concurrently, then applies controller configuration and onboards Agents in
-parallel. Clients begin only after the mesh gate. Client setup is bounded by
-`PRPL_START_PARALLELISM` (default `10`). `PRPL_START_MODE=gated` retains the
-older controller-first container sequence for diagnosis.
+`PRPL_START_MODE=gated` is the default. It starts and configures the controller,
+then starts, configures and admits each Agent in order. Clients begin only after
+the mesh gate and are admitted in bounded batches controlled by
+`PRPL_START_PARALLELISM` (default `10`).
+
+`PRPL_START_MODE=overlap` is an experiment that overlaps only the inexpensive
+Agent container boots with controller setup. Radio mutation and EasyMesh Agent
+onboarding remain serialized because parallel NL80211 setup previously exposed
+an attach race and produced layer-2 associations without controller ownership.
 
 Starting every container without gates is deliberately unsupported. In the
 corresponding 55-container RDK experiment, all LXC instances launched in about
@@ -80,8 +84,10 @@ explicit.
 
 The current rev140 LXD-VM profile contains one controller, four Agents and 20
 clients (25 nested containers). Both measurements start from stopped
-containers, use `star` backhaul, overlap Agent boot, admit clients in batches
-of ten, and finish only after both Web endpoints pass health checks.
+containers, use `star` backhaul, admit clients in batches of ten, and finish
+only after both Web endpoints pass health checks. The table records the earlier
+bounded-overlap experiment; controller-first gated startup is the release
+default.
 
 | Backend | Mesh gate | Client gate | UI gate | Total cold start | Clean stop |
 |---|---:|---:|---:|---:|---:|

@@ -35,6 +35,13 @@ within 45 seconds. The latest measured mesh-process RSS totals were about
 wmediumd used 4.0 MiB RSS; the experimental kernel metrics proxy used 18.8 MiB.
 RSS includes shared mappings and is not PSS.
 
+The final `0829` clean-image verification rebuilt prplMesh and hostapd from the
+pinned sources, recreated all 25 nested containers, and repeated the expanded
+acceptance gate. Under simultaneous RDK appliance reconstruction on the same
+outer host, gated mesh startup took 424.51 seconds and client admission took
+34.03 seconds. This deliberately contended run proves artifact correctness; it
+does not replace the isolated timings above.
+
 ## Repeatable gates
 
 The normal gate is:
@@ -88,6 +95,22 @@ identity rather than treating CLI acknowledgement or Web rendering as proof.
 - The appliance initially probed the Controller UI immediately after process
   launch. Cold start now waits on bounded endpoint health and no longer fails
   on the listener-bind race.
+- Linux 7 exposes NL80211 band entries without usable channels. The attach path
+  dereferenced the first entry before validating it; empty candidates are now
+  skipped.
+- Nested NL80211 interface-type parsing reused the outer band iterator and
+  could corrupt the tri-band inventory. The nested parser now has its own
+  iterator.
+- Stock hostapd uses `hw_mode=a` for both 5 and 6 GHz. The Linux HAL now uses
+  the unambiguous 6 GHz global operating class when classifying that radio.
+- The 5 GHz hwsim inventory includes extended frequencies such as 5920 MHz.
+  Selecting an arbitrary first channel classified the entire band as unknown
+  and restarted its fronthaul every ten seconds. Both reporting and matching
+  now scan the complete band for a recognized channel.
+- The RCPI gradient test retained an obsolete wmediumd PID path and could
+  mistake a rejected second daemon for an active test medium. It now owns the
+  canonical runtime PID plus control, metrics and observer sockets, and proves
+  the 20-client 118 → 88 → 118 transition.
 
 ## Remaining gaps
 
@@ -97,8 +120,8 @@ identity rather than treating CLI acknowledgement or Web rendering as proof.
 - The lab has passed a three-cycle bounded churn gate but not a long-duration
   soak. Current evidence is reconstruction, churn, steering, outage and
   metrics checks.
-- Stock-hostapd raw association-frame compatibility and noisy 6 GHz channel
-  classification diagnostics remain candidates for upstream-quality cleanup.
+- Stock-hostapd raw association-frame compatibility remains a candidate for
+  upstream-quality cleanup.
 - The topology visualizer is read-only and deliberately smaller than the RDK
   EM CLI. It is an observability aid, not a policy or optimizer component.
 

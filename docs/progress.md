@@ -133,6 +133,31 @@ backhaul and scale work; data traffic and upstream cleanup remain.
   fronthaul passed 10/10 packets through the complete wireless chain. The
   normal acceptance gate now checks this path after every run.
 
-Current gaps are sustained and mixed traffic profiles, unassociated or
+At that checkpoint the gaps were sustained and mixed traffic profiles,
 candidate-link metrics, optimizer/configurator adapter integration, long soak,
-and cleanup of the stock-hostapd raw-frame/channel diagnostics.
+and cleanup of the stock-hostapd radio diagnostics. The following phase closed
+the metrics, optimizer and radio-diagnostic items.
+
+## 2026-08-30 — portable appliance and closed-loop acceptance
+
+- Made bare metal and the portable LXD VM the only supported deployment
+  models. Userspace wmediumd and controller-first gated startup are the
+  defaults; kernel medium and bounded container-boot overlap remain explicit
+  experiments.
+- Added checksum and source-provenance gates to the prplMesh, hostapd and
+  wmediumd runtime artifacts, then rebuilt a sanitized 357 MiB nested runtime
+  image from the pinned sources.
+- Fixed four related NL80211 tri-band defects exposed by a genuinely clean
+  runtime: empty band entries, nested iterator corruption, ambiguous standard
+  hostapd 6 GHz classification, and arbitrary-first-channel 5 GHz matching.
+- Recreated the controller, four wireless Agents and 20 clients from the new
+  image. The full topology, metrics, representative steering, data-plane and
+  process-cardinality gate passed with 15 stable fronthauls.
+- Re-ran the external optimizer in recommend and act modes using controller
+  candidate metrics. The designated target was selected, BTM convergence was
+  verified, and the dynamic medium was restored exactly.
+- Corrected the RCPI gradient test to own the canonical wmediumd runtime. All
+  20 clients followed 118 → 88 → 118 without a container restart.
+
+The remaining work is duration and mixed-traffic characterization rather than
+basic onboarding, telemetry, steering or dynamic-medium integration.
