@@ -8,7 +8,11 @@ BASE_ALIAS=${PRPL_BASE_IMAGE_ALIAS:-prpl-ubuntu-22.04-base}
 (cd "$ROOT/artifacts" && sha256sum -c SHA256SUMS)
 
 if ! lxc image info "$BASE_ALIAS" >/dev/null 2>&1; then
-    lxc image copy images:ubuntu/22.04 local: --alias "$BASE_ALIAS"
+    # Ubuntu release images remain available from Canonical's `ubuntu:`
+    # remote even when the general-purpose `images:` catalog has retired an
+    # older distribution entry.  Pin the architecture so a clean nested-LXD
+    # appliance build resolves the same container image on every x86 host.
+    lxc image copy ubuntu:22.04/amd64 local: --alias "$BASE_ALIAS"
 fi
 
 if [ ! -x "$ROOT/build/bin/wmediumd" ]; then
