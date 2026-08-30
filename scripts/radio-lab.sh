@@ -22,7 +22,7 @@ MEDIUM_BACKEND=${PRPL_MEDIUM_BACKEND:-userspace}
 KERNEL_MEDIUM_PROXY_PIDFILE=$WMEDIUMD_RUNTIME/kernel-metrics-proxy.pid
 KERNEL_MEDIUM_LOG=${PRPL_KERNEL_MEDIUM_LOG:-/tmp/prpl-kernel-medium-proxy.log}
 KERNEL_MEDIUM_ALIASES=$WMEDIUMD_RUNTIME/kernel-medium-aliases.json
-START_MODE=${PRPL_START_MODE:-overlap}
+START_MODE=${PRPL_START_MODE:-gated}
 START_PARALLELISM=${PRPL_START_PARALLELISM:-10}
 
 case "$MEDIUM_BACKEND" in
@@ -383,16 +383,16 @@ start_container()
 
 start_active_agents()
 {
-    local ordinal pid failed=0
-    local -a pids=()
+    local ordinal
+
+    # Container boot may overlap, but radio setup and EasyMesh onboarding are
+    # deliberately serialized.  Each start_agent invocation mutates nl80211
+    # interfaces and waits for controller ownership; doing that concurrently
+    # exposed a libbwl refresh_radio_info race and could leave every Agent
+    # associated at layer 2 but absent from the controller model.
     for ordinal in $(seq 1 "$ACTIVE_AGENTS"); do
-        start_agent "$ordinal" &
-        pids+=("$!")
+        start_agent "$ordinal"
     done
-    for pid in "${pids[@]}"; do
-        wait "$pid" || failed=1
-    done
-    return "$failed"
 }
 
 start_one_client()
