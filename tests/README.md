@@ -9,7 +9,7 @@ The tests compare three independent views instead of accepting a Web UI alone:
 `wmediumd-performance.py` separately measures daemon CPU/RSS and drives
 concurrent WLAN traffic from active clients. Its JSON output is intended for
 build and affinity comparisons; `docs/wmediumd-performance.md` records the
-accepted 0828 measurements.
+accepted release measurements.
 
 Run the complete currently active profile from the radio-lab VM:
 

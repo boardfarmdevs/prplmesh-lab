@@ -16,7 +16,7 @@ socket. That design is not included.
 ## Measurement
 
 The accepted prplMesh profile was measured in the four-vCPU
-`prplmesh-lab-0828` LXD VM on rev140. Eighteen WLAN client containers each
+An LXD VM with six vCPUs. Eighteen WLAN client containers each
 sent one ICMP echo every 20 ms to `192.168.77.1`.
 
 | Variant | Workload | wmediumd CPU | Packet loss | Mean client RTT |

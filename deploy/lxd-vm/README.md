@@ -14,6 +14,27 @@ newgrp lxd
 The installer verifies hardware virtualization and initializes LXD only when
 it has no storage pool. Review its output before importing a VM.
 
+## Build a clean appliance
+
+Release builders provide the three checksum-verified runtime archives and let
+the builder create the Ubuntu 24.04/Linux 7 guest, nested LXD inventory,
+userspace wmediumd, controller, four Agents, twenty clients, both UIs, and boot
+service:
+
+```sh
+PRPL_RUNTIME_DEPS_ARCHIVE=/absolute/path/prpl-runtime-deps-6.0.0.tar.gz \
+PRPL_INSTALL_ARCHIVE=/absolute/path/prpl-install-nl80211-6.0.0.tar.gz \
+PRPL_HOSTAP_ARCHIVE=/absolute/path/hostap-runtime-2.10.tar.gz \
+  ./build.sh build
+./build.sh check
+```
+
+The source checkout must be clean. Source enters the VM as a commit-bounded
+Git bundle; runtime archives enter as checksummed files. The result has no host
+source mount, Git credential, fixed host address, or dependency on the build
+directory. Use `build.sh status|start|stop|restart|delete` for the named build
+instance.
+
 From any empty working directory, copy the exported bundle directory. It
 contains the backup, installer, importer, this README, and `SHA256SUMS`. Verify
 and import the portable 0829 backup:
@@ -67,3 +88,7 @@ lxc exec prplmesh-lab-0829 -- prplmesh-lab-start status
 curl -fsS http://127.0.0.1:8090/api/topology >/dev/null
 curl -fsS http://127.0.0.1:8091/api/topology >/dev/null
 ```
+
+Release engineering runs `./build.sh check` before
+`./package.sh`, then imports the emitted backup under a different instance name
+and host ports and repeats the same acceptance.

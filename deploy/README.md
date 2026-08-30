@@ -34,13 +34,10 @@ See the model-specific procedures:
 - [bare metal](bare-metal/README.md)
 - [LXD VM](lxd-vm/README.md)
 
-Release engineering uses `package-source.sh` and `lxd-vm/package.sh`. Every
+Release engineering uses `package-source.sh`, `lxd-vm/build.sh`, and
+`lxd-vm/package.sh`. Every
 emitted artifact has the `0829` release tag, source commit, and a sibling
 SHA-256 file.
-
-VirtualBox and Vagrant are not supported deployment dependencies. Old box
-artifacts remain reproducible from earlier Git history, but are not part of
-the current release or acceptance matrix.
 
 Userspace wmediumd is the appliance default. The experimental kernel medium
 and bounded overlap startup are described in
