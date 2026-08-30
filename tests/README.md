@@ -19,6 +19,14 @@ PRPL_AGENT_COUNT=4 PRPL_CLIENT_COUNT=20 PRPL_TOPOLOGY=chain \
   tests/run-acceptance.sh
 ```
 
+The same suite accepts the experimental kernel medium when selected
+explicitly:
+
+```sh
+PRPL_MEDIUM_BACKEND=kernel PRPL_AGENT_COUNT=4 PRPL_CLIENT_COUNT=20 \
+  PRPL_TOPOLOGY=star tests/run-acceptance.sh
+```
+
 `topology-acceptance.py` checks unique device, radio, BSS and client ownership,
 all physical associations, both `private_ssid` and `iot_ssid`, 2.4/5/6 GHz
 distribution, wireless backhaul parentage and reported RCPI. `test-steering.sh`
@@ -70,6 +78,9 @@ Unassociated STA Link Metrics results; it is not given the plan or target.
 tests/optimizer-dynamic.sh recommend prpl-client-07 prpl-agent-02
 tests/optimizer-dynamic.sh act prpl-client-07 prpl-agent-02
 ```
+
+Add `PRPL_MEDIUM_BACKEND=kernel` to run the identical compiled scenario through
+the hwsim kernel actuator. Userspace wmediumd remains the default.
 
 Recommendation mode requires the exact expected BSSID in the optimizer
 journal. Act mode additionally requires a successful BTM action and observed

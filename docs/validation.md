@@ -1,10 +1,10 @@
 # Validation status
 
-## Accepted on 2026-08-29
+## Accepted on 2026-08-30
 
 | Area | Accepted result |
 |---|---|
-| Build | Pinned prplMesh 6.0.0 NL80211 x86 release build |
+| Build | Pinned prplMesh 6.0.0 NL80211 x86 release build with verified patch-set provenance |
 | Inventory | 40 stable hwsim identities; no PHY swaps across reconstruction |
 | Mesh | Controller/colocated agent plus four external wireless agents |
 | Backhaul | Star, branch and four-hop chain physically and logically verified |
@@ -23,13 +23,17 @@
 | Outage | Leaf aged from active topology within 10 s; client roamed; same agent identity rejoined |
 | Bounded churn | Three leaf restart/steering cycles; inventory hash and wmediumd PID unchanged |
 | Resources | Fixed process cardinality; no snapd/unattended-upgrade runtime processes |
+| Medium backends | Full 20-client acceptance passed with default userspace wmediumd and opt-in kernel medium |
 
-The 20-client cold admission phase completes in about 69 seconds after all
-agents are ready. Reapplying client profiles completes in about 35–44 seconds.
+In the current 25-container star profile, the full readiness-gated cold start
+completed in 199 seconds with userspace wmediumd and 189 seconds with the
+kernel medium. The client phase was 31 and 20 seconds respectively; clean stop
+took 15 seconds. Reapplying client profiles normally completes in about 35–44 seconds.
 Associated-client metrics converge at the next reporting interval, currently
 within 45 seconds. The latest measured mesh-process RSS totals were about
 118 MiB in the controller container and 80–87 MiB per external agent;
-wmediumd used about 3 MiB RSS. RSS includes shared mappings and is not PSS.
+wmediumd used 4.0 MiB RSS; the experimental kernel metrics proxy used 18.8 MiB.
+RSS includes shared mappings and is not PSS.
 
 ## Repeatable gates
 
@@ -78,6 +82,12 @@ identity rather than treating CLI acknowledgement or Web rendering as proof.
 - The host topology adapter initially stamped associated RCPI with HTTP poll
   time. It now carries the NBAPI STA `TimeStamp` through both Web APIs and the
   optimizer, so freshness reflects the controller metric record.
+- Unversioned local prplMesh and wmediumd build outputs allowed stale binaries
+  to satisfy deployment. Runtime archives and wmediumd now carry patch-set
+  provenance, and acceptance/startup reject mismatches.
+- The appliance initially probed the Controller UI immediately after process
+  launch. Cold start now waits on bounded endpoint health and no longer fails
+  on the listener-bind race.
 
 ## Remaining gaps
 

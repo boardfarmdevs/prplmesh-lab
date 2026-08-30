@@ -69,6 +69,26 @@ def rcpi_dbm(value):
     return None
 
 
+def device_name(device_id, role, fallback_ordinal):
+    """Derive stable lab names from the provisioned AL-MAC identity.
+
+    NBAPI instance order is onboarding order. Parallel Agent onboarding makes
+    that order intentionally nondeterministic, so it must never define the
+    operator-visible Agent ordinal.
+    """
+    if role == "controller":
+        return "controller"
+    octets = str(device_id).lower().split(":")
+    if len(octets) == 6 and octets[:4] == ["02", "00", "00", "27"]:
+        try:
+            ordinal = int(octets[4], 16) - 1
+        except ValueError:
+            ordinal = 0
+        if ordinal > 0:
+            return f"agent-{ordinal}"
+    return f"agent-{fallback_ordinal}"
+
+
 def topology():
     device_paths = indexed(instances("Device.", 1), rf"{re.escape(ROOT)}\.Device\.(\d+)")
     devices = []
@@ -81,7 +101,7 @@ def topology():
         role = "controller" if not backhaul.get("BackhaulDeviceID") else "agent"
         device = {
             "id": device_id,
-            "name": "controller" if role == "controller" else f"agent-{display_index - 1}",
+            "name": device_name(device_id, role, display_index - 1),
             "role": role,
             "profile": device_data.get("MultiAPProfile"),
             "software_version": device_data.get("SoftwareVersion"),

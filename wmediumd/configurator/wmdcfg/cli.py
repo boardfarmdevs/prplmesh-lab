@@ -9,6 +9,7 @@ from pathlib import Path
 
 from . import __version__
 from .actuator import ActuatorError, ControlClient
+from .kernel_actuator import KernelMediumClient
 from .compiler import compile_scenario, validate_scenario
 from .inventory import discover
 from .model import ScenarioError
@@ -60,10 +61,34 @@ def main(argv: list[str] | None = None) -> int:
         "/run/prpl-wmediumd/control.sock",
     )
     status_cmd.add_argument("--socket", default=control_socket)
+    status_cmd.add_argument(
+        "--backend",
+        choices=["userspace", "kernel"],
+        default=os.environ.get("PRPL_MEDIUM_BACKEND", "userspace"),
+    )
+    status_cmd.add_argument(
+        "--kernel-root",
+        default=os.environ.get(
+            "PRPL_KERNEL_MEDIUM_ROOT", "/sys/kernel/debug/ieee80211"
+        ),
+    )
+    status_cmd.add_argument("--noise-floor-dbm", type=int, default=-91)
 
     run_cmd = commands.add_parser("run", help="run and restore a compiled event plan")
     run_cmd.add_argument("plan")
     run_cmd.add_argument("--socket", default=control_socket)
+    run_cmd.add_argument(
+        "--backend",
+        choices=["userspace", "kernel"],
+        default=os.environ.get("PRPL_MEDIUM_BACKEND", "userspace"),
+    )
+    run_cmd.add_argument(
+        "--kernel-root",
+        default=os.environ.get(
+            "PRPL_KERNEL_MEDIUM_ROOT", "/sys/kernel/debug/ieee80211"
+        ),
+    )
+    run_cmd.add_argument("--noise-floor-dbm", type=int, default=-91)
     run_cmd.add_argument(
         "--output-root", default="/tmp/wmdcfg-runs", help="run artifact directory"
     )
@@ -87,7 +112,14 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
     try:
         if args.command == "status":
-            with ControlClient(args.socket) as client:
+            client = (
+                ControlClient(args.socket)
+                if args.backend == "userspace"
+                else KernelMediumClient(
+                    args.kernel_root, noise_floor_dbm=args.noise_floor_dbm
+                )
+            )
+            with client:
                 status = client.status()
                 _write(
                     {
@@ -102,7 +134,14 @@ def main(argv: list[str] | None = None) -> int:
             return 0
         if args.command == "run":
             plan = json.loads(Path(args.plan).read_text())
-            run_dir = Runner(plan, args.socket, Path(args.output_root)).execute()
+            run_dir = Runner(
+                plan,
+                args.socket,
+                Path(args.output_root),
+                backend=args.backend,
+                kernel_root=args.kernel_root,
+                noise_floor_dbm=args.noise_floor_dbm,
+            ).execute()
             print(run_dir)
             return 0
         if args.command == "inventory":

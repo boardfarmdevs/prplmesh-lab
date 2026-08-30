@@ -5,13 +5,24 @@ ROOT=$(cd "$(dirname "$0")/.." && pwd)
 # shellcheck source=../manifests/lab.env
 source "$ROOT/manifests/lab.env"
 
+# The upstream release number alone is not sufficient to identify a lab
+# runtime: the virtual-radio integration is a reviewed patch series on top of
+# that release.  Record one deterministic digest in every runtime artifact so
+# deployment and acceptance cannot silently reuse an older local tarball.
+PRPL_PATCHSET_SHA256=$(
+    cd "$ROOT"
+    sha256sum patches/prplmesh/*.patch | sha256sum | awk '{print $1}'
+)
+
 lxc start "$BUILD_CONTAINER" 2>/dev/null || true
 lxc file push "$ROOT/scripts/container/build-hostap-inside.sh" \
     "$BUILD_CONTAINER/root/build-hostap-inside.sh" --mode=0755
 lxc file push "$ROOT/scripts/container/package-artifacts-inside.sh" \
     "$BUILD_CONTAINER/root/package-artifacts-inside.sh" --mode=0755
 lxc exec "$BUILD_CONTAINER" -- env \
-    PRPL_RELEASE="$PRPL_RELEASE" HOSTAP_COMMIT="$HOSTAP_COMMIT" \
+    PRPL_RELEASE="$PRPL_RELEASE" PRPL_COMMIT="$PRPL_COMMIT" \
+    PRPL_PATCHSET_SHA256="$PRPL_PATCHSET_SHA256" \
+    HOSTAP_COMMIT="$HOSTAP_COMMIT" \
     /root/package-artifacts-inside.sh
 
 mkdir -p "$ROOT/artifacts"

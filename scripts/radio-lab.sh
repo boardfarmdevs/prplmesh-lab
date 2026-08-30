@@ -18,6 +18,24 @@ WMEDIUMD_METRICS=${PRPL_WMEDIUMD_METRICS:-$WMEDIUMD_RUNTIME/metrics.sock}
 WMEDIUMD_OBSERVER=${PRPL_WMEDIUMD_OBSERVER:-$WMEDIUMD_RUNTIME/telemetry.sock}
 WMEDIUMD_LOG=${PRPL_WMEDIUMD_LOG:-/tmp/prpl-wmediumd.log}
 WMEDIUMD_CPU_AFFINITY=${PRPL_WMEDIUMD_CPU_AFFINITY:-}
+MEDIUM_BACKEND=${PRPL_MEDIUM_BACKEND:-userspace}
+KERNEL_MEDIUM_PROXY_PIDFILE=$WMEDIUMD_RUNTIME/kernel-metrics-proxy.pid
+KERNEL_MEDIUM_LOG=${PRPL_KERNEL_MEDIUM_LOG:-/tmp/prpl-kernel-medium-proxy.log}
+KERNEL_MEDIUM_ALIASES=$WMEDIUMD_RUNTIME/kernel-medium-aliases.json
+START_MODE=${PRPL_START_MODE:-overlap}
+START_PARALLELISM=${PRPL_START_PARALLELISM:-10}
+
+case "$MEDIUM_BACKEND" in
+    userspace|kernel) ;;
+    *) echo "PRPL_MEDIUM_BACKEND must be userspace or kernel" >&2; exit 2 ;;
+esac
+case "$START_MODE" in
+    gated|overlap) ;;
+    *) echo "PRPL_START_MODE must be gated or overlap" >&2; exit 2 ;;
+esac
+case "$START_PARALLELISM" in
+    ''|*[!0-9]*|0) echo "PRPL_START_PARALLELISM must be a positive integer" >&2; exit 2 ;;
+esac
 
 if [ -n "$WMEDIUMD_CPU_AFFINITY" ]; then
     [[ "$WMEDIUMD_CPU_AFFINITY" =~ ^[0-9]+([,-][0-9]+)*$ ]] || {
@@ -117,7 +135,7 @@ ensure_radio_pool()
     fi
     modprobe -r mac80211_hwsim 2>/dev/null || true
     modprobe mac80211_hwsim radios="$HWSIM_RADIOS" \
-        channels="$HWSIM_CHANNELS" regtest=5
+        channels="$HWSIM_CHANNELS" regtest=5 kernel_medium=0
     name_radio_pool
 }
 
@@ -222,19 +240,50 @@ create_client()
     lxc config set "$name" boot.autostart false
 }
 
-stop_medium()
+stop_pidfile()
 {
-    if [ -r "$WMEDIUMD_PIDFILE" ]; then
-        kill "$(cat "$WMEDIUMD_PIDFILE")" 2>/dev/null || true
-    fi
-    pkill -x wmediumd 2>/dev/null || true
-    rm -f "$WMEDIUMD_PIDFILE" "$WMEDIUMD_CONTROL" \
-        "$WMEDIUMD_METRICS" "$WMEDIUMD_OBSERVER"
+    local file=$1 pid attempt
+    [ -r "$file" ] || return 0
+    pid=$(cat "$file")
+    kill "$pid" 2>/dev/null || return 0
+    for attempt in $(seq 1 30); do
+        kill -0 "$pid" 2>/dev/null || return 0
+        sleep 0.1
+    done
+    kill -KILL "$pid" 2>/dev/null || true
 }
 
-start_medium()
+stop_medium()
 {
-    local command
+    # Wait for socket-owning processes to exit before unlinking or rebinding.
+    # The metrics proxy removes its socket in a finalizer; launching its
+    # replacement too early lets the old process unlink the new socket.
+    stop_pidfile "$KERNEL_MEDIUM_PROXY_PIDFILE"
+    stop_pidfile "$WMEDIUMD_PIDFILE"
+    pkill -x wmediumd 2>/dev/null || true
+    rm -f "$WMEDIUMD_PIDFILE" "$KERNEL_MEDIUM_PROXY_PIDFILE" "$WMEDIUMD_CONTROL" \
+        "$WMEDIUMD_METRICS" "$WMEDIUMD_OBSERVER"
+    if [ -w /sys/module/mac80211_hwsim/parameters/kernel_medium ]; then
+        echo 0 > /sys/module/mac80211_hwsim/parameters/kernel_medium
+    fi
+}
+
+start_userspace_medium()
+{
+    local command expected_patchset provenance
+
+    expected_patchset=$(
+        cd "$ROOT"
+        sha256sum patches/wmediumd/*.patch | sha256sum | awk '{print $1}'
+    )
+    provenance="$ROOT/build/bin/wmediumd.provenance.env"
+    if [ ! -r "$provenance" ] ||
+       ! grep -Fxq "WMEDIUMD_COMMIT=$WMEDIUMD_COMMIT" "$provenance" ||
+       ! grep -Fxq "WMEDIUMD_PATCHSET_SHA256=$expected_patchset" "$provenance"; then
+        echo "wmediumd binary is stale or has no matching patch-set provenance" >&2
+        echo "rebuild it with scripts/build-wmediumd.sh" >&2
+        return 1
+    fi
 
     if [ -r "$WMEDIUMD_PIDFILE" ] &&
        kill -0 "$(cat "$WMEDIUMD_PIDFILE")" 2>/dev/null &&
@@ -250,9 +299,9 @@ start_medium()
         -O "$WMEDIUMD_OBSERVER")
     if [ -n "$WMEDIUMD_CPU_AFFINITY" ]; then
         taskset -c "$WMEDIUMD_CPU_AFFINITY" "${command[@]}" \
-            > "$WMEDIUMD_LOG" 2>&1 &
+            > "$WMEDIUMD_LOG" 2>&1 9>&- &
     else
-        "${command[@]}" > "$WMEDIUMD_LOG" 2>&1 &
+        "${command[@]}" > "$WMEDIUMD_LOG" 2>&1 9>&- &
     fi
     echo $! > "$WMEDIUMD_PIDFILE"
     sleep 1
@@ -269,12 +318,121 @@ start_medium()
     done
 }
 
+start_kernel_medium()
+{
+    local attempt
+
+    if [ -r "$KERNEL_MEDIUM_PROXY_PIDFILE" ] &&
+       kill -0 "$(cat "$KERNEL_MEDIUM_PROXY_PIDFILE")" 2>/dev/null &&
+       [ -S "$WMEDIUMD_METRICS" ] &&
+       [ "$(cat /sys/module/mac80211_hwsim/parameters/kernel_medium 2>/dev/null)" = Y ]; then
+        return
+    fi
+    [ -w /sys/module/mac80211_hwsim/parameters/kernel_medium ] || {
+        echo "loaded mac80211_hwsim lacks the optional kernel-medium ABI" >&2
+        echo "build and load patches 0003-0007 with scripts/build-hwsim.sh" >&2
+        return 1
+    }
+    [ -d /sys/kernel/debug/ieee80211 ] || {
+        echo "debugfs ieee80211 controls are unavailable" >&2
+        return 1
+    }
+    stop_medium
+    install -d -m 0755 "$WMEDIUMD_RUNTIME"
+    python3 "$ROOT/scripts/kernel-medium-aliases.py" \
+        --agents "$PROVISIONED_AGENT_COUNT" \
+        --clients "$PROVISIONED_CLIENT_COUNT" \
+        --radios-per-node "$RADIOS_PER_MESH_NODE" \
+        --output "$KERNEL_MEDIUM_ALIASES"
+    echo 1 > /sys/module/mac80211_hwsim/parameters/kernel_medium
+    PYTHONPATH="$ROOT/wmediumd/configurator" \
+        python3 -m wmdcfg.kernel_metrics_proxy --socket "$WMEDIUMD_METRICS" \
+        --aliases "$KERNEL_MEDIUM_ALIASES" \
+        > "$KERNEL_MEDIUM_LOG" 2>&1 9>&- &
+    echo $! > "$KERNEL_MEDIUM_PROXY_PIDFILE"
+    for attempt in $(seq 1 30); do
+        if [ -S "$WMEDIUMD_METRICS" ]; then
+            return
+        fi
+        if ! kill -0 "$(cat "$KERNEL_MEDIUM_PROXY_PIDFILE")" 2>/dev/null; then
+            tail -30 "$KERNEL_MEDIUM_LOG" >&2 || true
+            return 1
+        fi
+        sleep 0.1
+    done
+    echo "kernel-medium metrics socket did not appear: $WMEDIUMD_METRICS" >&2
+    stop_medium
+    return 1
+}
+
+start_medium()
+{
+    case "$MEDIUM_BACKEND" in
+        userspace) start_userspace_medium ;;
+        kernel) start_kernel_medium ;;
+    esac
+}
+
 start_container()
 {
     local name=$1
     if [ "$(lxc list "$name" -c s --format csv)" != RUNNING ]; then
         lxc start "$name"
     fi
+}
+
+start_active_agents()
+{
+    local ordinal pid failed=0
+    local -a pids=()
+    for ordinal in $(seq 1 "$ACTIVE_AGENTS"); do
+        start_agent "$ordinal" &
+        pids+=("$!")
+    done
+    for pid in "${pids[@]}"; do
+        wait "$pid" || failed=1
+    done
+    return "$failed"
+}
+
+start_one_client()
+{
+    local ordinal=$1 name cohort cohort_ordinal band station_mac
+    name=$(client_name "$ordinal")
+    cohort=$(client_cohort "$ordinal")
+    cohort_ordinal=$(client_ordinal "$ordinal")
+    band=$(client_band "$ordinal")
+    start_container "$name"
+    lxc exec "$name" -- /mnt/project/scripts/container/setup-client.sh \
+        "$cohort_ordinal" "$cohort" "$band"
+    station_mac=$(client_mac "$cohort" "$cohort_ordinal")
+    if ! wait_for_model "$station_mac" "$name station $station_mac" 30; then
+        echo "$name associated but is absent from the model; reassociating once" >&2
+        lxc exec "$name" -- wpa_cli -i wlan0 disconnect >/dev/null
+        sleep 1
+        lxc exec "$name" -- wpa_cli -i wlan0 reconnect >/dev/null
+        wait_for_model "$station_mac" "$name station $station_mac" 90
+    fi
+}
+
+start_active_clients()
+{
+    local ordinal pid failed=0
+    local -a pids=()
+    for ordinal in $(seq 1 "$ACTIVE_CLIENTS"); do
+        start_one_client "$ordinal" &
+        pids+=("$!")
+        if [ "${#pids[@]}" -ge "$START_PARALLELISM" ]; then
+            for pid in "${pids[@]}"; do
+                wait "$pid" || failed=1
+            done
+            pids=()
+        fi
+    done
+    for pid in "${pids[@]}"; do
+        wait "$pid" || failed=1
+    done
+    return "$failed"
 }
 
 controller_cli()
@@ -522,36 +680,32 @@ case "$ACTION" in
     start)
         ensure_radio_pool
         start_medium
+        if [ "$START_MODE" = overlap ]; then
+            mesh_launch_failed=0
+            mesh_launch_pids=()
+            for ordinal in $(seq 1 "$ACTIVE_AGENTS"); do
+                start_container "$(agent_name "$ordinal")" &
+                mesh_launch_pids+=("$!")
+            done
+        fi
         start_container "$CONTROLLER"
+        if [ "$START_MODE" = overlap ]; then
+            for pid in "${mesh_launch_pids[@]}"; do
+                wait "$pid" || mesh_launch_failed=1
+            done
+            [ "$mesh_launch_failed" = 0 ] || {
+                echo "one or more Agent containers failed to start" >&2
+                exit 1
+            }
+        fi
         lxc exec "$CONTROLLER" -- \
             /mnt/project/scripts/container/setup-nl80211-node.sh controller 0 wired
         configure_credentials
         sleep 5
-        for ordinal in $(seq 1 "$ACTIVE_AGENTS"); do
-            start_agent "$ordinal"
-        done
+        start_active_agents
         ;;
     clients)
-        for ordinal in $(seq 1 "$ACTIVE_CLIENTS"); do
-            name=$(client_name "$ordinal")
-            cohort=$(client_cohort "$ordinal")
-            cohort_ordinal=$(client_ordinal "$ordinal")
-            band=$(client_band "$ordinal")
-            start_container "$name"
-            lxc exec "$name" -- /mnt/project/scripts/container/setup-client.sh \
-                "$cohort_ordinal" "$cohort" "$band"
-            station_mac=$(client_mac "$cohort" "$cohort_ordinal")
-            if ! wait_for_model "$station_mac" "$name station $station_mac" 30; then
-                # A physical association can race a transient agent/controller
-                # reconnect. Re-emit the association once, then require both
-                # the client and controller model to converge.
-                echo "$name associated but is absent from the model; reassociating once" >&2
-                lxc exec "$name" -- wpa_cli -i wlan0 disconnect >/dev/null
-                sleep 1
-                lxc exec "$name" -- wpa_cli -i wlan0 reconnect >/dev/null
-                wait_for_model "$station_mac" "$name station $station_mac" 90
-            fi
-        done
+        start_active_clients
         ;;
     steering-test)
         "$ROOT/scripts/test-steering.sh"
@@ -569,22 +723,31 @@ case "$ACTION" in
     restart-medium)
         stop_medium
         start_medium
-        pid=$(cat "$WMEDIUMD_PIDFILE")
-        affinity=$(taskset -pc "$pid" 2>/dev/null | sed 's/.*: //' || true)
-        echo "wmediumd restarted (pid $pid); affinity ${affinity:-unknown}"
+        if [ "$MEDIUM_BACKEND" = userspace ]; then
+            pid=$(cat "$WMEDIUMD_PIDFILE")
+            affinity=$(taskset -pc "$pid" 2>/dev/null | sed 's/.*: //' || true)
+            echo "userspace wmediumd restarted (pid $pid); affinity ${affinity:-unknown}"
+        else
+            echo "kernel medium restarted; metrics proxy pid $(cat "$KERNEL_MEDIUM_PROXY_PIDFILE")"
+        fi
         ;;
     stop)
         stop_all
         ;;
     status)
         lxc list '^prpl-(controller$|agent-|client-)' -c ns4
-        if [ -r "$WMEDIUMD_PIDFILE" ] &&
+        if [ "$MEDIUM_BACKEND" = kernel ] &&
+           [ -r "$KERNEL_MEDIUM_PROXY_PIDFILE" ] &&
+           kill -0 "$(cat "$KERNEL_MEDIUM_PROXY_PIDFILE")" 2>/dev/null; then
+            generation=$(cat /sys/module/mac80211_hwsim/parameters/kernel_medium_generation)
+            echo "medium: kernel, generation $generation, metrics proxy pid $(cat "$KERNEL_MEDIUM_PROXY_PIDFILE")"
+        elif [ -r "$WMEDIUMD_PIDFILE" ] &&
            kill -0 "$(cat "$WMEDIUMD_PIDFILE")" 2>/dev/null; then
             pid=$(cat "$WMEDIUMD_PIDFILE")
             affinity=$(taskset -pc "$pid" 2>/dev/null | sed 's/.*: //' || true)
-            echo "wmediumd: running (pid $pid), affinity ${affinity:-unknown}"
+            echo "medium: userspace wmediumd (pid $pid), affinity ${affinity:-unknown}"
         else
-            echo "wmediumd: stopped"
+            echo "medium: $MEDIUM_BACKEND stopped"
         fi
         if [ "$(lxc list "$CONTROLLER" -c s --format csv)" = RUNNING ]; then
             timeout 15 lxc exec "$CONTROLLER" -- \

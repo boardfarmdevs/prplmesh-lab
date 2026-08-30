@@ -5,6 +5,7 @@ ROOT=$(cd "$(dirname "$0")/.." && pwd)
 MODE=${1:-recommend}
 CLIENT=${2:-prpl-client-07}
 TARGET=${3:-prpl-agent-02}
+MEDIUM_BACKEND=${PRPL_MEDIUM_BACKEND:-userspace}
 case "$MODE" in
     recommend|act) ;;
     *) echo "usage: $0 [recommend|act] [prpl-client-NN] [prpl-agent-NN|prpl-controller]" >&2; exit 2 ;;
@@ -30,7 +31,7 @@ trap cleanup EXIT
 cd "$ROOT/wmediumd/configurator"
 python3 -m wmdcfg.cli inventory -o "$inventory"
 
-readarray -t binding < <(python3 - "$inventory" "$CLIENT" "$TARGET" <<'PY'
+if ! binding_output=$(python3 - "$inventory" "$CLIENT" "$TARGET" <<'PY'
 import json
 import sys
 
@@ -78,7 +79,14 @@ if not target_bssid:
 for value in [source, target_name, target_bssid, *others]:
     print(value)
 PY
-)
+); then
+    exit 1
+fi
+readarray -t binding <<<"$binding_output"
+[ "${#binding[@]}" -eq 6 ] || {
+    echo "optimizer scenario binding returned ${#binding[@]} fields, expected 6" >&2
+    exit 1
+}
 source=${binding[0]}
 target=${binding[1]}
 target_bssid=${binding[2]}
@@ -94,7 +102,8 @@ python3 -m wmdcfg.cli compile scenarios/optimizer-five-ap-crossover.wmd \
     -o "$plan"
 
 echo "optimizer stimulus: $CLIENT $source -> $target ($target_bssid)"
-python3 -m wmdcfg.cli run "$plan" >"$scenario_log" 2>&1 &
+python3 -m wmdcfg.cli run --backend "$MEDIUM_BACKEND" "$plan" \
+    >"$scenario_log" 2>&1 &
 scenario_pid=$!
 sleep 2
 

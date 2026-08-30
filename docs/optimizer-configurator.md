@@ -57,6 +57,10 @@ The read-only metrics socket is mounted in every mesh node at
 `/opt/prpl-wmediumd/metrics.sock`. It is deliberately separate from the
 writable configurator socket.
 
+The optional kernel medium exposes the same read-only metrics ABI through a
+compatibility proxy, while scenario mutations use an atomic debugfs actuator.
+See [Medium backends](medium-backends.md) for selection and boundaries.
+
 ## Scenario language
 
 A `.wmd` file declares stable roles rather than MAC addresses. Compilation

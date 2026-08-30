@@ -8,6 +8,7 @@ import time
 from pathlib import Path
 
 from .actuator import ActuatorError, ControlClient
+from .kernel_actuator import KernelMediumClient
 from .observers import mesh_health, snapshot
 
 
@@ -24,12 +25,33 @@ def _append(path: Path, value: dict) -> None:
 
 
 class Runner:
-    def __init__(self, plan: dict, socket_path: str, output_root: Path):
+    def __init__(
+        self,
+        plan: dict,
+        socket_path: str,
+        output_root: Path,
+        *,
+        backend: str = "userspace",
+        kernel_root: str = "/sys/kernel/debug/ieee80211",
+        noise_floor_dbm: int = -91,
+    ):
         self.plan = plan
         self.socket_path = socket_path
         timestamp = dt.datetime.now(dt.timezone.utc).strftime("%Y%m%dT%H%M%SZ")
         self.run_dir = output_root / f"{timestamp}-{plan['scenario']}-{os.getpid()}"
         self.stop_requested = False
+        self.backend = backend
+        self.kernel_root = kernel_root
+        self.noise_floor_dbm = noise_floor_dbm
+
+    def _client(self):
+        if self.backend == "userspace":
+            return ControlClient(self.socket_path)
+        if self.backend == "kernel":
+            return KernelMediumClient(
+                self.kernel_root, noise_floor_dbm=self.noise_floor_dbm
+            )
+        raise ActuatorError(f"unknown medium backend {self.backend!r}")
 
     def _signal(self, signum, frame) -> None:
         self.stop_requested = True
@@ -103,7 +125,7 @@ class Runner:
         overall_started = time.monotonic()
         execution_started = None
         try:
-            with ControlClient(self.socket_path) as client:
+            with self._client() as client:
                 status = client.status()
                 plan_updates = [
                     update for event in self.plan["events"] for update in event["updates"]
@@ -286,6 +308,7 @@ class Runner:
                 signal.signal(signum, handler)
             summary = {
                 "scenario": self.plan["scenario"],
+                "medium_backend": self.backend,
                 "outcome": outcome,
                 "restored": restored,
                 "error": error_text,

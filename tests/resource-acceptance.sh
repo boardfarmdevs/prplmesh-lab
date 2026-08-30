@@ -1,8 +1,10 @@
 #!/bin/bash
 set -euo pipefail
 
+ROOT=$(cd "$(dirname "$0")/.." && pwd)
 agents=${PRPL_AGENT_COUNT:-4}
 clients=${PRPL_CLIENT_COUNT:-20}
+medium_backend=${PRPL_MEDIUM_BACKEND:-userspace}
 
 check_count()
 {
@@ -43,8 +45,22 @@ for ordinal in $(seq 1 "$clients"); do
         '! pgrep -f "[/](snapd|unattended-upgrade)" >/dev/null'
 done
 
-medium_pid=$(cat /run/prpl-wmediumd/wmediumd.pid)
-kill -0 "$medium_pid"
-medium_rss=$(awk '/^VmRSS:/ {print $2}' "/proc/$medium_pid/status")
-echo "wmediumd RSS_KB=$medium_rss pid=$medium_pid"
+case "$medium_backend" in
+    userspace)
+        medium_pid=$(cat /run/prpl-wmediumd/wmediumd.pid)
+        kill -0 "$medium_pid"
+        medium_rss=$(awk '/^VmRSS:/ {print $2}' "/proc/$medium_pid/status")
+        echo "userspace_wmediumd RSS_KB=$medium_rss pid=$medium_pid"
+        ;;
+    kernel)
+        [ "$(cat /sys/module/mac80211_hwsim/parameters/kernel_medium)" = Y ]
+        proxy_pid=$(cat /run/prpl-wmediumd/kernel-metrics-proxy.pid)
+        kill -0 "$proxy_pid"
+        proxy_rss=$(awk '/^VmRSS:/ {print $2}' "/proc/$proxy_pid/status")
+        PYTHONPATH="$ROOT/wmediumd/configurator" python3 -m wmdcfg.cli \
+            status --backend kernel >/dev/null
+        echo "kernel_medium metrics_proxy_RSS_KB=$proxy_rss pid=$proxy_pid"
+        ;;
+    *) echo "PRPL_MEDIUM_BACKEND must be userspace or kernel" >&2; exit 2 ;;
+esac
 echo "PASS: process cardinality, background-service exclusion and runtime footprint"

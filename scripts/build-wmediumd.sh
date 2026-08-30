@@ -43,4 +43,12 @@ done
 make -C "$SOURCE" -j"$(nproc)"
 install -D -m 0755 "$SOURCE/wmediumd/wmediumd" \
     "$ROOT/build/bin/wmediumd"
+patchset_sha256=$(
+    cd "$ROOT"
+    sha256sum patches/wmediumd/*.patch | sha256sum | awk '{print $1}'
+)
+printf '%s\n' \
+    "WMEDIUMD_COMMIT=$WMEDIUMD_COMMIT" \
+    "WMEDIUMD_PATCHSET_SHA256=$patchset_sha256" \
+    > "$ROOT/build/bin/wmediumd.provenance.env"
 echo "Built $ROOT/build/bin/wmediumd from $WMEDIUMD_COMMIT"
