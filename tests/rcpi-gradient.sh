@@ -5,21 +5,30 @@ ROOT=$(cd "$(dirname "$0")/.." && pwd)
 baseline="$ROOT/manifests/wmediumd.conf"
 temporary=$(mktemp /tmp/prpl-wmediumd-gradient.XXXXXX.conf)
 clients=${PRPL_CLIENT_COUNT:-20}
+runtime=${PRPL_WMEDIUMD_RUNTIME:-/run/prpl-wmediumd}
+pidfile="$runtime/wmediumd.pid"
+control="$runtime/control.sock"
+metrics="$runtime/metrics.sock"
+telemetry="$runtime/telemetry.sock"
 
 start_medium()
 {
     local config=$1 log=$2
-    if [ -r /run/prpl-wmediumd.pid ]; then
-        kill "$(cat /run/prpl-wmediumd.pid)" 2>/dev/null || true
+    if [ -r "$pidfile" ]; then
+        kill "$(cat "$pidfile")" 2>/dev/null || true
         for unused in $(seq 1 30); do
-            kill -0 "$(cat /run/prpl-wmediumd.pid)" 2>/dev/null || break
+            kill -0 "$(cat "$pidfile")" 2>/dev/null || break
             sleep 0.1
         done
     fi
-    "$ROOT/build/bin/wmediumd" -l 6 -c "$config" >"$log" 2>&1 &
-    echo $! > /run/prpl-wmediumd.pid
+    mkdir -p "$runtime"
+    rm -f "$pidfile" "$control" "$metrics" "$telemetry"
+    "$ROOT/build/bin/wmediumd" -l 6 -c "$config" \
+        -C "$control" -R "$metrics" -O "$telemetry" >"$log" 2>&1 &
+    echo $! > "$pidfile"
     sleep 1
-    kill -0 "$(cat /run/prpl-wmediumd.pid)"
+    kill -0 "$(cat "$pidfile")"
+    [ -S "$control" ] && [ -S "$metrics" ] && [ -S "$telemetry" ]
 }
 
 restore()
