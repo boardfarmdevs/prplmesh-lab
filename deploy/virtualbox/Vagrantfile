@@ -1,5 +1,5 @@
 Vagrant.configure("2") do |config|
-  config.vm.box = ENV.fetch("PRPLMESH_BOX", "prplmesh/lab-0828")
+  config.vm.box = ENV.fetch("PRPLMESH_BOX", "prplmesh/lab-0829")
   config.vm.hostname = "prplmesh-lab"
   config.vm.boot_timeout = 1800
 
@@ -15,7 +15,7 @@ Vagrant.configure("2") do |config|
   config.ssh.insert_key = true
 
   config.vm.provider "virtualbox" do |vb|
-    vb.name = ENV.fetch("PRPLMESH_VM_NAME", "prplmesh-lab-0828")
+    vb.name = ENV.fetch("PRPLMESH_VM_NAME", "prplmesh-lab-0829")
     vb.memory = ENV.fetch("PRPLMESH_VM_MEMORY_MB", "8192")
     vb.cpus = ENV.fetch("PRPLMESH_VM_CPUS", "6")
     vb.customize ["modifyvm", :id, "--nested-hw-virt", "on"]

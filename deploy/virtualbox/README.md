@@ -7,9 +7,9 @@ place the `.box`, `Vagrantfile`, and their SHA-256 files together.
 Import once and start:
 
 ```sh
-sha256sum -c prplmesh-lab-0828-COMMIT-virtualbox.box.sha256
-vagrant box add --name prplmesh/lab-0828 \
-  prplmesh-lab-0828-COMMIT-virtualbox.box
+sha256sum -c prplmesh-lab-0829-COMMIT-virtualbox.box.sha256
+vagrant box add --name prplmesh/lab-0829 \
+  prplmesh-lab-0829-COMMIT-virtualbox.box
 
 PRPLMESH_UI_HOST_IP=127.0.0.1 vagrant up
 ```
@@ -44,5 +44,5 @@ Delete the VM and optionally the imported box:
 
 ```sh
 vagrant destroy -f
-vagrant box remove prplmesh/lab-0828 --provider virtualbox
+vagrant box remove prplmesh/lab-0829 --provider virtualbox
 ```

@@ -6,6 +6,15 @@ ACTION=${1:-status}
 LOCK=/run/lock/prplmesh-lab.lock
 PROFILE=(PRPL_AGENT_COUNT=4 PRPL_CLIENT_COUNT=20 PRPL_TOPOLOGY=star)
 
+phase()
+{
+    local name=$1
+    shift
+    local started=$SECONDS
+    "$@"
+    echo "prplMesh lifecycle phase: $name $((SECONDS - started))s"
+}
+
 wait_for_lxd()
 {
     for unused in $(seq 1 120); do
@@ -16,19 +25,35 @@ wait_for_lxd()
     return 1
 }
 
+wait_for_health()
+{
+    local url=$1
+    for unused in $(seq 1 30); do
+        curl -fsS "$url" >/dev/null 2>&1 && return 0
+        sleep 1
+    done
+    echo "service health check did not become ready: $url" >&2
+    return 1
+}
+
 start_lab()
 {
     wait_for_lxd
     cd "$ROOT"
-    env "${PROFILE[@]}" scripts/radio-lab.sh start
-    env "${PROFILE[@]}" scripts/radio-lab.sh clients
-    scripts/topology-visualizer.sh start
+    local started=$SECONDS
+    phase mesh env "${PROFILE[@]}" scripts/radio-lab.sh start
+    phase clients env "${PROFILE[@]}" scripts/radio-lab.sh clients
+    phase topology scripts/topology-visualizer.sh start
     if systemctl list-unit-files prplmesh-controller-ui.service --no-legend |
             grep -q '^prplmesh-controller-ui.service'; then
         systemctl restart prplmesh-controller-ui.service
     fi
-    curl -fsS http://127.0.0.1:8090/health >/dev/null
-    curl -fsS http://127.0.0.1:8091/health >/dev/null
+    # systemctl restart returning only means the process was launched.  On a
+    # cold boot the listener may bind a fraction later, so gate completion on
+    # bounded endpoint readiness instead of racing the first connect().
+    wait_for_health http://127.0.0.1:8090/health
+    wait_for_health http://127.0.0.1:8091/health
+    echo "prplMesh lifecycle start complete: $((SECONDS - started))s"
 }
 
 stop_lab()

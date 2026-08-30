@@ -2,9 +2,9 @@
 set -euo pipefail
 
 ROOT=$(cd "$(dirname "$0")/.." && pwd)
-OUTPUT_DIR=${1:-$ROOT/release/0828}
+OUTPUT_DIR=${1:-$ROOT/release/0829}
 SHORT=$(git -C "$ROOT" rev-parse --short=7 HEAD)
-NAME=prplmesh-lab-0828-${SHORT}
+NAME=prplmesh-lab-0829-${SHORT}
 OUTPUT="$OUTPUT_DIR/${NAME}-source.tar.bz2"
 STAGE=$(mktemp -d)
 trap 'rm -rf "$STAGE"' EXIT
@@ -22,9 +22,11 @@ cp "$ROOT"/artifacts/*.tar.gz "$ROOT/artifacts/SHA256SUMS" \
     "$STAGE/$NAME/artifacts/"
 if [ -x "$ROOT/build/bin/wmediumd" ]; then
     mkdir -p "$STAGE/$NAME/build/bin"
-    cp "$ROOT/build/bin/wmediumd" "$STAGE/$NAME/build/bin/"
+    cp "$ROOT/build/bin/wmediumd" \
+        "$ROOT/build/bin/wmediumd.provenance.env" \
+        "$STAGE/$NAME/build/bin/"
 fi
-printf 'release=0828\ncommit=%s\ncreated=%s\n' \
+printf 'release=0829\ncommit=%s\ncreated=%s\n' \
     "$(git -C "$ROOT" rev-parse HEAD)" "$(date -u +%FT%TZ)" \
     > "$STAGE/$NAME/RELEASE"
 

@@ -2,9 +2,9 @@
 set -euo pipefail
 
 ROOT=$(cd "$(dirname "$0")/../.." && pwd)
-OUTPUT_DIR=${1:-$ROOT/release/0828}
+OUTPUT_DIR=${1:-$ROOT/release/0829}
 SHORT=$(git -C "$ROOT" rev-parse --short=7 HEAD)
-OUTPUT="$OUTPUT_DIR/prplmesh-lab-0828-${SHORT}-virtualbox.box"
+OUTPUT="$OUTPUT_DIR/prplmesh-lab-0829-${SHORT}-virtualbox.box"
 
 mkdir -p "$OUTPUT_DIR"
 vagrant halt

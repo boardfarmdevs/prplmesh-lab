@@ -1,6 +1,6 @@
 # prplMesh lab deployment
 
-The 0828 release supports the same accepted controller, four-Agent and
+The 0829 release supports the same accepted controller, four-Agent and
 20-client profile in three execution models. The EasyMesh processes always
 run in nested LXD containers; only the host boundary changes.
 
@@ -37,5 +37,10 @@ See the model-specific procedures:
 - [VirtualBox and Vagrant](virtualbox/README.md)
 
 Release engineering uses `package-source.sh`, `lxd-vm/package.sh` and
-`virtualbox/package.sh`. Every emitted artifact has the `0828` release tag,
+`virtualbox/package.sh`. Every emitted artifact has the `0829` release tag,
 source commit, and a sibling SHA-256 file.
+
+Userspace wmediumd is the appliance default. The experimental kernel medium
+and bounded overlap startup are described in
+[Medium backends](../docs/medium-backends.md). Backend selection belongs in
+`/etc/default/prplmesh-lab`; it does not require a different appliance image.

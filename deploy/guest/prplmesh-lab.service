@@ -8,6 +8,7 @@ ConditionPathExists=/opt/prplmesh-lab/scripts/radio-lab.sh
 [Service]
 Type=oneshot
 Environment=PRPLMESH_ROOT=/opt/prplmesh-lab
+EnvironmentFile=-/etc/default/prplmesh-lab
 ExecStart=/usr/local/sbin/prplmesh-lab-start start
 ExecStop=/usr/local/sbin/prplmesh-lab-start stop
 RemainAfterExit=yes

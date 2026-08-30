@@ -4,11 +4,11 @@ Start with an x86-64 Ubuntu 24.04 host running Linux 7.0. This mode owns the
 host hwsim module, wmediumd process and LXD instance namespace; do not run a
 second wireless lab on the same host.
 
-Extract the 0828 source artifact into a new directory and verify it:
+Extract the 0829 source artifact into a new directory and verify it:
 
 ```sh
-tar -xjf prplmesh-lab-0828-COMMIT-source.tar.bz2
-cd prplmesh-lab-0828-COMMIT
+tar -xjf prplmesh-lab-0829-COMMIT-source.tar.bz2
+cd prplmesh-lab-0829-COMMIT
 sha256sum -c artifacts/SHA256SUMS
 ```
 
