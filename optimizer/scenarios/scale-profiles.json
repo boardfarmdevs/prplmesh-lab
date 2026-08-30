@@ -1,0 +1,8 @@
+{
+  "schema": "optimizer.scale-profiles.v1",
+  "profiles": [
+    {"id": "small", "agents": 5, "clients": 20, "status": "accepted", "evidence": "prplMesh two-SSID tri-band topology, traffic, steering and dynamic optimizer gates"},
+    {"id": "medium", "agents": 5, "clients": 50, "status": "planned", "evidence": "runtime and traffic-envelope acceptance pending"},
+    {"id": "stress", "agents": 5, "clients": 100, "status": "blocked", "evidence": "requires validated hwsim allocation and medium capacity evidence"}
+  ]
+}

@@ -1,0 +1,50 @@
+From: prplMesh virtual-radio lab
+Subject: [PATCH] nl80211: classify a band from a recognized channel
+
+band_info::get_frequency_band() used an arbitrary element from an unordered
+channel map.  A Linux 7 hwsim 5 GHz band includes extended frequencies such as
+5920 MHz that the generic frequency helper deliberately reports as unknown.
+When one of those entries happened to be first, the complete 5 GHz band was
+reported as unknown and the fronthaul HAL could not attach.
+
+Inspect the band until a recognized channel is found, and use that same
+band-level classification in the radio-selection predicate. Frequencies that
+are ambiguous outside the context of an NL80211 band no longer invalidate the
+other ordinary channels in that same band.
+
+--- a/common/beerocks/bwl/include/bwl/nl80211_client.h
++++ b/common/beerocks/bwl/include/bwl/nl80211_client.h
+@@ -309,11 +309,14 @@ public:
+         beerocks::eFreqType get_frequency_band() const
+         {
+-            if (supported_channels.empty()) {
+-                return beerocks::eFreqType::FREQ_UNKNOWN;
++            for (const auto &entry : supported_channels) {
++                auto frequency_band = son::wireless_utils::which_freq_type(
++                    entry.second.center_freq);
++                if (frequency_band != beerocks::eFreqType::FREQ_UNKNOWN) {
++                    return frequency_band;
++                }
+             }
+ 
+-            return son::wireless_utils::which_freq_type(
+-                supported_channels.begin()->second.center_freq);
++            return beerocks::eFreqType::FREQ_UNKNOWN;
+         }
+ 
+         /**
+--- a/common/beerocks/bwl/nl80211/ap_wlan_hal_nl80211.cpp
++++ b/common/beerocks/bwl/nl80211/ap_wlan_hal_nl80211.cpp
+@@ -511,9 +511,7 @@ bool ap_wlan_hal_nl80211::refresh_radio_info()
+                          if (b.supported_channels.empty()) {
+                              return false;
+                          }
+-                         return m_radio_info.frequency_band ==
+-                                son::wireless_utils::which_freq_type(
+-                                    b.supported_channels.begin()->second.center_freq);
++                         return m_radio_info.frequency_band == b.get_frequency_band();
+                      });
+ 
+     if (band_info_it != radio_info.bands.end()) {
+-- 
+2.43.0

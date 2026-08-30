@@ -1,0 +1,18 @@
+PASS devices=5 agents=4 clients=20 topology=chain
+SSIDs {'private_ssid': 10, 'iot_ssid': 10} bands {'2.4 GHz': 4, '5 GHz': 10, '6 GHz': 6} owners {'controller': 12, 'agent-1': 6, 'agent-3': 1, 'agent-4': 1}
+SSID/band {'private_ssid/2.4 GHz': 2, 'private_ssid/5 GHz': 5, 'iot_ssid/5 GHz': 5, 'iot_ssid/6 GHz': 3, 'iot_ssid/2.4 GHz': 2, 'private_ssid/6 GHz': 3}
+metrics {118: 20}
+BTM 5GHz private: prpl-client-03 02:00:00:10:02:00 02:00:00:00:01:00 -> 02:00:00:00:04:00
+PASS 5GHz private: physical association, NBAPI ownership and BTM response agree
+BTM 6GHz iot: prpl-client-08 02:00:00:20:04:00 02:00:00:00:0b:01 -> 02:00:00:00:0e:01
+PASS 6GHz iot: physical association, NBAPI ownership and BTM response agree
+PASS: two-SSID prplMesh NBAPI steering acceptance
+NODE                   RSS_KB  PROCESSES
+prpl-controller        119540          8
+prpl-agent-01           86724          8
+prpl-agent-02           87068          8
+prpl-agent-03           86164          8
+prpl-agent-04           84240          8
+wmediumd RSS_KB=2956 pid=1318241
+PASS: process cardinality, background-service exclusion and runtime footprint
+PASS: prplMesh expanded acceptance suite

@@ -1,0 +1,27 @@
+{
+  "captured_at": "2026-08-16T00:00:00+00:00",
+  "radios": [
+    {
+      "container": "prpl-client-01",
+      "kind": "station",
+      "permanent_mac": "02:00:00:00:03:00",
+      "tx_mac": "42:00:00:00:03:00",
+      "interfaces": [{"name": "wlan0", "mac": "02:00:00:00:03:00", "frequency_mhz": 5180}]
+    },
+    {
+      "container": "prpl-controller",
+      "kind": "mesh",
+      "permanent_mac": "02:00:00:00:00:00",
+      "tx_mac": "42:00:00:00:00:00",
+      "interfaces": [{"name": "wifi1.1", "mac": "02:00:00:10:00:01", "ssid": "private_ssid", "frequency_mhz": 5180}]
+    },
+    {
+      "container": "prpl-agent-01",
+      "kind": "mesh",
+      "permanent_mac": "02:00:00:00:01:00",
+      "tx_mac": "42:00:00:00:01:00",
+      "interfaces": [{"name": "wifi1.1", "mac": "02:00:00:10:01:01", "ssid": "private_ssid", "frequency_mhz": 5180}]
+    }
+  ],
+  "schema": "wmdcfg.inventory.v1"
+}

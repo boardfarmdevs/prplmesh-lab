@@ -1,0 +1,41 @@
+From: prplMesh virtual-radio lab
+Subject: [PATCH] platform: separate Linux AP and backhaul STA interfaces
+
+The native Linux platform maps each wpa_supplicant control path to the same
+interface already owned by hostapd. A radio cannot run AP and station roles on
+one nl80211 netdev. Use the adjacent per-phy STA VIF names and publish aliases
+for both the hostap-to-STA lookup and the station HAL's direct lookup.
+
+--- a/framework/platform/bpl/CMakeLists.txt
++++ b/framework/platform/bpl/CMakeLists.txt
+@@ -20,9 +20,13 @@ set(BEEROCKS_HOSTAP_WLAN1_CTRL_IFACE "/var/run/hostapd/${BEEROCKS_WLAN1_IFACE}
+ set(BEEROCKS_HOSTAP_WLAN2_CTRL_IFACE "/var/run/hostapd/${BEEROCKS_WLAN2_IFACE}" CACHE PATH "hostapd ctrl iface path for 2nd WLAN")
+ set(BEEROCKS_HOSTAP_WLAN3_CTRL_IFACE "/var/run/hostapd/${BEEROCKS_WLAN3_IFACE}" CACHE PATH "hostapd ctrl iface path for 3rd WLAN")
+ 
+-set(BEEROCKS_WPA_SUPPLICANT_WLAN1_CTRL_IFACE "/var/run/wpa_supplicant/${BEEROCKS_WLAN1_IFACE}" CACHE PATH "wpa_supplicant ctrl iface path for 1st WLAN")
+-set(BEEROCKS_WPA_SUPPLICANT_WLAN2_CTRL_IFACE "/var/run/wpa_supplicant/${BEEROCKS_WLAN2_IFACE}" CACHE PATH "wpa_supplicant ctrl iface path for 2nd WLAN")
+-set(BEEROCKS_WPA_SUPPLICANT_WLAN3_CTRL_IFACE "/var/run/wpa_supplicant/${BEEROCKS_WLAN3_IFACE}" CACHE PATH "wpa_supplicant ctrl iface path for 3rd WLAN")
++set(BEEROCKS_WLAN1_STA_IFACE "wlan1" CACHE STRING "1st WLAN backhaul STA iface")
++set(BEEROCKS_WLAN2_STA_IFACE "wlan3" CACHE STRING "2nd WLAN backhaul STA iface")
++set(BEEROCKS_WLAN3_STA_IFACE "wlan5" CACHE STRING "3rd WLAN backhaul STA iface")
++
++set(BEEROCKS_WPA_SUPPLICANT_WLAN1_CTRL_IFACE "/var/run/wpa_supplicant/${BEEROCKS_WLAN1_STA_IFACE}" CACHE PATH "wpa_supplicant ctrl iface path for 1st WLAN")
++set(BEEROCKS_WPA_SUPPLICANT_WLAN2_CTRL_IFACE "/var/run/wpa_supplicant/${BEEROCKS_WLAN2_STA_IFACE}" CACHE PATH "wpa_supplicant ctrl iface path for 2nd WLAN")
++set(BEEROCKS_WPA_SUPPLICANT_WLAN3_CTRL_IFACE "/var/run/wpa_supplicant/${BEEROCKS_WLAN3_STA_IFACE}" CACHE PATH "wpa_supplicant ctrl iface path for 3rd WLAN")
+ 
+ # Add prplmesh_platform_db config generation
+ add_subdirectory(platform_db)
+--- a/framework/platform/bpl/platform_db/prplmesh_platform_db.in
++++ b/framework/platform/bpl/platform_db/prplmesh_platform_db.in
+@@ -7,6 +7,9 @@ hostapd_ctrl_path_@BEEROCKS_WLAN3_IFACE@=@BEEROCKS_HOSTAP_WLAN3_CTRL_IFACE@
+ wpa_supplicant_ctrl_path_@BEEROCKS_WLAN1_IFACE@=@BEEROCKS_WPA_SUPPLICANT_WLAN1_CTRL_IFACE@
+ wpa_supplicant_ctrl_path_@BEEROCKS_WLAN2_IFACE@=@BEEROCKS_WPA_SUPPLICANT_WLAN2_CTRL_IFACE@
+ wpa_supplicant_ctrl_path_@BEEROCKS_WLAN3_IFACE@=@BEEROCKS_WPA_SUPPLICANT_WLAN3_CTRL_IFACE@
++wpa_supplicant_ctrl_path_@BEEROCKS_WLAN1_STA_IFACE@=@BEEROCKS_WPA_SUPPLICANT_WLAN1_CTRL_IFACE@
++wpa_supplicant_ctrl_path_@BEEROCKS_WLAN2_STA_IFACE@=@BEEROCKS_WPA_SUPPLICANT_WLAN2_CTRL_IFACE@
++wpa_supplicant_ctrl_path_@BEEROCKS_WLAN3_STA_IFACE@=@BEEROCKS_WPA_SUPPLICANT_WLAN3_CTRL_IFACE@
+ wireless.@BEEROCKS_WLAN1_IFACE@.ssid=prplmesh
+ wireless.@BEEROCKS_WLAN1_IFACE@.security_mode=wpa2-psk
+ wireless.@BEEROCKS_WLAN1_IFACE@.psk=prplmesh_pass
+-- 
+2.43.0

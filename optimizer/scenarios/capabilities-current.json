@@ -1,0 +1,29 @@
+{
+  "schema": "optimizer.capabilities.v1",
+  "name": "prplmesh-current-lab",
+  "capabilities": {
+    "rf-radio-pair-control": {"available": true, "evidence": "prpl-wmediumd atomic control and exact restore"},
+    "rf-atomic-generations": {"available": true, "evidence": "generation-checked control with readback"},
+    "current-link-metrics": {"available": true, "evidence": "prplMesh NBAPI associated STA SignalStrength"},
+    "measurement-receipt-time": {"available": true, "evidence": "NBAPI associated STA TimeStamp plus reconstructed unassociated measurement time"},
+    "candidate-link-metrics": {"available": true, "evidence": "Unassociated STA Link Metrics correlated to Agent, RUID, STA and target BSSID"},
+    "same-band-candidate-link-metrics": {"available": true, "evidence": "80/80 alternate-AP measurements accepted for 20 clients"},
+    "cross-band-candidate-link-metrics": {"available": false, "evidence": "active query is same-band; no accepted exact-target cross-band observation"},
+    "ap-load-metrics": {"available": false, "evidence": "no optimizer-facing timestamped BSS load adapter"},
+    "backhaul-link-metrics": {"available": false, "evidence": "no optimizer-facing timestamped backhaul metric adapter"},
+    "btm-steering": {"available": true, "evidence": "NBAPI MultiAPSTA.BTMRequest with physical and model verification"},
+    "association-verification": {"available": true, "evidence": "client link and controller NBAPI ownership must converge"},
+    "traffic-ping": {"available": true, "evidence": "20-client and deepest-chain data-plane gates"},
+    "traffic-iperf3": {"available": false, "evidence": "mixed sustained traffic driver and envelope not accepted"},
+    "frequency-qualified-snr": {"available": true, "evidence": "per-band hwsim identities and frequency-qualified wmediumd control"},
+    "band-candidate-inventory": {"available": true, "evidence": "30 fronthaul BSS identities across five nodes and three bands"},
+    "backhaul-band-control": {"available": false, "evidence": "no optimizer action adapter; configurator protects backhaul"},
+    "channel-width-control": {"available": false, "evidence": "current hwsim profile uses 20 MHz channels"},
+    "preassociation-probe-control": {"available": false, "evidence": "no probe-response action adapter"},
+    "controlled-btm-response": {"available": false, "evidence": "no per-client accept/reject/ignore live fixture"},
+    "extender-rf-isolation": {"available": true, "evidence": "leaf outage, client recovery and same-identity rejoin accepted"},
+    "scale-profile-small": {"available": true, "evidence": "controller plus four Agents and 20 clients accepted"},
+    "scale-profile-medium": {"available": false, "evidence": "50-client runtime profile not accepted"},
+    "scale-profile-stress": {"available": false, "evidence": "100-client runtime profile not accepted"}
+  }
+}

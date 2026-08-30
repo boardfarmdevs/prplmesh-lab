@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>prplMesh topology</title>
+<style>
+  :root { color-scheme: dark; font-family: Inter, system-ui, sans-serif; }
+  body { margin: 0; background: #08111f; color: #e8f0fb; }
+  header { display:flex; align-items:center; gap:18px; padding:16px 22px; background:#0d1b2f; border-bottom:1px solid #29415f; }
+  h1 { font-size:20px; margin:0; } #state { color:#8ea6c5; font-size:13px; }
+  #graph { width:100vw; height:calc(100vh - 61px); display:block; }
+  .device { fill:#132943; stroke:#5d81aa; stroke-width:2; }
+  .controller { stroke:#47b5ff; } .agent { stroke:#55d68b; }
+  .edge { stroke:#7394b8; stroke-width:3; fill:none; }
+  .client-edge { stroke:#4ca876; stroke-width:2; fill:none; opacity:.8; }
+  .title { fill:#fff; font-weight:700; font-size:17px; }
+  .detail { fill:#adc2da; font-size:11px; }
+  .radio { stroke-width:2; } .band24 { fill:#2b4679; stroke:#74a1ff; }
+  .band5 { fill:#215a51; stroke:#54d7b0; } .band6 { fill:#5d3d72; stroke:#d79bff; }
+  .radioText { fill:white; font-size:11px; font-weight:650; text-anchor:middle; }
+  .client { fill:#f5bd52; stroke:#ffe2a1; stroke-width:2; }
+  .client.iot { fill:#e87976; stroke:#ffc0bd; }
+  .clientText { fill:#f9e9c9; font-size:11px; }
+  .label { fill:#9bb1cb; font-size:11px; text-anchor:middle; }
+</style>
+</head>
+<body>
+<header><h1>prplMesh network topology</h1><span id="state">loading NBAPI model…</span></header>
+<svg id="graph" role="img" aria-label="prplMesh topology"></svg>
+<script>
+const ns='http://www.w3.org/2000/svg', svg=document.getElementById('graph'), state=document.getElementById('state');
+function el(name, attrs={}, text='') { const n=document.createElementNS(ns,name); for(const [k,v] of Object.entries(attrs)) n.setAttribute(k,v); if(text)n.textContent=text; return n; }
+function bandClass(b){ return b.startsWith('2.4')?'band24':b.startsWith('5')?'band5':'band6'; }
+function render(data){
+  svg.replaceChildren(); const W=Math.max(innerWidth,900), H=Math.max(innerHeight-61,520); svg.setAttribute('viewBox',`0 0 ${W} ${H}`);
+  const devices=data.devices, dx=W/(devices.length+1), positions=new Map();
+  devices.forEach((d,i)=>positions.set(d.id,{x:dx*(i+1),y:H*.33}));
+  devices.filter(d=>d.backhaul.parent_id).forEach(d=>{ const a=positions.get(d.backhaul.parent_id), b=positions.get(d.id); if(!a||!b)return; svg.append(el('path',{d:`M ${a.x+135} ${a.y} C ${(a.x+b.x)/2} ${a.y-50}, ${(a.x+b.x)/2} ${b.y-50}, ${b.x-135} ${b.y}`,class:'edge'})); svg.append(el('text',{x:(a.x+b.x)/2,y:a.y-55,class:'label'},d.backhaul.type||'backhaul')); });
+  devices.forEach(d=>{
+    const p=positions.get(d.id), g=el('g'), w=270, h=190;
+    g.append(el('rect',{x:p.x-w/2,y:p.y-h/2,width:w,height:h,rx:22,class:`device ${d.role}`}));
+    g.append(el('text',{x:p.x-w/2+18,y:p.y-h/2+30,class:'title'},d.name));
+    g.append(el('text',{x:p.x-w/2+18,y:p.y-h/2+49,class:'detail'},d.id));
+    const radios=d.radios;
+    radios.forEach((r,ri)=>{ const x=p.x-w/2+55+ri*80,y=p.y+24; g.append(el('circle',{cx:x,cy:y,r:31,class:`radio ${bandClass(r.band)}`})); g.append(el('text',{x,y:y-4,class:'radioText'},r.band.replace(' GHz','G'))); g.append(el('text',{x,y:y+12,class:'radioText'},`ch ${r.channel}`)); const clients=r.bsses.flatMap(b=>b.clients.map(c=>({...c,bssid:b.bssid,ssid:b.ssid}))); clients.forEach((c,ci)=>{ const cx=p.x-w/2+35+ri*80+(ci%2)*25, cy=p.y+h/2+55+Math.floor(ci/2)*38; svg.append(el('path',{d:`M ${x} ${y+31} Q ${x} ${cy-25}, ${cx} ${cy-12}`,class:'client-edge'})); const marker=el('circle',{cx,cy,r:11,class:`client ${c.cohort||'sta'}`}); marker.append(el('title',{},`${c.id}\n${c.ssid} ${r.band} ch ${r.channel}\n${c.signal_dbm===null?'signal unavailable':c.signal_dbm+' dBm'}\nBSSID ${c.bssid}`)); svg.append(marker); svg.append(el('text',{x:cx+16,y:cy+4,class:'clientText'},c.name)); }); });
+    g.append(el('text',{x:p.x-w/2+18,y:p.y+h/2-14,class:'detail'},`EasyMesh profile ${d.profile} · prplMesh ${d.software_version}`));
+    svg.append(g);
+  });
+  state.textContent=`${devices.length} devices · updated ${new Date(data.generated_at).toLocaleTimeString()}`;
+}
+async function refresh(){ try{ const r=await fetch('/api/topology',{cache:'no-store'}); const d=await r.json(); if(!r.ok)throw Error(d.error||r.statusText); render(d); }catch(e){ state.textContent=`unavailable: ${e.message}`; } }
+refresh(); setInterval(refresh,2000); addEventListener('resize',refresh);
+</script>
+</body>
+</html>

@@ -1,0 +1,280 @@
+From: prplMesh virtual-radio lab
+Subject: [PATCH] nl80211: report hwsim candidate metrics through EasyMesh
+
+The prplMesh controller and NBAPI implement Unassociated STA Link Metrics, but
+the native nl80211 monitor HAL discards the requested station list. In the
+hwsim research lab, obtain frequency-qualified SNR from wmediumd's separately
+mounted read-only socket, convert it to RSSI using the laboratory noise floor,
+and publish the result through the normal monitor, Agent, IEEE 1905 and
+controller data-model path.
+
+The provider requires the frequency-qualified and read-only capabilities and
+fails closed otherwise. No optimizer or controller process reads scenario
+truth directly.
+
+--- a/common/beerocks/bwl/nl80211/mon_wlan_hal_nl80211.cpp
++++ b/common/beerocks/bwl/nl80211/mon_wlan_hal_nl80211.cpp
+@@ -13,7 +13,14 @@
+ 
+ #include <easylogging++.h>
+ 
++#include <arpa/inet.h>
++#include <chrono>
+ #include <cmath>
++#include <fstream>
++#include <sys/socket.h>
++#include <sys/time.h>
++#include <sys/un.h>
++#include <unistd.h>
+ 
+ extern "C" {
+ #include <wpa_ctrl.h>
+@@ -701,8 +708,177 @@ bool mon_wlan_hal_nl80211::set_estimated_service_parameters(uint8_t *esp_info_f
+ 
+ bool mon_wlan_hal_nl80211::sta_unassoc_rssi_measurement(
+     std::unordered_map<std::string, sUnassocStaParams> &new_list)
+ {
+-    new_list.clear();
+-    LOG(DEBUG) << __func__ << " - NOT IMPLEMENTED";
+-    return true;
++    enum {
++        WMDC_OP_HELLO = 1,
++        WMDC_OP_GET_FREQUENCY = 7,
++        WMDC_OK = 0,
++        WMDC_CAP_FREQUENCY_QUALIFIED_SNR = 1U << 4,
++        WMDC_CAP_READ_ONLY = 1U << 5,
++    };
++    struct wmdc_header {
++        uint32_t magic;
++        uint16_t version;
++        uint16_t opcode;
++        uint32_t payload_len;
++        uint32_t status;
++        uint64_t generation;
++    } __attribute__((packed));
++    struct wmdc_info {
++        uint64_t instance_hi;
++        uint64_t instance_lo;
++        uint32_t capabilities;
++        uint32_t max_updates;
++        uint32_t num_stations;
++        uint32_t reserved;
++    } __attribute__((packed));
++    struct wmdc_frequency_link {
++        uint8_t source[6];
++        uint8_t destination[6];
++        uint32_t frequency_mhz;
++        int16_t snr_db;
++        uint16_t flags;
++    } __attribute__((packed));
++    struct wmdc_request {
++        wmdc_header header;
++        wmdc_frequency_link link;
++    } __attribute__((packed));
++
++    if (new_list.empty()) {
++        return true;
++    }
++
++    std::string phy_mac_path =
++        "/sys/class/net/" + get_iface_name() + "/phy80211/macaddress";
++    std::ifstream phy_mac_file(phy_mac_path);
++    std::string phy_mac;
++    if (!(phy_mac_file >> phy_mac)) {
++        LOG(ERROR) << "Cannot read hwsim identity from " << phy_mac_path;
++        return false;
++    }
++    unsigned int destination_octets[6];
++    if (sscanf(phy_mac.c_str(), "%x:%x:%x:%x:%x:%x", &destination_octets[0],
++               &destination_octets[1], &destination_octets[2], &destination_octets[3],
++               &destination_octets[4], &destination_octets[5]) != 6) {
++        LOG(ERROR) << "Invalid hwsim identity " << phy_mac;
++        return false;
++    }
++
++    int fd = socket(AF_UNIX, SOCK_SEQPACKET, 0);
++    if (fd < 0) {
++        return false;
++    }
++    timeval timeout{1, 0};
++    sockaddr_un address{};
++    address.sun_family = AF_UNIX;
++    snprintf(address.sun_path, sizeof(address.sun_path), "%s",
++             "/opt/prpl-wmediumd/metrics.sock");
++    bool ok = setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, &timeout, sizeof(timeout)) == 0 &&
++              setsockopt(fd, SOL_SOCKET, SO_SNDTIMEO, &timeout, sizeof(timeout)) == 0 &&
++              connect(fd, reinterpret_cast<sockaddr *>(&address), sizeof(address)) == 0;
++
++    wmdc_request request{};
++    uint8_t response[sizeof(wmdc_header) + sizeof(wmdc_info)]{};
++    auto header = reinterpret_cast<wmdc_header *>(response);
++    auto info = reinterpret_cast<wmdc_info *>(response + sizeof(*header));
++    auto link = reinterpret_cast<wmdc_frequency_link *>(response + sizeof(*header));
++    request.header.magic = htonl(0x574d4443U);
++    request.header.version = htons(1);
++    request.header.opcode = htons(WMDC_OP_HELLO);
++    if (ok) {
++        ok = send(fd, &request.header, sizeof(request.header), 0) ==
++             static_cast<ssize_t>(sizeof(request.header));
++    }
++    auto length = ok ? recv(fd, response, sizeof(response), 0) : -1;
++    if (length != static_cast<ssize_t>(sizeof(*header) + sizeof(*info)) ||
++        ntohl(header->magic) != 0x574d4443U || ntohs(header->version) != 1 ||
++        ntohs(header->opcode) != WMDC_OP_HELLO || ntohl(header->status) != WMDC_OK ||
++        ntohl(header->payload_len) != sizeof(*info) ||
++        (ntohl(info->capabilities) &
++         (WMDC_CAP_FREQUENCY_QUALIFIED_SNR | WMDC_CAP_READ_ONLY)) !=
++            (WMDC_CAP_FREQUENCY_QUALIFIED_SNR | WMDC_CAP_READ_ONLY)) {
++        LOG(ERROR) << "Read-only wmediumd candidate-metrics service is unavailable";
++        close(fd);
++        return false;
++    }
++
++    auto read_snr = [&](const std::string &sta_mac, uint32_t frequency_mhz,
++                        int16_t &snr_db) -> bool {
++        request = {};
++        unsigned int source_octets[6];
++        if (sscanf(sta_mac.c_str(), "%x:%x:%x:%x:%x:%x", &source_octets[0],
++                   &source_octets[1], &source_octets[2], &source_octets[3],
++                   &source_octets[4], &source_octets[5]) != 6) {
++            return false;
++        }
++        for (size_t i = 0; i < 6; i++) {
++            request.link.source[i] = static_cast<uint8_t>(source_octets[i]);
++            request.link.destination[i] = static_cast<uint8_t>(destination_octets[i]);
++        }
++        // wmediumd uses the local-admin ownership bit on permanent hwsim
++        // addresses. A learned station VIF is resolved to its owning radio.
++        request.link.destination[0] |= 0x40;
++        request.link.frequency_mhz = htonl(frequency_mhz);
++        request.header.magic = htonl(0x574d4443U);
++        request.header.version = htons(1);
++        request.header.opcode = htons(WMDC_OP_GET_FREQUENCY);
++        request.header.payload_len = htonl(sizeof(request.link));
++        if (send(fd, &request, sizeof(request), 0) != static_cast<ssize_t>(sizeof(request))) {
++            return false;
++        }
++        auto received = recv(fd, response, sizeof(response), 0);
++        if (received != static_cast<ssize_t>(sizeof(*header) + sizeof(*link)) ||
++            ntohl(header->magic) != 0x574d4443U || ntohs(header->version) != 1 ||
++            ntohs(header->opcode) != WMDC_OP_GET_FREQUENCY ||
++            ntohl(header->status) != WMDC_OK ||
++            ntohl(header->payload_len) != sizeof(*link) ||
++            ntohl(link->frequency_mhz) != frequency_mhz) {
++            return false;
++        }
++        snr_db = static_cast<int16_t>(ntohs(static_cast<uint16_t>(link->snr_db)));
++        return true;
++    };
++
++    auto now = std::chrono::system_clock::now();
++    uint64_t timestamp_ms = std::chrono::duration_cast<std::chrono::milliseconds>(
++                                now.time_since_epoch())
++                                .count();
++    std::vector<sUnassociatedStationStats> stats;
++    for (const auto &station : new_list) {
++        uint8_t channel = station.second.channel;
++        uint8_t operating_class = station.second.operating_class;
++        uint32_t frequency_mhz = 0;
++        if (operating_class >= 81 && operating_class <= 84 && channel <= 14) {
++            frequency_mhz = channel == 14 ? 2484 : 2407 + 5 * channel;
++        } else if (operating_class >= 115 && operating_class <= 130 && channel <= 177) {
++            frequency_mhz = 5000 + 5 * channel;
++        } else if (operating_class >= 131 && operating_class <= 137 && channel <= 233) {
++            frequency_mhz = 5950 + 5 * channel;
++        }
++        int16_t snr_db = 0;
++        if (!frequency_mhz || !read_snr(station.first, frequency_mhz, snr_db)) {
++            LOG(DEBUG) << "No wmediumd candidate metric for " << station.first << " on "
++                       << get_iface_name();
++            continue;
++        }
++        stats.push_back({tlvf::mac_from_string(station.first), snr_db - 91, channel,
++                         operating_class, timestamp_ms});
++    }
++    close(fd);
++
++    if (stats.empty()) {
++        return false;
++    }
++    sUnassociatedStationsStats stats_out{stats};
++    auto msg_buff = ALLOC_SMART_BUFFER(sizeof(stats_out));
++    if (!msg_buff) {
++        LOG(FATAL) << "Memory allocation failed for sUnassociatedStationsStats";
++        return false;
++    }
++    auto msg = reinterpret_cast<sUnassociatedStationsStats *>(msg_buff.get());
++    memset(msg_buff.get(), 0, sizeof(stats_out));
++    std::copy(stats_out.un_stations_stats.begin(), stats_out.un_stations_stats.end(),
++              back_inserter(msg->un_stations_stats));
++    event_queue_push(Event::Unassociation_Stations_Stats, msg_buff);
++    return true;
+ }
+--- a/controller/nbapi/on_action.cpp
++++ b/controller/nbapi/on_action.cpp
+@@ -1446,7 +1446,13 @@ amxd_status_t add_unassociated_station(amxd_object_t *object, amxd_function_t *f
+     }
+ 
+     //get agent mac
+     amxd_object_t *parent = amxd_object_get_parent(object);
++    parent = parent ? amxd_object_get_parent(parent) : nullptr;
++    if (!parent) {
++        LOG(ERROR) << "Failed fetching parent Device instance";
++        amxc_var_clean(&value);
++        return amxd_status_object_not_found;
++    }
+     amxd_object_get_param(parent, "ID", &value);
+     str = amxc_var_constcast(cstring_t, &value);
+     if (str == nullptr) {
+@@ -1529,7 +1535,13 @@ amxd_status_t remove_unassociated_station(amxd_object_t *object, amxd_function_t
+     }
+ 
+     //get agent mac
+     amxd_object_t *parent = amxd_object_get_parent(object);
++    parent = parent ? amxd_object_get_parent(parent) : nullptr;
++    if (!parent) {
++        LOG(ERROR) << "Failed fetching parent Device instance";
++        amxc_var_clean(&value);
++        return amxd_status_object_not_found;
++    }
+     amxd_object_get_param(parent, "ID", &value);
+     str = amxc_var_constcast(cstring_t, &value);
+     amxc_var_clean(&value);
+--- a/controller/src/beerocks/master/controller.cpp
++++ b/controller/src/beerocks/master/controller.cpp
+@@ -5808,11 +5808,6 @@ bool Controller::get_unassociated_stations_stats()
+ bool Controller::send_unassociated_sta_link_metrics_query_message(
+     ieee1905_1::CmduMessageTx &cmdu_tx, db &database)
+ {
+-    if (!cmdu_tx.create(0, ieee1905_1::eMessageType::UNASSOCIATED_STA_LINK_METRICS_QUERY_MESSAGE)) {
+-        LOG(ERROR) << "Failed building message UNASSOCIATED_STA_LINK_METRICS_RESPONSE_MESSAGE!";
+-        return false;
+-    }
+-
+     using map_stations_per_channel = std::unordered_map<uint8_t, std::list<sMacAddr>>;
+ 
+     using map_operating_classes_per_agent = std::unordered_map<uint8_t, map_stations_per_channel>;
+@@ -5860,6 +5854,11 @@ bool Controller::send_unassociated_sta_link_metrics_query_message(
+         }
+     } else { // this is a command to remove all monitored stations
+         for (const auto &agent : database.get_all_connected_agents()) {
++            if (!cmdu_tx.create(
++                    0, ieee1905_1::eMessageType::UNASSOCIATED_STA_LINK_METRICS_QUERY_MESSAGE)) {
++                LOG(ERROR) << "Failed building unassociated STA metrics clear message";
++                return false;
++            }
+             cmdu_tx.addClass<wfa_map::tlvUnassociatedStaLinkMetricsQuery>();
+             son_actions::send_cmdu_to_agent(agent->al_mac, cmdu_tx, database);
+             LOG(DEBUG) << "removed  non_associated stations from  agent with mac_address "
+@@ -5872,6 +5871,11 @@ bool Controller::send_unassociated_sta_link_metrics_query_message(
+     for (auto &agent : global_map) {
+ 
+         for (auto &operating_class : agent.second) {
++            if (!cmdu_tx.create(
++                    0, ieee1905_1::eMessageType::UNASSOCIATED_STA_LINK_METRICS_QUERY_MESSAGE)) {
++                LOG(ERROR) << "Failed building unassociated STA metrics query message";
++                return false;
++            }
+             auto unassociated_sta_query =
+                 cmdu_tx.addClass<wfa_map::tlvUnassociatedStaLinkMetricsQuery>();
+             if (operating_class.second.size() == 0) {

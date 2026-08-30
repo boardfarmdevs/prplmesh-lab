@@ -1,0 +1,22 @@
+prplMesh 6.0.0 NL80211 virtual-radio acceptance
+Date: 2026-08-28
+
+Topology:
+  controller AL 02:00:00:27:01:01, radios 2437/5180/5975 MHz
+  agent-1   AL 02:00:00:27:02:01, radios 2437/5180/5975 MHz
+  client 02:00:00:00:06:00 associated on 2.4 GHz
+  client 02:00:00:00:07:00 associated on 5 GHz
+  client 02:00:00:00:08:00 associated on 6 GHz with SAE
+
+Repeatable acceptance output:
+  BTM 5GHz: prpl-client-02 02:00:00:00:07:00 02:00:00:00:01:00 -> 02:00:00:00:04:00
+  PASS 5GHz: physical association, NBAPI model and BTM response agree
+  BTM 6GHz: prpl-client-03 02:00:00:00:08:00 02:00:00:00:02:00 -> 02:00:00:00:05:00
+  PASS 6GHz: physical association, NBAPI model and BTM response agree
+  PASS: prplMesh NBAPI steering acceptance
+
+Protocol evidence:
+  5 GHz BSS-TM-RESP status_code=0 target_bssid=02:00:00:00:04:00
+  6 GHz BSS-TM-RESP status_code=0 target_bssid=02:00:00:00:05:00
+  controller Btmreq Client Steer attempt: result=Success, trigger=NBAPI,
+  type=11v (BTM)

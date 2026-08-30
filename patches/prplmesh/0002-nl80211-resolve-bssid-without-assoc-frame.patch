@@ -1,0 +1,32 @@
+From: prplMesh virtual-radio lab
+Subject: [PATCH] nl80211: resolve BSSID when association frame is unavailable
+
+Open-source hostapd can emit AP-STA-CONNECTED without the raw association
+request having first reached prplMesh. In that case the notification was
+zero-initialized and forwarded with 00:00:00:00:00:00 as its BSSID. The
+controller cannot attach the station to that non-existent BSS.
+
+The hostapd event is delivered on the BSS control socket, so the resolved VAP
+already identifies the authoritative BSSID. Use it as the fallback while
+retaining the raw-frame BSSID and capability parsing whenever the frame is
+available.
+
+--- a/common/beerocks/bwl/nl80211/ap_wlan_hal_nl80211.cpp
++++ b/common/beerocks/bwl/nl80211/ap_wlan_hal_nl80211.cpp
+@@ -1398,6 +1398,14 @@ bool ap_wlan_hal_nl80211::process_nl80211_event(parsed_obj_map_t &parsed_obj)
+         if (m_latest_assoc_frame.find(src_mac) == m_latest_assoc_frame.end()) {
+             LOG(WARNING) << "STA-CONNECTED without previously receiving a (re-)association frame!";
+             msg->params.association_frame_length = 0;
++            auto vap = m_radio_info.available_vaps.find(vap_id);
++            if (vap == m_radio_info.available_vaps.end()) {
++                LOG(ERROR) << "No VAP information for connected STA on vap_id " << vap_id;
++                return false;
++            }
++            msg->params.bssid = tlvf::mac_from_string(vap->second.mac);
++            LOG(INFO) << "Resolved connected STA BSSID from VAP "
++                      << tlvf::mac_to_string(msg->params.bssid);
+         } else {
+             // Add the latest association frame
+             // PPM-1718: parse the association frame and make sure it belongs to the right MAC address.
+-- 
+2.43.0

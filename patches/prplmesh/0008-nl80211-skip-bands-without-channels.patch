@@ -1,0 +1,27 @@
+From: prplMesh virtual-radio lab
+Subject: [PATCH] nl80211: skip advertised bands without channel data
+
+Some nl80211 radios advertise a band entry whose supported-channel map is
+empty.  refresh_radio_info() checked only the first band before dereferencing
+the first channel of every band in its frequency-band search.  A tri-band
+mac80211_hwsim radio can therefore crash beerocks_fronthaul while attaching
+the second and third radios.
+
+Treat a band without channel data as a non-match.  A radio for which every
+band is empty still follows the existing failure path instead of
+dereferencing an empty container.
+
+--- a/common/beerocks/bwl/nl80211/ap_wlan_hal_nl80211.cpp
++++ b/common/beerocks/bwl/nl80211/ap_wlan_hal_nl80211.cpp
+@@ -503,6 +503,9 @@ bool ap_wlan_hal_nl80211::refresh_radio_info()
+     auto band_info_it =
+         std::find_if(radio_info.bands.begin(), radio_info.bands.end(),
+                      [&](const bwl::nl80211_client::band_info &b) {
++                         if (b.supported_channels.empty()) {
++                             return false;
++                         }
+                          return m_radio_info.frequency_band ==
+                                 son::wireless_utils::which_freq_type(
+                                     b.supported_channels.begin()->second.center_freq);
+-- 
+2.43.0

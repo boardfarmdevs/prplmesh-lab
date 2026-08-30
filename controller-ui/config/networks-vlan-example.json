@@ -1,0 +1,28 @@
+{
+  "networks": [
+    {
+      "id": "private",
+      "name": "Private",
+      "ssid": "private_ssid",
+      "haul_type": "Fronthaul",
+      "vlan_id": 100,
+      "enforcement": "presentation-only"
+    },
+    {
+      "id": "iot",
+      "name": "IoT",
+      "ssid": "iot_ssid",
+      "haul_type": "Iot",
+      "vlan_id": 200,
+      "enforcement": "presentation-only"
+    },
+    {
+      "id": "backhaul",
+      "name": "Mesh Backhaul",
+      "ssid": "mesh_backhaul",
+      "haul_type": "Backhaul",
+      "vlan_id": 300,
+      "enforcement": "presentation-only"
+    }
+  ]
+}

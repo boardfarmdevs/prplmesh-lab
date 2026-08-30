@@ -1,0 +1,29 @@
+From: prplMesh virtual-radio lab
+Subject: [PATCH] nl80211: classify 6 GHz from the hostapd operating class
+
+Standard hostapd uses hw_mode=a for both 5 GHz and 6 GHz.  The Linux HAL
+therefore classified a 6 GHz radio as 5 GHz whenever the OpenWrt-only `band`
+option was absent.  Use the unambiguous global operating classes 131 through
+136 before falling back to hw_mode.
+
+--- a/common/beerocks/bwl/nl80211/ap_wlan_hal_nl80211.cpp
++++ b/common/beerocks/bwl/nl80211/ap_wlan_hal_nl80211.cpp
+@@ -450,8 +450,13 @@ bool ap_wlan_hal_nl80211::refresh_radio_info()
+                     return false;
+                 }
+             } else {
+-                // Compute frequency band out of parameter `hw_mode` in hostapd.conf
+-                auto hw_mode = conf.get_head_value("hw_mode");
+-                if (!hw_mode.empty()) {
++                // Standard hostapd uses hw_mode=a for both 5 GHz and 6 GHz.
++                // A 6 GHz global operating class is therefore authoritative.
++                auto op_class       = conf.get_head_value("op_class");
++                auto op_class_value = op_class.empty() ? 0 : beerocks::string_utils::stoi(op_class);
++                auto hw_mode        = conf.get_head_value("hw_mode");
++                if (op_class_value >= 131 && op_class_value <= 136) {
++                    m_radio_info.frequency_band = beerocks::eFreqType::FREQ_6G;
++                } else if (!hw_mode.empty()) {
+                     // The mode used by hostapd (11b, 11g, 11n, 11ac, 11ax) is governed by several
+                     // parameters in the configuration file. However, as explained in the comment below from
+-- 
+2.43.0

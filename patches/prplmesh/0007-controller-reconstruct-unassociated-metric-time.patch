@@ -1,0 +1,30 @@
+From: prplMesh virtual-radio lab
+Subject: [PATCH] controller: reconstruct unassociated metric timestamp
+
+The EasyMesh Unassociated STA Link Metrics response carries measurement age in
+milliseconds, not an epoch timestamp.  The controller treated that age as
+time_t seconds, producing dates near 1970 in NBAPI.  Reconstruct the
+measurement time from the receipt clock and the reported age so consumers can
+make a valid freshness decision.
+
+This is protocol-data handling and applies to physical as well as simulated
+radios.
+
+--- a/controller/src/beerocks/master/tasks/link_metrics_task.cpp
++++ b/controller/src/beerocks/master/tasks/link_metrics_task.cpp
+@@ -443,9 +443,13 @@ bool LinkMetricsTask::handle_unassociated_sta_link_metrics_response(
+             UnassociatedStation::Stats stats;
+             stats.uplink_rcpi_dbm_enc = sta_metrics.uplink_rcpi_dbm_enc;
+ 
+-            time_t received_time = sta_metrics.measurement_to_report_delta_msec;
++            auto measurement_time =
++                std::chrono::system_clock::now() -
++                std::chrono::milliseconds(sta_metrics.measurement_to_report_delta_msec);
++            time_t measurement_time_t =
++                std::chrono::system_clock::to_time_t(measurement_time);
+             char buf[sizeof "2011-10-08T07:07:09Z"];
+-            strftime(buf, sizeof buf, "%FT%TZ", gmtime(&received_time));
++            strftime(buf, sizeof buf, "%FT%TZ", gmtime(&measurement_time_t));
+             stats.time_stamp = buf;
+ 
+             database.update_unassociated_station_stats(sta_metrics.sta_mac, stats, radio->dm_path);
