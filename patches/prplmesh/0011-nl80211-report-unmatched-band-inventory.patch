@@ -1,0 +1,30 @@
+From: prplMesh virtual-radio lab
+Subject: [PATCH] nl80211: report the inventory when band selection fails
+
+An unmatched configured band currently reports no information about the
+NL80211 candidates that were parsed.  Emit the channel count, representative
+frequency and inferred type for each band only on this failure path.  This
+makes real driver and split-wiphy parsing defects diagnosable without a debug
+build or an external reproducer.
+
+--- a/common/beerocks/bwl/nl80211/ap_wlan_hal_nl80211.cpp
++++ b/common/beerocks/bwl/nl80211/ap_wlan_hal_nl80211.cpp
+@@ -542,3 +542,16 @@ bool ap_wlan_hal_nl80211::refresh_radio_info()
+     } else {
++        for (const auto &band : radio_info.bands) {
++            if (band.supported_channels.empty()) {
++                LOG(ERROR) << "NL80211 band candidate has no supported channels";
++                continue;
++            }
++            const auto &channel = band.supported_channels.begin()->second;
++            LOG(ERROR) << "NL80211 band candidate: channels="
++                       << band.supported_channels.size()
++                       << ", first_frequency=" << channel.center_freq
++                       << ", inferred_band="
++                       << int(band.get_frequency_band());
++        }
++        LOG(ERROR) << "Configured frequency band=" << int(m_radio_info.frequency_band);
+         LOG(ERROR) << "Failed to find a band that matches the frequency band of the radio info";
+         return false;
+-- 
+2.43.0
