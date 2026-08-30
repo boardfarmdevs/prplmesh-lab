@@ -7,6 +7,8 @@ HOST_IP=${PRPLMESH_UI_HOST_IP:-127.0.0.1}
 TOPOLOGY_PORT=${PRPLMESH_TOPOLOGY_HOST_PORT:-8090}
 UI_PORT=${PRPLMESH_UI_HOST_PORT:-8091}
 
+[ -c /dev/kvm ] || { echo "/dev/kvm is unavailable; enable hardware virtualization" >&2; exit 1; }
+command -v lxc >/dev/null 2>&1 || { echo "lxc is not installed; run install-host.sh" >&2; exit 1; }
 [ -r "$BACKUP" ] || { echo "backup is not readable: $BACKUP" >&2; exit 1; }
 if lxc info "$NAME" >/dev/null 2>&1; then
     echo "LXD instance already exists: $NAME" >&2
@@ -17,6 +19,7 @@ fi
 lxc import "$BACKUP" "$NAME"
 lxc config set "$NAME" limits.cpu 6
 lxc config set "$NAME" limits.memory 8GiB
+lxc config set "$NAME" boot.autostart true
 if lxc config device show "$NAME" | grep -q '^canonical-source:'; then
     lxc config device remove "$NAME" canonical-source
 fi
