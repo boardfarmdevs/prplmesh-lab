@@ -30,9 +30,22 @@ trap cleanup EXIT
 
 cd "$ROOT/wmediumd/configurator"
 python3 -m wmdcfg.cli inventory -o "$inventory"
-expected_clients=$(jq '[.radios[] | select(.kind == "station")] | length' "$inventory")
-[ "$expected_clients" -gt 0 ] || {
-    echo "optimizer inventory contains no station radios" >&2
+discovered_clients=$(jq '[.radios[] | select(.kind == "station")] | length' "$inventory")
+expected_clients=${PRPL_CLIENT_COUNT:-}
+if [ -z "$expected_clients" ] && [ -r /etc/default/prplmesh-lab ]; then
+    expected_clients=$(bash -c '
+        . /etc/default/prplmesh-lab
+        printf "%s" "${PROVISIONED_CLIENT_COUNT:-}"
+    ')
+fi
+case "$expected_clients" in
+    ''|*[!0-9]*|0)
+        echo "PRPL_CLIENT_COUNT must specify the positive profile cardinality" >&2
+        exit 1
+        ;;
+esac
+[ "$discovered_clients" -eq "$expected_clients" ] || {
+    echo "optimizer inventory client cardinality $discovered_clients does not match required profile count $expected_clients" >&2
     exit 1
 }
 

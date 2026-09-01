@@ -13,7 +13,7 @@ from .model import ScenarioError
 
 
 MESH_NAME = re.compile(r"^(prpl-controller|prpl-agent-\d{2})$")
-CLIENT_NAME = re.compile(r"^prpl-client-\d{2}$")
+CLIENT_NAME = re.compile(r"^prpl-client-\d{2,}$")
 
 
 def _run(*args: str, attempts: int = 2, timeout_seconds: float = 5.0) -> str:
