@@ -90,13 +90,46 @@ source_node_and_radio()
     esac
 }
 
+btm_response_count()
+{
+    local node=$1 radio=$2 mac=$3 target=$4
+    lxc exec "$node" -- sh -c '
+        radio=$1
+        sta=$2
+        target=$3
+        for file in /tmp/beerocks/logs/beerocks_ap_manager_"$radio"*.log; do
+            [ -f "$file" ] || continue
+            grep -h -F "BSS-TM-RESP $sta " "$file" 2>/dev/null || true
+        done | awk -v status="status_code=0" -v destination="target_bssid=$target" '\''
+            index($0, status) && index($0, destination) { count++ }
+            END { print count + 0 }
+        '\''
+    ' sh "$radio" "$mac" "$target"
+}
+
+wait_for_btm_response()
+{
+    local node=$1 radio=$2 mac=$3 target=$4 before=$5 attempt current
+    for attempt in $(seq 1 10); do
+        current=$(btm_response_count "$node" "$radio" "$mac" "$target")
+        if [ "$current" -gt "$before" ]; then
+            return
+        fi
+        sleep 1
+    done
+    echo "BTM response missing: node=$node radio=$radio sta=$mac target=$target before=$before current=$current" >&2
+    return 1
+}
+
 test_btm()
 {
-    local client=$1 mac=$2 cohort=$3 band=$4 source target object request
+    local client=$1 mac=$2 cohort=$3 band=$4 source target object request responses_before
     source=$(client_bssid "$client")
     target=$(next_bssid "$source" "$cohort")
     object=$(station_object "$mac")
     source_node_and_radio "$source"
+    responses_before=$(btm_response_count \
+        "$SOURCE_NODE" "$SOURCE_RADIO" "$mac" "$target")
 
     request=$(printf \
         '{"DisassociationImminent":false,"DisassociationTimer":0,"BSSTerminationDuration":0,"ValidityInterval":10,"SteeringTimer":50,"TargetBSS":"%s"}' \
@@ -105,10 +138,8 @@ test_btm()
     lxc exec "$CONTROLLER" -- ubus call "${object}.MultiAPSTA" \
         BTMRequest "$request" >/dev/null
     wait_for_target "$client" "$mac" "$target"
-
-    lxc exec "$SOURCE_NODE" -- grep -q \
-        "BSS-TM-RESP $mac status_code=0.*target_bssid=$target" \
-        "/tmp/beerocks/logs/beerocks_ap_manager_${SOURCE_RADIO}.log"
+    wait_for_btm_response \
+        "$SOURCE_NODE" "$SOURCE_RADIO" "$mac" "$target" "$responses_before"
     echo "PASS ${band}GHz ${cohort}: physical association, NBAPI ownership and BTM response agree"
 }
 
