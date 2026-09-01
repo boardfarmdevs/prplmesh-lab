@@ -17,7 +17,7 @@ root_used()
 nested_images()
 {
     command -v lxc >/dev/null 2>&1 || return 0
-    lxc image list --format csv -c f 2>/dev/null || true
+    lxc image list --format json 2>/dev/null | jq -r '.[].fingerprint' || true
 }
 
 PRESERVE_IMAGE_ALIAS=${PRPLMESH_PRESERVE_IMAGE_ALIAS:-}

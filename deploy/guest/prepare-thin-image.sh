@@ -58,7 +58,7 @@ done
 while IFS= read -r image; do
     [ -n "$image" ] || continue
     [ "$image" = "$fingerprint" ] || lxc image delete "$image"
-done < <(lxc image list --format csv -c f)
+done < <(lxc image list --format json | jq -r '.[].fingerprint')
 lxc image info "$RUNTIME_IMAGE" >/dev/null
 
 install -d -m 0755 "$(dirname "$MARKER")"
