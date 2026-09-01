@@ -100,22 +100,51 @@ lxc exec "$NAME" -- env SOURCE_COMMIT="$SOURCE_COMMIT" bash -c '
     set -euo pipefail
     next=/opt/prplmesh-lab.thin-new
     previous=/opt/prplmesh-lab.ready-base
+    swapped=0
+    rollback()
+    {
+        rc=$?
+        if [ "$swapped" -eq 1 ] && [ -d "$previous" ]; then
+            failed=/opt/prplmesh-lab.failed-thin-source
+            rm -rf -- "$failed"
+            mv /opt/prplmesh-lab "$failed"
+            mv "$previous" /opt/prplmesh-lab
+            /opt/prplmesh-lab/deploy/guest/install-service.sh \
+                /opt/prplmesh-lab >/dev/null 2>&1 || true
+            rm -rf -- "$failed"
+        fi
+        exit "$rc"
+    }
+    trap rollback EXIT
     rm -rf -- "$next" "$previous"
     git clone /run/prplmesh-thin-source.bundle "$next"
     [ "$(git -C "$next" rev-parse HEAD)" = "$SOURCE_COMMIT" ]
     [ -z "$(git -C "$next" status --porcelain)" ]
+    [ -d /opt/prplmesh-lab/build/wmediumd-source/.git ]
+    [ -x /opt/prplmesh-lab/build/bin/wmediumd ]
+    [ -r /opt/prplmesh-lab/build/bin/wmediumd.provenance.env ]
+    [ -r /opt/prplmesh-lab/artifacts/SHA256SUMS ]
+    (cd /opt/prplmesh-lab/artifacts && sha256sum -c SHA256SUMS)
+    cp -a /opt/prplmesh-lab/build "$next/build"
+    cp -a /opt/prplmesh-lab/artifacts/. "$next/artifacts/"
+    (cd "$next/artifacts" && sha256sum -c SHA256SUMS)
     mv /opt/prplmesh-lab "$previous"
     if mv "$next" /opt/prplmesh-lab; then
-        rm -rf -- "$previous"
+        swapped=1
     else
         mv "$previous" /opt/prplmesh-lab
         exit 1
     fi
+    /opt/prplmesh-lab/scripts/build-wmediumd.sh --offline
+    (cd /opt/prplmesh-lab/artifacts && sha256sum -c SHA256SUMS)
+    /opt/prplmesh-lab/deploy/guest/install-service.sh /opt/prplmesh-lab
+    rm -rf -- "$previous"
+    swapped=0
+    trap - EXIT
 '
 lxc file delete "$NAME/run/prplmesh-thin-source.bundle"
 [ "$(lxc exec "$NAME" -- git -C /opt/prplmesh-lab rev-parse HEAD)" = "$SOURCE_COMMIT" ]
 [ -z "$(lxc exec "$NAME" -- git -C /opt/prplmesh-lab status --porcelain)" ]
-lxc exec "$NAME" -- /opt/prplmesh-lab/deploy/guest/install-service.sh /opt/prplmesh-lab
 lxc exec "$NAME" -- env PRPLMESH_LAB_PROFILE="$PROFILE" \
     /opt/prplmesh-lab/deploy/guest/prepare-thin-image.sh | tee "$TRIM_REPORT"
 printf 'thin_source_bundle_sha256=%s\n' "$SOURCE_BUNDLE_SHA256" >> "$TRIM_REPORT"

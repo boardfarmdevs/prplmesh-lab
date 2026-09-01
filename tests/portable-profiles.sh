@@ -34,6 +34,7 @@ fi
 
 for script in \
     controller-ui/install.sh \
+    scripts/build-wmediumd.sh \
     deploy/guest/prepare-thin-firstboot.sh \
     deploy/guest/prepare-thin-image.sh \
     deploy/lxd-vm/package-thin.sh; do
@@ -50,5 +51,14 @@ grep -Fq 'systemctl is-active --quiet prplmesh-controller-ui.service' \
     "$ROOT/controller-ui/install.sh"
 grep -Fq 'PRPL_UI_READY_ATTEMPTS:-30' "$ROOT/controller-ui/install.sh"
 grep -Fq 'curl -sS --max-time 2' "$ROOT/controller-ui/install.sh"
+grep -Fq 'build-wmediumd.sh --offline' "$ROOT/deploy/lxd-vm/package-thin.sh"
+grep -Fq 'cp -a /opt/prplmesh-lab/build "$next/build"' \
+    "$ROOT/deploy/lxd-vm/package-thin.sh"
+grep -Fq 'cp -a /opt/prplmesh-lab/artifacts/. "$next/artifacts/"' \
+    "$ROOT/deploy/lxd-vm/package-thin.sh"
+test "$(grep -c 'sha256sum -c SHA256SUMS' \
+    "$ROOT/deploy/lxd-vm/package-thin.sh")" -ge 3
+
+"$ROOT/tests/wmediumd-offline-build.sh"
 
 echo 'PASS: prplMesh portable profiles and wmediumd rosters'

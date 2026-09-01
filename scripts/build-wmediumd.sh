@@ -3,8 +3,10 @@ set -euo pipefail
 
 ROOT=$(cd "$(dirname "$0")/.." && pwd)
 . "$ROOT/manifests/lab.env"
-SOURCE="$ROOT/build/wmediumd-source"
+SOURCE=${WMEDIUMD_SOURCE_DIR:-$ROOT/build/wmediumd-source}
+OUTPUT_DIR=${WMEDIUMD_OUTPUT_DIR:-$ROOT/build/bin}
 UPSTREAM=https://github.com/bcopeland/wmediumd
+OFFLINE=0
 PATCHES=(
     0001-wmediumd-multichannel-per-freq-interference.patch
     0002-wmediumd-use-learned-vif-owner-for-delivery.patch
@@ -24,12 +26,29 @@ PATCHES=(
     0016-wmediumd-index-hot-path-lookups.patch
 )
 
+case "${1:-}" in
+    --offline) OFFLINE=1 ;;
+    '') ;;
+    *) echo "usage: $0 [--offline]" >&2; exit 2 ;;
+esac
+
 if [ ! -d "$SOURCE/.git" ]; then
+    [ "$OFFLINE" -eq 0 ] || {
+        echo "offline wmediumd build requires an existing source cache: $SOURCE" >&2
+        exit 1
+    }
     mkdir -p "$(dirname "$SOURCE")"
     git clone "$UPSTREAM" "$SOURCE"
 fi
 
-git -C "$SOURCE" fetch origin
+if [ "$OFFLINE" -eq 1 ]; then
+    git -C "$SOURCE" cat-file -e "$WMEDIUMD_COMMIT^{commit}" || {
+        echo "offline wmediumd source cache lacks $WMEDIUMD_COMMIT" >&2
+        exit 1
+    }
+else
+    git -C "$SOURCE" fetch origin
+fi
 git -C "$SOURCE" checkout --detach "$WMEDIUMD_COMMIT"
 git -C "$SOURCE" reset --hard "$WMEDIUMD_COMMIT"
 git -C "$SOURCE" clean -fdx
@@ -42,7 +61,7 @@ done
 
 make -C "$SOURCE" -j"$(nproc)"
 install -D -m 0755 "$SOURCE/wmediumd/wmediumd" \
-    "$ROOT/build/bin/wmediumd"
+    "$OUTPUT_DIR/wmediumd"
 patchset_sha256=$(
     cd "$ROOT"
     sha256sum patches/wmediumd/*.patch | sha256sum | awk '{print $1}'
@@ -50,5 +69,5 @@ patchset_sha256=$(
 printf '%s\n' \
     "WMEDIUMD_COMMIT=$WMEDIUMD_COMMIT" \
     "WMEDIUMD_PATCHSET_SHA256=$patchset_sha256" \
-    > "$ROOT/build/bin/wmediumd.provenance.env"
-echo "Built $ROOT/build/bin/wmediumd from $WMEDIUMD_COMMIT"
+    > "$OUTPUT_DIR/wmediumd.provenance.env"
+echo "Built $OUTPUT_DIR/wmediumd from $WMEDIUMD_COMMIT"
