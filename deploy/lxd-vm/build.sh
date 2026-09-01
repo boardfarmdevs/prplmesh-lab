@@ -100,16 +100,28 @@ stop_vm()
 
 check_vm()
 {
+    local optimizer_pair optimizer_client optimizer_target
     start_vm
     run env PRPL_AGENT_COUNT=4 PRPL_CLIENT_COUNT="$CLIENTS" PRPL_TOPOLOGY=star \
         PROVISIONED_CLIENT_COUNT="$CLIENTS" HWSIM_RADIOS="$RADIOS" \
         PRPL_WMEDIUMD_CONFIG=/var/lib/prplmesh-lab/wmediumd.conf \
         /opt/prplmesh-lab/tests/run-acceptance.sh
+    optimizer_pair=$(run bash -c '
+        set -eu
+        inventory=$(mktemp /tmp/prpl-check-inventory.XXXXXX.json)
+        trap "rm -f -- $inventory" EXIT
+        cd /opt/prplmesh-lab/wmediumd/configurator
+        python3 -m wmdcfg.cli inventory -o "$inventory" >/dev/null
+        /opt/prplmesh-lab/deploy/lxd-vm/select-optimizer-stimulus.py \
+            "$inventory" prpl-agent-02
+    ')
+    read -r optimizer_client optimizer_target <<<"$optimizer_pair"
+    echo "optimizer acceptance pair: $optimizer_client -> $optimizer_target"
     run env PRPL_AGENT_COUNT=4 PRPL_CLIENT_COUNT="$CLIENTS" PRPL_TOPOLOGY=star \
         PROVISIONED_CLIENT_COUNT="$CLIENTS" HWSIM_RADIOS="$RADIOS" \
         PRPL_WMEDIUMD_CONFIG=/var/lib/prplmesh-lab/wmediumd.conf \
         /opt/prplmesh-lab/tests/optimizer-dynamic.sh recommend \
-        prpl-client-07 prpl-agent-02
+        "$optimizer_client" "$optimizer_target"
 }
 
 build_vm()
