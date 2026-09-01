@@ -61,5 +61,6 @@ test "$(grep -c 'sha256sum -c SHA256SUMS' \
     "$ROOT/deploy/lxd-vm/package-thin.sh")" -ge 3
 
 "$ROOT/tests/wmediumd-offline-build.sh"
+"$ROOT/tests/nested-stop.sh"
 
 echo 'PASS: prplMesh portable profiles and wmediumd rosters'

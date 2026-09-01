@@ -67,6 +67,20 @@ require_count()
     }
 }
 
+instance_state()
+{
+    local name=$1 state
+    state=$(lxc list "^${name}$" -c s --format csv) || {
+        echo "cannot read nested instance state: $name" >&2
+        return 1
+    }
+    [ -n "$state" ] || {
+        echo "nested instance is missing: $name" >&2
+        return 1
+    }
+    printf '%s\n' "$state"
+}
+
 require_count "$ACTIVE_AGENTS" "$PROVISIONED_AGENT_COUNT" PRPL_AGENT_COUNT
 require_count "$ACTIVE_CLIENTS" "$PROVISIONED_CLIENT_COUNT" PRPL_CLIENT_COUNT
 case "$TOPOLOGY" in
@@ -215,7 +229,7 @@ create_node()
     if ! lxc info "$name" >/dev/null 2>&1; then
         lxc init "$RUNTIME_IMAGE" "$name" -c security.privileged=true
     fi
-    [ "$(lxc list "$name" -c s --format csv)" != RUNNING ] || {
+    [ "$(instance_state "$name")" != RUNNING ] || {
         echo "$name must be stopped before provisioning" >&2
         return 1
     }
@@ -238,7 +252,7 @@ create_client()
     if ! lxc info "$name" >/dev/null 2>&1; then
         lxc init "$RUNTIME_IMAGE" "$name" -c security.privileged=true
     fi
-    [ "$(lxc list "$name" -c s --format csv)" != RUNNING ] || {
+    [ "$(instance_state "$name")" != RUNNING ] || {
         echo "$name must be stopped before provisioning" >&2
         return 1
     }
@@ -383,7 +397,7 @@ start_medium()
 start_container()
 {
     local name=$1
-    if [ "$(lxc list "$name" -c s --format csv)" != RUNNING ]; then
+    if [ "$(instance_state "$name")" != RUNNING ]; then
         lxc start "$name"
     fi
 }
@@ -594,7 +608,7 @@ stop_agent()
     local ordinal=$1 name
     require_count "$ordinal" "$PROVISIONED_AGENT_COUNT" agent
     name=$(agent_name "$ordinal")
-    [ "$(lxc list "$name" -c s --format csv)" = RUNNING ] || return 0
+    [ "$(instance_state "$name")" = RUNNING ] || return 0
     lxc exec "$name" -- \
         /mnt/project/scripts/container/cleanup-nl80211-node.sh >/dev/null
     lxc stop "$name" --timeout 5 >/dev/null 2>&1 || \
@@ -625,7 +639,7 @@ stop_all()
             "$CONTROLLER"|prpl-agent-*) ;;
             *) continue ;;
         esac
-        [ "$(lxc list "$name" -c s --format csv)" = RUNNING ] || continue
+        [ "$(instance_state "$name")" = RUNNING ] || continue
         lxc exec "$name" -- \
             /mnt/project/scripts/container/cleanup-nl80211-node.sh \
             >/dev/null 2>&1 &
@@ -636,27 +650,7 @@ stop_all()
     done
     pids=()
 
-    # Container shutdown is independent. Waiting serially for the LXD timeout
-    # makes a scaled lab take count * timeout seconds to stop. Give all nodes a
-    # short graceful window concurrently, then force only the non-responsive
-    # remainder down.
-    for name in "${names[@]}"; do
-        [ "$(lxc list "$name" -c s --format csv)" = RUNNING ] || continue
-        lxc stop "$name" --timeout 5 >/dev/null 2>&1 &
-        pids+=("$!")
-    done
-    for pid in "${pids[@]}"; do
-        wait "$pid" 2>/dev/null || true
-    done
-    pids=()
-    for name in "${names[@]}"; do
-        [ "$(lxc list "$name" -c s --format csv)" = RUNNING ] || continue
-        lxc stop "$name" --force >/dev/null 2>&1 &
-        pids+=("$!")
-    done
-    for pid in "${pids[@]}"; do
-        wait "$pid" 2>/dev/null || true
-    done
+    "$ROOT/scripts/stop-nested-instances.sh" "${names[@]}"
     stop_medium
 }
 
@@ -756,7 +750,7 @@ case "$ACTION" in
         else
             echo "medium: $MEDIUM_BACKEND stopped"
         fi
-        if [ "$(lxc list "$CONTROLLER" -c s --format csv)" = RUNNING ]; then
+        if [ "$(instance_state "$CONTROLLER")" = RUNNING ]; then
             timeout 15 lxc exec "$CONTROLLER" -- \
                 /opt/prpl-install-nl80211/bin/beerocks_cli \
                 -c bml_conn_map || \
@@ -764,7 +758,7 @@ case "$ACTION" in
         fi
         for ordinal in $(seq 1 "$PROVISIONED_CLIENT_COUNT"); do
             name=$(client_name "$ordinal")
-            [ "$(lxc list "$name" -c s --format csv)" = RUNNING ] || continue
+            [ "$(instance_state "$name")" = RUNNING ] || continue
             echo "[$name]"
             lxc exec "$name" -- wpa_cli -i wlan0 status | \
                 grep -E '^(bssid|ssid|freq|wpa_state)=' || true

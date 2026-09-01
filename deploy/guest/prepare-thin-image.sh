@@ -1,6 +1,7 @@
 #!/bin/bash
 set -euo pipefail
 
+ROOT=$(cd "$(dirname "$0")/../.." && pwd)
 MARKER=${PRPLMESH_THIN_MARKER:-/var/lib/prplmesh-lab/thin-pending.env}
 REPORT=${PRPLMESH_THIN_REPORT:-/var/lib/prplmesh-lab/thin-firstboot-report.txt}
 RUNTIME_IMAGE=${PRPLMESH_RUNTIME_IMAGE:-prpl-runtime-local}
@@ -34,11 +35,8 @@ for index in "${!instances[@]}"; do
         echo "refusing unexpected nested roster entry: ${instances[$index]}" >&2
         exit 1
     }
-    [ "$(lxc list "${instances[$index]}" -c s --format csv)" = STOPPED ] || {
-        echo "nested instance did not stop: ${instances[$index]}" >&2
-        exit 1
-    }
 done
+"$ROOT/scripts/stop-nested-instances.sh" "${instances[@]}"
 
 if lxc image alias list --format csv | cut -d, -f1 | grep -Fxq "$CANDIDATE_ALIAS"; then
     lxc image alias delete "$CANDIDATE_ALIAS"
