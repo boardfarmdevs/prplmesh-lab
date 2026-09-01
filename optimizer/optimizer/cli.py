@@ -58,6 +58,13 @@ def _positive_int(value: str) -> int:
     return parsed
 
 
+def _live_policy(path: str, expected_clients: int | None) -> ThresholdPolicy:
+    config = load_policy(path)
+    if expected_clients is not None:
+        config = replace(config, expected_clients=expected_clients)
+    return ThresholdPolicy(config)
+
+
 def _live(args, mode: str) -> int:
     base_url = args.base_url or (
         "http://127.0.0.1:8090"
@@ -83,7 +90,11 @@ def _live(args, mode: str) -> int:
         trust_api_metric_timestamp=args.trust_api_metric_timestamp,
     )
     journal = Journal(args.journal)
-    policy = ThresholdPolicy(load_policy(args.policy)) if mode != "observe" else None
+    policy = (
+        _live_policy(args.policy, args.expected_clients)
+        if mode != "observe"
+        else None
+    )
     state = PolicyState()
     actuator = None
     if mode == "act":
@@ -248,6 +259,15 @@ def parser() -> argparse.ArgumentParser:
         )
         if mode != "observe":
             command.add_argument("--policy", required=True)
+            command.add_argument(
+                "--expected-clients",
+                type=_positive_int,
+                default=None,
+                help=(
+                    "override the policy's expected client count for this live "
+                    "lab profile"
+                ),
+            )
         if mode == "act":
             command.add_argument(
                 "--steer-script",

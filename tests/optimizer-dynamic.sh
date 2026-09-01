@@ -30,6 +30,11 @@ trap cleanup EXIT
 
 cd "$ROOT/wmediumd/configurator"
 python3 -m wmdcfg.cli inventory -o "$inventory"
+expected_clients=$(jq '[.radios[] | select(.kind == "station")] | length' "$inventory")
+[ "$expected_clients" -gt 0 ] || {
+    echo "optimizer inventory contains no station radios" >&2
+    exit 1
+}
 
 if ! binding_output=$(python3 - "$inventory" "$CLIENT" "$TARGET" <<'PY'
 import json
@@ -112,6 +117,7 @@ args=(
     "$MODE" --backend prplmesh --base-url http://127.0.0.1:8090
     --candidate-provider controller --allow-simulated-candidates
     --policy configs/threshold-policy.yaml --journal "$journal"
+    --expected-clients "$expected_clients"
     --count 30 --interval 1
 )
 if [ "$MODE" = act ]; then
