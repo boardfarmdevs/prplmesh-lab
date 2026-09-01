@@ -81,29 +81,30 @@ target_bssid = next(
 )
 if not target_bssid:
     raise SystemExit(f"no {band} GHz {ssid} BSS on {target_name}")
-for value in [source, target_name, target_bssid, *others]:
+for value in [source, target_name, target_bssid, client["station_mac"], *others]:
     print(value)
 PY
 ); then
     exit 1
 fi
 readarray -t binding <<<"$binding_output"
-[ "${#binding[@]}" -eq 6 ] || {
-    echo "optimizer scenario binding returned ${#binding[@]} fields, expected 6" >&2
+[ "${#binding[@]}" -eq 7 ] || {
+    echo "optimizer scenario binding returned ${#binding[@]} fields, expected 7" >&2
     exit 1
 }
 source=${binding[0]}
 target=${binding[1]}
 target_bssid=${binding[2]}
+client_sta=${binding[3]}
 
 python3 -m wmdcfg.cli compile scenarios/optimizer-five-ap-crossover.wmd \
     --inventory "$inventory" \
     --bind "client=$CLIENT" \
     --bind "source=$source" \
     --bind "target=$target" \
-    --bind "alternate_1=${binding[3]}" \
-    --bind "alternate_2=${binding[4]}" \
-    --bind "alternate_3=${binding[5]}" \
+    --bind "alternate_1=${binding[4]}" \
+    --bind "alternate_2=${binding[5]}" \
+    --bind "alternate_3=${binding[6]}" \
     -o "$plan"
 
 echo "optimizer stimulus: $CLIENT $source -> $target ($target_bssid)"
@@ -131,16 +132,19 @@ wait "$scenario_pid"
 scenario_pid=
 
 if [ "$MODE" = recommend ]; then
-    observed=$(jq -r '
+    if ! jq -e --arg sta "$client_sta" --arg target "$target_bssid" '
         select(.kind == "evaluation")
         | .payload.decisions[]
-        | select(.action == "steer")
-        | .target_bssid' "$journal" | tail -1)
-    [ "$observed" = "$target_bssid" ] || {
-        echo "optimizer did not recommend expected target $target_bssid (got ${observed:-none})" >&2
+        | select(
+            .sta_mac == $sta
+            and .action == "steer"
+            and .target_bssid == $target
+        )
+    ' "$journal" >/dev/null; then
+        echo "optimizer did not recommend $client_sta to expected target $target_bssid" >&2
         tail -n 40 "$optimizer_log" >&2
         exit 1
-    }
+    fi
 else
     jq -e 'select(.kind == "action" and .payload.success == true)' "$journal" >/dev/null
     jq -e 'select(.kind == "verification" and .payload.success == true)' "$journal" >/dev/null
