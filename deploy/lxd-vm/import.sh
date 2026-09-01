@@ -24,6 +24,7 @@ HOST_IP=${PRPLMESH_UI_HOST_IP:-$(ip -4 route get 1.1.1.1 2>/dev/null | \
 HOST_IP=${HOST_IP:-127.0.0.1}
 TOPOLOGY_PORT=${PRPLMESH_TOPOLOGY_HOST_PORT:-8090}
 UI_PORT=${PRPLMESH_UI_HOST_PORT:-8091}
+STORAGE=${PRPLMESH_LXD_STORAGE:-}
 
 [ -c /dev/kvm ] || { echo "/dev/kvm is unavailable; enable hardware virtualization" >&2; exit 1; }
 command -v lxc >/dev/null 2>&1 || { echo "lxc is not installed; run install-host.sh" >&2; exit 1; }
@@ -37,8 +38,16 @@ if lxc info "$NAME" >/dev/null 2>&1; then
     echo "stop and delete it explicitly before importing a replacement" >&2
     exit 1
 fi
+import_args=()
+if [ -n "$STORAGE" ]; then
+    lxc storage show "$STORAGE" >/dev/null 2>&1 || {
+        echo "LXD storage pool does not exist: $STORAGE" >&2
+        exit 1
+    }
+    import_args+=(--storage "$STORAGE")
+fi
 
-lxc import "$BACKUP" "$NAME"
+lxc import "$BACKUP" "$NAME" "${import_args[@]}"
 instance_uuid=$(cat /proc/sys/kernel/random/uuid)
 vsock_id=$(od -An -N4 -tu4 /dev/urandom | tr -d ' ')
 lxc config unset "$NAME" volatile.eth0.hwaddr

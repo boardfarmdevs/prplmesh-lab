@@ -23,6 +23,7 @@ controller, four Agents, both UIs, and boot service:
 
 ```sh
 PRPLMESH_LAB_PROFILE=20 \
+PRPLMESH_LXD_STORAGE=default \
 PRPL_RUNTIME_DEPS_ARCHIVE=/absolute/path/prpl-runtime-deps-6.0.0.tar.gz \
 PRPL_INSTALL_ARCHIVE=/absolute/path/prpl-install-nl80211-6.0.0.tar.gz \
 PRPL_HOSTAP_ARCHIVE=/absolute/path/hostap-runtime-2.10.tar.gz \
@@ -38,6 +39,11 @@ Git bundle; runtime archives enter as checksummed files. The result has no host
 source mount, Git credential, fixed host address, or dependency on the build
 directory. Use `build.sh status|start|stop|restart|delete` for the named build
 instance.
+
+`PRPLMESH_LXD_STORAGE` selects the outer LXD pool for a clean build. The
+builder reports capacity, used space, free space, and the profile-aware free
+space requirement before it creates the VM. The selected build pool is saved
+as provenance in the release metadata but is never forced on another host.
 
 Package a checked export for Google Drive with:
 
@@ -57,6 +63,9 @@ cd prplmesh-20-0831-COMMIT-lxd
 sha256sum -c SHA256SUMS
 PRPLMESH_UI_HOST_IP=127.0.0.1 ./import.sh
 ```
+
+To import into a non-default outer LXD pool, add
+`PRPLMESH_LXD_STORAGE=POOL`. The pool must already exist.
 
 To expose both UIs on a lab LAN, select an address owned by the outer host:
 

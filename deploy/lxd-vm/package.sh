@@ -13,6 +13,7 @@ SHORT=$(git -C "$ROOT" rev-parse --short=7 HEAD)
 BUNDLE="$OUTPUT_DIR/prplmesh-${CLIENTS}-0831-${SHORT}-lxd"
 OUTPUT="$BUNDLE/prplmesh-${CLIENTS}-0831-${SHORT}-lxd.tar.zst"
 WAS_RUNNING=false
+BUILD_STORAGE_POOL=
 
 command -v jq >/dev/null 2>&1 || { echo 'jq is required for release metadata' >&2; exit 1; }
 
@@ -24,6 +25,11 @@ rm -rf -- "$BUNDLE"
 mkdir -p "$BUNDLE"
 [ "$(lxc list "$NAME" -c t --format csv)" = VIRTUAL-MACHINE ] || {
     echo "not an LXD VM: $NAME" >&2
+    exit 1
+}
+BUILD_STORAGE_POOL=$(lxc config device get "$NAME" root pool)
+[ -n "$BUILD_STORAGE_POOL" ] || {
+    echo "cannot determine $NAME root storage pool" >&2
     exit 1
 }
 [ "$(lxc list "$NAME" -c s --format csv)" != RUNNING ] || WAS_RUNNING=true
@@ -69,7 +75,7 @@ restart()
 }
 trap restart EXIT
 
-lxc export "$NAME" "$OUTPUT" --instance-only --compression zstd
+lxc export "$NAME" "$OUTPUT" --instance-only --compression zstd </dev/null
 install -m 0755 "$ROOT/deploy/lxd-vm/import.sh" "$BUNDLE/import.sh"
 install -m 0755 "$ROOT/deploy/lxd-vm/install-host.sh" "$BUNDLE/install-host.sh"
 install -m 0755 "$ROOT/deploy/lxd-vm/package-release.sh" "$BUNDLE/package-release.sh"
@@ -83,6 +89,7 @@ LAB_DEFAULT_NAME=$NAME
 LAB_DEFAULT_CPUS=$(prplmesh_profile_cpus "$PROFILE")
 LAB_DEFAULT_MEMORY=$(prplmesh_profile_memory "$PROFILE")
 LAB_DEFAULT_DISK=$(prplmesh_profile_disk "$PROFILE")
+LAB_BUILD_STORAGE_POOL=$BUILD_STORAGE_POOL
 LAB_SOURCE_COMMIT=$(git -C "$ROOT" rev-parse HEAD)
 EOF
 jq -n \
@@ -94,9 +101,11 @@ jq -n \
     --arg cpus "$(prplmesh_profile_cpus "$PROFILE")" \
     --arg memory "$(prplmesh_profile_memory "$PROFILE")" \
     --arg disk "$(prplmesh_profile_disk "$PROFILE")" \
+    --arg build_storage_pool "$BUILD_STORAGE_POOL" \
     '{schema_version:1,stack:$stack,profile:$profile,clients:$clients,
       hwsim_radios:$radios,source_commit:$source_commit,created_at:$created_at,
       archive:$archive,defaults:{instance:$instance,cpus:$cpus,memory:$memory,disk:$disk},
+      build:{storage_pool:$build_storage_pool},
       status:"candidate"}' > "$BUNDLE/release.json"
 (
     cd "$BUNDLE"

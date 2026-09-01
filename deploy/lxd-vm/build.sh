@@ -4,6 +4,8 @@ set -euo pipefail
 ROOT=$(cd "$(dirname "$0")/../.." && pwd)
 # shellcheck source=profile.sh
 source "$ROOT/deploy/lxd-vm/profile.sh"
+# shellcheck source=device-property.sh
+source "$ROOT/deploy/lxd-vm/device-property.sh"
 PROFILE=$(prplmesh_profile_name "${PRPLMESH_LAB_PROFILE:-20}")
 CLIENTS=$(prplmesh_profile_clients "$PROFILE")
 RADIOS=$(prplmesh_profile_radios "$PROFILE")
@@ -39,6 +41,7 @@ Site overrides:
   PRPLMESH_UI_HOST_IP=$HOST_IP
   PRPLMESH_TOPOLOGY_HOST_PORT=$TOPOLOGY_PORT
   PRPLMESH_UI_HOST_PORT=$UI_PORT
+  PRPLMESH_LXD_STORAGE=<outer LXD storage pool>
 EOF
 }
 
@@ -111,7 +114,7 @@ check_vm()
 
 build_vm()
 {
-    local stage bundle commit guest_ip artifact
+    local stage bundle commit guest_ip artifact storage_pool boot_mode_error
     [ -z "$(git -C "$ROOT" status --porcelain)" ] || {
         echo "source checkout must be clean" >&2
         exit 1
@@ -126,9 +129,15 @@ build_vm()
         echo "$NAME already exists; delete it explicitly before a clean build" >&2
         exit 1
     }
+    storage_pool=${PRPLMESH_LXD_STORAGE:-${PRPLMESH_LXD_STORAGE_POOL:-$(lxc profile device get default root pool)}}
+    [ -n "$storage_pool" ] || {
+        echo "cannot determine the LXD storage pool from the default profile" >&2
+        exit 2
+    }
+    "$ROOT/deploy/lxd-vm/storage-preflight.sh" "$PROFILE" "$storage_pool"
 
     stage=$(mktemp -d /tmp/prplmesh-lxd-build.XXXXXX)
-    trap 'rm -rf -- "$stage"' EXIT
+    trap "rm -rf -- '$stage'" EXIT
     bundle="$stage/prplmesh-lab.bundle"
     commit=$(git -C "$ROOT" rev-parse HEAD)
     git -C "$ROOT" bundle create "$bundle" HEAD
@@ -142,13 +151,24 @@ build_vm()
             "$(basename "$HOSTAP_RUNTIME")" > SHA256SUMS
     )
 
-    lxc init "$IMAGE" "$NAME" --vm \
+    lxc init "$IMAGE" "$NAME" --vm --storage "$storage_pool" \
         --config limits.cpu="$CPUS" --config limits.memory="$MEMORY" </dev/null
-    lxc config set "$NAME" security.secureboot false
+    if ! boot_mode_error=$(lxc config set "$NAME" boot.mode uefi-nosecureboot 2>&1); then
+        case "$boot_mode_error" in
+            *'"boot.mode" is not supported'*)
+                lxc config set "$NAME" security.secureboot false
+                ;;
+            *)
+                echo "$boot_mode_error" >&2
+                exit 1
+                ;;
+        esac
+    fi
     lxc config set "$NAME" boot.autostart true
-    lxc config device override "$NAME" root size="$DISK"
+    lxd_set_device_property "$NAME" root size "$DISK"
     guest_ip=$(select_guest_ipv4)
-    lxc config device override "$NAME" eth0 network="$NETWORK" ipv4.address="$guest_ip"
+    lxd_set_device_property "$NAME" eth0 network "$NETWORK"
+    lxd_set_device_property "$NAME" eth0 ipv4.address "$guest_ip"
     lxc config device add "$NAME" topology-ui proxy nat=true \
         listen="tcp:$HOST_IP:$TOPOLOGY_PORT" connect="tcp:$guest_ip:8090"
     lxc config device add "$NAME" controller-ui proxy nat=true \
@@ -223,7 +243,7 @@ EOF"
     run rm -rf /opt/prplmesh-stage
     run systemctl start prplmesh-lab.service
     check_vm
-    lxc snapshot "$NAME" accepted
+    lxc snapshot "$NAME" accepted </dev/null
     trap - EXIT
     rm -rf -- "$stage"
 }
