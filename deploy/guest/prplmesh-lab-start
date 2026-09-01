@@ -15,6 +15,7 @@ PROFILE=(
     PRPL_CLIENT_COUNT="${PRPL_CLIENT_COUNT:-${ACTIVE_CLIENT_COUNT:-20}}"
     PRPL_TOPOLOGY="${PRPL_TOPOLOGY:-${DEFAULT_TOPOLOGY:-star}}"
 )
+THIN_MARKER=${PRPLMESH_THIN_MARKER:-/var/lib/prplmesh-lab/thin-pending.env}
 
 phase()
 {
@@ -48,9 +49,14 @@ wait_for_health()
 
 start_lab()
 {
+    local thin_pending=0
     wait_for_lxd
     cd "$ROOT"
     local started=$SECONDS
+    if [ -r "$THIN_MARKER" ]; then
+        thin_pending=1
+        phase thin-firstboot "$ROOT/deploy/guest/prepare-thin-firstboot.sh" prepare
+    fi
     phase mesh env "${PROFILE[@]}" scripts/radio-lab.sh start
     phase clients env "${PROFILE[@]}" scripts/radio-lab.sh clients
     phase topology scripts/topology-visualizer.sh start
@@ -63,6 +69,10 @@ start_lab()
     # bounded endpoint readiness instead of racing the first connect().
     wait_for_health http://127.0.0.1:8090/health
     wait_for_health http://127.0.0.1:8091/health
+    if [ "$thin_pending" = 1 ]; then
+        phase thin-acceptance env "${PROFILE[@]}" "$ROOT/tests/run-acceptance.sh"
+        phase thin-finalize "$ROOT/deploy/guest/prepare-thin-firstboot.sh" finalize
+    fi
     echo "prplMesh lifecycle start complete: $((SECONDS - started))s"
 }
 

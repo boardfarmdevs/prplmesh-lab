@@ -20,6 +20,17 @@ nested_images()
     lxc image list --format csv -c f 2>/dev/null || true
 }
 
+PRESERVE_IMAGE_ALIAS=${PRPLMESH_PRESERVE_IMAGE_ALIAS:-}
+preserve_fingerprint=
+if [ -n "$PRESERVE_IMAGE_ALIAS" ]; then
+    preserve_fingerprint=$(lxc image info "$PRESERVE_IMAGE_ALIAS" 2>/dev/null |
+        sed -n 's/^Fingerprint: //p')
+    [ -n "$preserve_fingerprint" ] || {
+        echo "nested image alias is missing: $PRESERVE_IMAGE_ALIAS" >&2
+        exit 1
+    }
+fi
+
 printf 'trim_started_at=%s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 printf 'root_used_bytes_before=%s\n' "$(root_used)"
 printf 'nested_images_before=%s\n' "$(nested_images | awk 'NF {n++} END {print n+0}')"
@@ -30,6 +41,7 @@ systemctl stop prplmesh-lab.service 2>/dev/null || true
 # image cache is not needed to start, stop, restart or validate the appliance.
 while IFS= read -r fingerprint; do
     [ -n "$fingerprint" ] || continue
+    [ "$fingerprint" = "$preserve_fingerprint" ] && continue
     lxc image delete "$fingerprint" >/dev/null
 done < <(nested_images)
 
@@ -53,5 +65,6 @@ printf 'fstrim_output_end\n'
 sync
 
 printf 'nested_images_after=%s\n' "$(nested_images | awk 'NF {n++} END {print n+0}')"
+[ -z "$preserve_fingerprint" ] || printf 'preserved_nested_image=%s\n' "$preserve_fingerprint"
 printf 'root_used_bytes_after=%s\n' "$(root_used)"
 printf 'trim_finished_at=%s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)"

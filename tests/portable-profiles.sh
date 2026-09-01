@@ -32,4 +32,18 @@ if prplmesh_profile_name 21 >/dev/null 2>&1; then
     exit 1
 fi
 
+for script in \
+    deploy/guest/prepare-thin-firstboot.sh \
+    deploy/guest/prepare-thin-image.sh \
+    deploy/lxd-vm/package-thin.sh; do
+    bash -n "$ROOT/$script"
+done
+grep -Fq 'PRPLMESH_THIN_CONFIRM' "$ROOT/deploy/lxd-vm/package-thin.sh"
+grep -Fq 'initial_nested_instances:0' "$ROOT/deploy/lxd-vm/package-thin.sh"
+grep -Fq 'LAB_RUNTIME_BASE_COMMIT' "$ROOT/deploy/lxd-vm/package-thin.sh"
+grep -Fq 'bundle create "$SOURCE_BUNDLE" HEAD' "$ROOT/deploy/lxd-vm/package-thin.sh"
+grep -Fq 'thin_firstboot_status=PASS' "$ROOT/deploy/guest/prepare-thin-firstboot.sh"
+grep -Fxq 'TimeoutStartSec=60min' "$ROOT/deploy/guest/prplmesh-lab.service"
+grep -Fq 'PRPLMESH_PRESERVE_IMAGE_ALIAS' "$ROOT/deploy/lxd-vm/package-cleanup.sh"
+
 echo 'PASS: prplMesh portable profiles and wmediumd rosters'

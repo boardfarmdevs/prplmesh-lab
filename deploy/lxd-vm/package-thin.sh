@@ -1,0 +1,190 @@
+#!/bin/bash
+set -euo pipefail
+
+ROOT=$(cd "$(dirname "$0")/../.." && pwd)
+# shellcheck source=profile.sh
+source "$ROOT/deploy/lxd-vm/profile.sh"
+PROFILE=$(prplmesh_profile_name "${PRPLMESH_LAB_PROFILE:-20}")
+CLIENTS=$(prplmesh_profile_clients "$PROFILE")
+RADIOS=$(prplmesh_profile_radios "$PROFILE")
+NAME=${PRPLMESH_VM_NAME:-prplmesh-${CLIENTS}-0831}
+OUTPUT_DIR=${1:-$ROOT/release/0831}
+SHORT=$(git -C "$ROOT" rev-parse --short=7 HEAD)
+BUNDLE="$OUTPUT_DIR/prplmesh-${CLIENTS}-0831-${SHORT}-thin-lxd"
+OUTPUT="$BUNDLE/prplmesh-${CLIENTS}-0831-${SHORT}-thin-lxd.tar.zst"
+TRIM_REPORT="$BUNDLE/trim-report.txt"
+BUILD_STORAGE_POOL=
+RUNTIME_IMAGE=prpl-runtime-local
+RUNTIME_BASE_COMMIT=${PRPLMESH_RUNTIME_BASE_COMMIT:-}
+SOURCE_COMMIT=$(git -C "$ROOT" rev-parse HEAD)
+SOURCE_STAGE=
+
+cleanup()
+{
+    [ -z "$SOURCE_STAGE" ] || rm -rf -- "$SOURCE_STAGE"
+}
+
+trap cleanup EXIT
+
+command -v jq >/dev/null 2>&1 || { echo 'jq is required for release metadata' >&2; exit 1; }
+[ "${PRPLMESH_THIN_CONFIRM:-}" = "$NAME" ] || {
+    echo "thin packaging removes the validated nested roster from $NAME" >&2
+    echo "rerun with PRPLMESH_THIN_CONFIRM=$NAME" >&2
+    exit 2
+}
+case "$RUNTIME_BASE_COMMIT" in
+    [0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f]* ) ;;
+    *) echo "PRPLMESH_RUNTIME_BASE_COMMIT must identify the accepted ready source" >&2; exit 2 ;;
+esac
+git -C "$ROOT" cat-file -e "$RUNTIME_BASE_COMMIT^{commit}"
+git -C "$ROOT" merge-base --is-ancestor "$RUNTIME_BASE_COMMIT" HEAD || {
+    echo "runtime base is not an ancestor of the thin release source" >&2
+    exit 2
+}
+[ -z "$(git -C "$ROOT" status --porcelain)" ] || {
+    echo "source checkout must be clean before packaging" >&2
+    exit 1
+}
+SOURCE_STAGE=$(mktemp -d /tmp/prplmesh-thin-source.XXXXXX)
+SOURCE_BUNDLE=$SOURCE_STAGE/prplmesh-lab.bundle
+git -C "$ROOT" bundle create "$SOURCE_BUNDLE" HEAD
+git bundle verify "$SOURCE_BUNDLE" >/dev/null
+SOURCE_BUNDLE_SHA256=$(sha256sum "$SOURCE_BUNDLE" | awk '{print $1}')
+rm -rf -- "$BUNDLE"
+mkdir -p "$BUNDLE"
+[ "$(lxc list "$NAME" -c t --format csv)" = VIRTUAL-MACHINE ] || {
+    echo "not an LXD VM: $NAME" >&2
+    exit 1
+}
+BUILD_STORAGE_POOL=$(lxc config device get "$NAME" root pool)
+[ -n "$BUILD_STORAGE_POOL" ] || {
+    echo "cannot determine $NAME root storage pool" >&2
+    exit 1
+}
+if lxc config device show "$NAME" | awk '
+    /^[^[:space:]].*:$/ {device=$1; sub(/:$/, "", device); type=""; source=""}
+    /^[[:space:]]+type:/ {type=$2}
+    /^[[:space:]]+source:/ {source=$2}
+    type == "disk" && source ~ /^\// && device != "root" {found=1}
+    END {exit !found}
+'; then
+    echo "$NAME has a host filesystem mount; it is not a portable appliance" >&2
+    exit 1
+fi
+
+[ "$(lxc list "$NAME" -c s --format csv)" = RUNNING ] || lxc start "$NAME"
+for unused in $(seq 1 120); do
+    lxc exec "$NAME" -- true >/dev/null 2>&1 && break
+    sleep 2
+done
+guest_commit=$(lxc exec "$NAME" -- git -C /opt/prplmesh-lab rev-parse HEAD)
+[ "$guest_commit" = "$RUNTIME_BASE_COMMIT" ] || {
+    echo "guest source $guest_commit does not match accepted runtime base $RUNTIME_BASE_COMMIT" >&2
+    exit 1
+}
+[ -z "$(lxc exec "$NAME" -- git -C /opt/prplmesh-lab status --porcelain)" ] || {
+    echo "accepted guest source checkout is dirty" >&2
+    exit 1
+}
+guest_clients=$(lxc exec "$NAME" -- bash -lc \
+    '. /etc/default/prplmesh-lab; printf "%s" "$PROVISIONED_CLIENT_COUNT"')
+[ "$guest_clients" = "$CLIENTS" ] || {
+    echo "guest has $guest_clients clients; requested release profile has $CLIENTS" >&2
+    exit 1
+}
+
+PRPLMESH_VM_NAME="$NAME" "$ROOT/deploy/lxd-vm/build.sh" check
+lxc exec "$NAME" -- systemctl stop prplmesh-lab.service
+lxc file push "$SOURCE_BUNDLE" "$NAME/run/prplmesh-thin-source.bundle"
+lxc exec "$NAME" -- env SOURCE_COMMIT="$SOURCE_COMMIT" bash -c '
+    set -euo pipefail
+    next=/opt/prplmesh-lab.thin-new
+    previous=/opt/prplmesh-lab.ready-base
+    rm -rf -- "$next" "$previous"
+    git clone /run/prplmesh-thin-source.bundle "$next"
+    [ "$(git -C "$next" rev-parse HEAD)" = "$SOURCE_COMMIT" ]
+    [ -z "$(git -C "$next" status --porcelain)" ]
+    mv /opt/prplmesh-lab "$previous"
+    if mv "$next" /opt/prplmesh-lab; then
+        rm -rf -- "$previous"
+    else
+        mv "$previous" /opt/prplmesh-lab
+        exit 1
+    fi
+'
+lxc file delete "$NAME/run/prplmesh-thin-source.bundle"
+[ "$(lxc exec "$NAME" -- git -C /opt/prplmesh-lab rev-parse HEAD)" = "$SOURCE_COMMIT" ]
+[ -z "$(lxc exec "$NAME" -- git -C /opt/prplmesh-lab status --porcelain)" ]
+lxc exec "$NAME" -- /opt/prplmesh-lab/deploy/guest/install-service.sh /opt/prplmesh-lab
+lxc exec "$NAME" -- env PRPLMESH_LAB_PROFILE="$PROFILE" \
+    /opt/prplmesh-lab/deploy/guest/prepare-thin-image.sh | tee "$TRIM_REPORT"
+printf 'thin_source_bundle_sha256=%s\n' "$SOURCE_BUNDLE_SHA256" >> "$TRIM_REPORT"
+
+nested_count=$(lxc exec "$NAME" -- lxc list --format csv -c n |
+    awk 'NF {n++} END {print n+0}')
+[ "$nested_count" -eq 0 ] || {
+    echo "thin source still has $nested_count provisioned nested instances" >&2
+    exit 1
+}
+lxc exec "$NAME" -- lxc image info "$RUNTIME_IMAGE" >/dev/null
+lxc exec "$NAME" -- test -r /var/lib/prplmesh-lab/thin-pending.env
+printf 'nested_instances_before_export=%s\n' "$nested_count" >> "$TRIM_REPORT"
+
+lxc file push "$ROOT/deploy/lxd-vm/package-cleanup.sh" \
+    "$NAME/run/prplmesh-package-cleanup"
+lxc exec "$NAME" -- chmod 0755 /run/prplmesh-package-cleanup
+lxc exec "$NAME" -- env PRPLMESH_PRESERVE_IMAGE_ALIAS="$RUNTIME_IMAGE" \
+    /bin/bash /run/prplmesh-package-cleanup | tee -a "$TRIM_REPORT"
+lxc file delete "$NAME/run/prplmesh-package-cleanup"
+lxc exec "$NAME" -- lxc image info "$RUNTIME_IMAGE" >/dev/null
+[ "$(lxc exec "$NAME" -- lxc list --format csv -c n | awk 'NF {n++} END {print n+0}')" -eq 0 ]
+lxc stop "$NAME" --timeout 120
+
+lxc export "$NAME" "$OUTPUT" --instance-only --compression zstd </dev/null
+printf 'archive_bytes=%s\n' "$(stat -c %s "$OUTPUT")" >> "$TRIM_REPORT"
+install -m 0755 "$ROOT/deploy/lxd-vm/import.sh" "$BUNDLE/import.sh"
+install -m 0755 "$ROOT/deploy/lxd-vm/install-host.sh" "$BUNDLE/install-host.sh"
+install -m 0755 "$ROOT/deploy/lxd-vm/package-release.sh" "$BUNDLE/package-release.sh"
+install -m 0644 "$ROOT/deploy/lxd-vm/README.md" "$BUNDLE/README.md"
+cat > "$BUNDLE/release.env" <<EOF
+LAB_STACK=prplmesh
+LAB_FLAVOR=thin
+LAB_PROFILE=$PROFILE
+LAB_CLIENTS=$CLIENTS
+LAB_HWSIM_RADIOS=$RADIOS
+LAB_DEFAULT_NAME=$NAME
+LAB_DEFAULT_CPUS=$(prplmesh_profile_cpus "$PROFILE")
+LAB_DEFAULT_MEMORY=$(prplmesh_profile_memory "$PROFILE")
+LAB_DEFAULT_DISK=$(prplmesh_profile_disk "$PROFILE")
+LAB_BUILD_STORAGE_POOL=$BUILD_STORAGE_POOL
+LAB_SOURCE_COMMIT=$(git -C "$ROOT" rev-parse HEAD)
+LAB_RUNTIME_BASE_COMMIT=$RUNTIME_BASE_COMMIT
+LAB_TRIMMED=true
+LAB_FIRST_BOOT_PROVISION=true
+EOF
+jq -n \
+    --arg stack prplmesh --arg flavor thin --arg profile "$PROFILE" \
+    --argjson clients "$CLIENTS" --argjson radios "$RADIOS" \
+    --arg source_commit "$(git -C "$ROOT" rev-parse HEAD)" \
+    --arg runtime_base_commit "$RUNTIME_BASE_COMMIT" \
+    --arg created_at "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+    --arg archive "$(basename "$OUTPUT")" --arg instance "$NAME" \
+    --arg cpus "$(prplmesh_profile_cpus "$PROFILE")" \
+    --arg memory "$(prplmesh_profile_memory "$PROFILE")" \
+    --arg disk "$(prplmesh_profile_disk "$PROFILE")" \
+    --arg build_storage_pool "$BUILD_STORAGE_POOL" \
+    '{schema_version:1,stack:$stack,flavor:$flavor,profile:$profile,clients:$clients,
+      hwsim_radios:$radios,source_commit:$source_commit,created_at:$created_at,
+      runtime_base_commit:$runtime_base_commit,
+      archive:$archive,defaults:{instance:$instance,cpus:$cpus,memory:$memory,disk:$disk},
+      build:{storage_pool:$build_storage_pool},
+      trim:{applied:true,report:"trim-report.txt"},
+      first_boot:{provision:true,offline:true,initial_nested_instances:0},
+      status:"candidate"}' > "$BUNDLE/release.json"
+(
+    cd "$BUNDLE"
+    sha256sum "$(basename "$OUTPUT")" import.sh install-host.sh \
+        package-release.sh README.md release.env release.json trim-report.txt \
+        > SHA256SUMS
+)
+echo "$BUNDLE"

@@ -12,7 +12,7 @@ EnvironmentFile=-/etc/default/prplmesh-lab
 ExecStart=/usr/local/sbin/prplmesh-lab-start start
 ExecStop=/usr/local/sbin/prplmesh-lab-start stop
 RemainAfterExit=yes
-TimeoutStartSec=30min
+TimeoutStartSec=60min
 TimeoutStopSec=5min
 
 [Install]

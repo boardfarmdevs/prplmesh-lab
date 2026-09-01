@@ -64,6 +64,39 @@ It never removes provisioned containers, identities, configuration or source.
 Every bundle includes `trim-report.txt` with before/after guest usage,
 discard output and the final compressed archive size.
 
+## Offline thin flavor
+
+The ready flavor above contains the complete provisioned roster and starts it
+on every boot. The optional thin flavor is an installed appliance with the
+same kernel, services, runtime artifacts and profile, but its export contains
+zero nested lab instances. It retains one local `prpl-runtime-local` image, so
+first boot provisions the selected 20, 50 or 100-client roster without a
+network download or operator repair, then starts and validates the normal lab.
+The pending marker is removed only after topology, steering, data-plane and
+resource acceptance pass. The persistent
+`/var/lib/prplmesh-lab/thin-firstboot-report.txt` records the zero-instance
+starting condition, final roster count and PASS state.
+
+Create a thin candidate only from a separately imported and fully accepted
+ready appliance. The explicit confirmation is required because conversion
+removes that VM's nested roster:
+
+```sh
+PRPLMESH_RUNTIME_BASE_COMMIT=READY-COMMIT \
+PRPLMESH_LAB_PROFILE=20 \
+PRPLMESH_VM_NAME=prplmesh-20-thin-source \
+PRPLMESH_THIN_CONFIRM=prplmesh-20-thin-source \
+  deploy/lxd-vm/package-thin.sh release/0831
+deploy/lxd-vm/package-release.sh \
+  release/0831/prplmesh-20-0831-COMMIT-thin-lxd
+```
+
+The source VM remains stopped and thin-pending after export. Import acceptance
+must use the exact emitted archive and confirm `nested_instances_before=0`,
+the profile-sized final roster, and the same full gates as the ready flavor.
+Release metadata records both the thin tooling source and the accepted ready
+runtime base so those two code identities are not conflated.
+
 Upload the resulting `*-bundle.tar` and `.sha256`. From any empty working
 directory, download the selected profile, verify and extract it:
 
@@ -77,6 +110,11 @@ PRPLMESH_UI_HOST_IP=127.0.0.1 ./import.sh
 
 To import into a non-default outer LXD pool, add
 `PRPLMESH_LXD_STORAGE=POOL`. The pool must already exist.
+
+For a thin bundle, first boot takes longer because the VM creates the offline
+nested inventory before starting the radios and executing acceptance. The
+service allows up to 60 minutes for a stress-profile first boot. Monitor
+`prplmesh-lab.service`; no extra provisioning command is required.
 
 To expose both UIs on a lab LAN, select an address owned by the outer host:
 
