@@ -79,8 +79,9 @@ for unused in $(seq 1 120); do
     sleep 2
 done
 guest_commit=$(lxc exec "$NAME" -- git -C /opt/prplmesh-lab rev-parse HEAD)
-[ "$guest_commit" = "$RUNTIME_BASE_COMMIT" ] || {
-    echo "guest source $guest_commit does not match accepted runtime base $RUNTIME_BASE_COMMIT" >&2
+prplmesh_thin_guest_source_allowed "$guest_commit" \
+    "$RUNTIME_BASE_COMMIT" "$SOURCE_COMMIT" || {
+    echo "guest source $guest_commit matches neither accepted runtime base $RUNTIME_BASE_COMMIT nor retry source $SOURCE_COMMIT" >&2
     exit 1
 }
 [ -z "$(lxc exec "$NAME" -- git -C /opt/prplmesh-lab status --porcelain)" ] || {
@@ -145,6 +146,15 @@ lxc exec "$NAME" -- env SOURCE_COMMIT="$SOURCE_COMMIT" bash -c '
 lxc file delete "$NAME/run/prplmesh-thin-source.bundle"
 [ "$(lxc exec "$NAME" -- git -C /opt/prplmesh-lab rev-parse HEAD)" = "$SOURCE_COMMIT" ]
 [ -z "$(lxc exec "$NAME" -- git -C /opt/prplmesh-lab status --porcelain)" ]
+lxc exec "$NAME" -- /opt/prplmesh-lab/scripts/radio-lab.sh stop
+running_names=$(lxc exec "$NAME" -- lxc list --format csv -c ns |
+    awk -F, '$2 == "RUNNING" {print $1}')
+[ -z "$running_names" ] || {
+    echo "nested instances remain running after staged-source drain:" >&2
+    printf '%s\n' "$running_names" | sed 's/^/  /' >&2
+    exit 1
+}
+lxc exec "$NAME" -- systemctl reset-failed prplmesh-lab.service
 lxc exec "$NAME" -- systemctl start prplmesh-lab.service
 PRPLMESH_VM_NAME="$NAME" "$ROOT/deploy/lxd-vm/build.sh" check
 lxc exec "$NAME" -- env PRPLMESH_LAB_PROFILE="$PROFILE" \

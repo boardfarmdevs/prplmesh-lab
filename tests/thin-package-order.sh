@@ -2,7 +2,13 @@
 set -euo pipefail
 
 ROOT=$(cd "$(dirname "$0")/.." && pwd)
+# shellcheck source=../deploy/lxd-vm/profile.sh
+source "$ROOT/deploy/lxd-vm/profile.sh"
 script=$ROOT/deploy/lxd-vm/package-thin.sh
+
+prplmesh_thin_guest_source_allowed base base source
+prplmesh_thin_guest_source_allowed source base source
+! prplmesh_thin_guest_source_allowed unknown base source
 
 first_line()
 {
@@ -12,11 +18,14 @@ first_line()
 
 swap_line=$(first_line 'lxc file push "$SOURCE_BUNDLE"')
 verify_line=$(first_line 'rev-parse HEAD)" = "$SOURCE_COMMIT"')
+drain_line=$(first_line '/opt/prplmesh-lab/scripts/radio-lab.sh stop')
+reset_line=$(first_line 'systemctl reset-failed prplmesh-lab.service')
 start_line=$(first_line 'systemctl start prplmesh-lab.service')
 check_line=$(first_line '"$ROOT/deploy/lxd-vm/build.sh" check')
 prepare_line=$(first_line 'prepare-thin-image.sh')
 
-for value in "$swap_line" "$verify_line" "$start_line" "$check_line" \
+for value in "$swap_line" "$verify_line" "$drain_line" "$reset_line" \
+    "$start_line" "$check_line" \
     "$prepare_line"; do
     case "$value" in
         ''|*[!0-9]*) echo 'missing thin package ordering marker' >&2; exit 1 ;;
@@ -24,6 +33,9 @@ for value in "$swap_line" "$verify_line" "$start_line" "$check_line" \
 done
 
 [ "$swap_line" -lt "$verify_line" ]
+[ "$verify_line" -lt "$drain_line" ]
+[ "$drain_line" -lt "$reset_line" ]
+[ "$reset_line" -lt "$start_line" ]
 [ "$verify_line" -lt "$start_line" ]
 [ "$start_line" -lt "$check_line" ]
 [ "$check_line" -lt "$prepare_line" ]
@@ -38,7 +50,10 @@ prepare = text.index('prepare-thin-image.sh')
 swap = text.index('lxc file push "$SOURCE_BUNDLE"')
 verify = text.index('rev-parse HEAD)" = "$SOURCE_COMMIT"')
 assert swap < verify < check < prepare
-assert 'systemctl start prplmesh-lab.service' in text[verify:check]
+between = text[verify:check]
+assert '/opt/prplmesh-lab/scripts/radio-lab.sh stop' in between
+assert 'systemctl reset-failed prplmesh-lab.service' in between
+assert 'systemctl start prplmesh-lab.service' in between
 PY
 
 echo 'PASS: thin packaging validates staged source before roster removal'

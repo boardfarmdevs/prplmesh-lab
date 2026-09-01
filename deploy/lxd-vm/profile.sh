@@ -72,3 +72,10 @@ prplmesh_profile_min_lxd_pool_free_bytes()
         stress) printf '%s\n' $((80 * 1024 * 1024 * 1024)) ;;
     esac
 }
+
+prplmesh_thin_guest_source_allowed()
+{
+    local guest=$1 runtime_base=$2 source=$3
+
+    [ "$guest" = "$runtime_base" ] || [ "$guest" = "$source" ]
+}
