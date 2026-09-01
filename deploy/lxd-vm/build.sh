@@ -7,7 +7,7 @@ source "$ROOT/deploy/lxd-vm/profile.sh"
 PROFILE=$(prplmesh_profile_name "${PRPLMESH_LAB_PROFILE:-20}")
 CLIENTS=$(prplmesh_profile_clients "$PROFILE")
 RADIOS=$(prplmesh_profile_radios "$PROFILE")
-NAME=${PRPLMESH_VM_NAME:-prplmesh-${CLIENTS}-0829}
+NAME=${PRPLMESH_VM_NAME:-prplmesh-${CLIENTS}-0831}
 IMAGE=${PRPLMESH_VM_IMAGE:-ubuntu:24.04}
 NETWORK=${PRPLMESH_LXD_NETWORK:-lxdbr0}
 CPUS=${PRPLMESH_VM_CPUS:-$(prplmesh_profile_cpus "$PROFILE")}
@@ -143,7 +143,7 @@ build_vm()
     )
 
     lxc init "$IMAGE" "$NAME" --vm \
-        --config limits.cpu="$CPUS" --config limits.memory="$MEMORY"
+        --config limits.cpu="$CPUS" --config limits.memory="$MEMORY" </dev/null
     lxc config set "$NAME" security.secureboot false
     lxc config set "$NAME" boot.autostart true
     lxc config device override "$NAME" root size="$DISK"

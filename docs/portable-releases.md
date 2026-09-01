@@ -17,7 +17,7 @@ PRPL_HOSTAP_ARCHIVE=/absolute/path/hostap-runtime-2.10.tar.gz \
 
 PRPLMESH_LAB_PROFILE=20 deploy/lxd-vm/package.sh
 deploy/lxd-vm/package-release.sh \
-  release/0829/prplmesh-20-0829-COMMIT-lxd
+  release/0831/prplmesh-20-0831-COMMIT-lxd
 ```
 
 The final `*-bundle.tar` and `.sha256` are suitable for manual Google Drive

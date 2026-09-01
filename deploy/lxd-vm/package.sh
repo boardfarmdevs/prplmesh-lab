@@ -7,11 +7,11 @@ source "$ROOT/deploy/lxd-vm/profile.sh"
 PROFILE=$(prplmesh_profile_name "${PRPLMESH_LAB_PROFILE:-20}")
 CLIENTS=$(prplmesh_profile_clients "$PROFILE")
 RADIOS=$(prplmesh_profile_radios "$PROFILE")
-NAME=${PRPLMESH_VM_NAME:-prplmesh-${CLIENTS}-0829}
-OUTPUT_DIR=${1:-$ROOT/release/0829}
+NAME=${PRPLMESH_VM_NAME:-prplmesh-${CLIENTS}-0831}
+OUTPUT_DIR=${1:-$ROOT/release/0831}
 SHORT=$(git -C "$ROOT" rev-parse --short=7 HEAD)
-BUNDLE="$OUTPUT_DIR/prplmesh-${CLIENTS}-0829-${SHORT}-lxd"
-OUTPUT="$BUNDLE/prplmesh-${CLIENTS}-0829-${SHORT}-lxd.tar.zst"
+BUNDLE="$OUTPUT_DIR/prplmesh-${CLIENTS}-0831-${SHORT}-lxd"
+OUTPUT="$BUNDLE/prplmesh-${CLIENTS}-0831-${SHORT}-lxd.tar.zst"
 WAS_RUNNING=false
 
 command -v jq >/dev/null 2>&1 || { echo 'jq is required for release metadata' >&2; exit 1; }

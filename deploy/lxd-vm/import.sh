@@ -17,7 +17,7 @@ if [ -z "$BACKUP" ]; then
     }
     BACKUP=${candidates[0]}
 fi
-NAME=${PRPLMESH_VM_NAME:-${LAB_DEFAULT_NAME:-prplmesh-20-0829}}
+NAME=${PRPLMESH_VM_NAME:-${LAB_DEFAULT_NAME:-prplmesh-20-0831}}
 NETWORK=${PRPLMESH_LXD_NETWORK:-lxdbr0}
 HOST_IP=${PRPLMESH_UI_HOST_IP:-$(ip -4 route get 1.1.1.1 2>/dev/null | \
     awk '{for (i=1; i<=NF; i++) if ($i == "src") {print $(i+1); exit}}')}
