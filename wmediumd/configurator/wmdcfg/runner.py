@@ -12,7 +12,7 @@ from .kernel_actuator import KernelMediumClient
 from .observers import mesh_health, snapshot
 
 
-COMMON_CAPABILITIES = {"atomic_generations", "readback", "dump_links"}
+COMMON_CAPABILITIES = {"atomic_generations", "readback"}
 PAIR_CAPABILITIES = COMMON_CAPABILITIES | {"radio_pair_snr"}
 FREQUENCY_CAPABILITIES = COMMON_CAPABILITIES | {"frequency_qualified_snr"}
 # Compatibility name used by older callers and tests.
@@ -139,18 +139,14 @@ class Runner:
                 missing = required - status.capabilities
                 if missing:
                     raise ActuatorError(f"daemon lacks capabilities {sorted(missing)}")
-                _, dumped = client.dump_links()
-                pair_baseline = {
-                    (item["source"], item["destination"]): item["value"]
-                    for item in dumped
-                }
                 touched_pairs = {
                     (update["source"], update["destination"])
                     for update in plan_updates
                 }
-                unknown = sorted(touched_pairs - set(pair_baseline))
-                if unknown:
-                    raise ActuatorError(f"plan identities are absent from daemon: {unknown}")
+                pair_baseline = {}
+                for source, destination in sorted(touched_pairs):
+                    _, value = client.get_link(source, destination)
+                    pair_baseline[(source, destination)] = value
                 if frequency_mode:
                     touched = {
                         (item["source"], item["destination"], item["frequency_mhz"])

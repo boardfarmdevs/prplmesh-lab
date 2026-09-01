@@ -14,5 +14,6 @@ case "$output" in
     "$bundle"/*) echo 'output must not be inside the bundle being archived' >&2; exit 2 ;;
 esac
 tar -C "$parent" -cf "$output" "$leaf"
-sha256sum "$output" > "$output.sha256"
+(cd "$(dirname "$output")" &&
+    sha256sum "$(basename "$output")" > "$(basename "$output").sha256")
 ls -lh "$output" "$output.sha256"

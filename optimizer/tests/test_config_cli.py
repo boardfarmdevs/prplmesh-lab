@@ -6,7 +6,7 @@ import json
 import pytest
 
 import optimizer.cli as cli
-from optimizer.cli import _recommendation_state, main, parser
+from optimizer.cli import _live_policy, _recommendation_state, main, parser
 from optimizer.config import load_policy
 from optimizer.policy import PolicyConfig, ThresholdPolicy
 from optimizer.recorder import Journal
@@ -102,6 +102,23 @@ def test_act_mode_is_bounded_to_one_attempt_by_default():
         parser().parse_args([
             "act", "--journal", "/tmp/journal", "--policy", "/tmp/policy",
             "--max-actions", "0",
+        ])
+
+
+def test_live_policy_preserves_default_and_accepts_profile_override():
+    policy_path = Path(__file__).parents[1] / "configs" / "threshold-policy.yaml"
+    assert _live_policy(str(policy_path), None).config.expected_clients == 20
+    assert _live_policy(str(policy_path), 50).config.expected_clients == 50
+
+    args = parser().parse_args([
+        "recommend", "--journal", "/tmp/journal", "--policy", str(policy_path),
+        "--expected-clients", "50",
+    ])
+    assert args.expected_clients == 50
+    with pytest.raises(SystemExit):
+        parser().parse_args([
+            "recommend", "--journal", "/tmp/journal", "--policy", str(policy_path),
+            "--expected-clients", "0",
         ])
 
 

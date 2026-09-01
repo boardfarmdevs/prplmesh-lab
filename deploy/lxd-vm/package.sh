@@ -7,12 +7,14 @@ source "$ROOT/deploy/lxd-vm/profile.sh"
 PROFILE=$(prplmesh_profile_name "${PRPLMESH_LAB_PROFILE:-20}")
 CLIENTS=$(prplmesh_profile_clients "$PROFILE")
 RADIOS=$(prplmesh_profile_radios "$PROFILE")
-NAME=${PRPLMESH_VM_NAME:-prplmesh-${CLIENTS}-0829}
-OUTPUT_DIR=${1:-$ROOT/release/0829}
+NAME=${PRPLMESH_VM_NAME:-prplmesh-${CLIENTS}-0831}
+OUTPUT_DIR=${1:-$ROOT/release/0831}
 SHORT=$(git -C "$ROOT" rev-parse --short=7 HEAD)
-BUNDLE="$OUTPUT_DIR/prplmesh-${CLIENTS}-0829-${SHORT}-lxd"
-OUTPUT="$BUNDLE/prplmesh-${CLIENTS}-0829-${SHORT}-lxd.tar.zst"
+BUNDLE="$OUTPUT_DIR/prplmesh-${CLIENTS}-0831-${SHORT}-lxd"
+OUTPUT="$BUNDLE/prplmesh-${CLIENTS}-0831-${SHORT}-lxd.tar.zst"
+TRIM_REPORT="$BUNDLE/trim-report.txt"
 WAS_RUNNING=false
+BUILD_STORAGE_POOL=
 
 command -v jq >/dev/null 2>&1 || { echo 'jq is required for release metadata' >&2; exit 1; }
 
@@ -24,6 +26,11 @@ rm -rf -- "$BUNDLE"
 mkdir -p "$BUNDLE"
 [ "$(lxc list "$NAME" -c t --format csv)" = VIRTUAL-MACHINE ] || {
     echo "not an LXD VM: $NAME" >&2
+    exit 1
+}
+BUILD_STORAGE_POOL=$(lxc config device get "$NAME" root pool)
+[ -n "$BUILD_STORAGE_POOL" ] || {
+    echo "cannot determine $NAME root storage pool" >&2
     exit 1
 }
 [ "$(lxc list "$NAME" -c s --format csv)" != RUNNING ] || WAS_RUNNING=true
@@ -60,7 +67,11 @@ guest_clients=$(lxc exec "$NAME" -- bash -lc \
 PRPLMESH_VM_NAME="$NAME" "$ROOT/deploy/lxd-vm/build.sh" check
 
 if [ "$(lxc list "$NAME" -c s --format csv)" = RUNNING ]; then
-    lxc exec "$NAME" -- systemctl stop prplmesh-lab.service 2>/dev/null || true
+    lxc file push "$ROOT/deploy/lxd-vm/package-cleanup.sh" \
+        "$NAME/run/prplmesh-package-cleanup"
+    lxc exec "$NAME" -- chmod 0755 /run/prplmesh-package-cleanup
+    lxc exec "$NAME" -- /bin/bash /run/prplmesh-package-cleanup | tee "$TRIM_REPORT"
+    lxc file delete "$NAME/run/prplmesh-package-cleanup"
     lxc stop "$NAME" --timeout 120
 fi
 restart()
@@ -69,7 +80,8 @@ restart()
 }
 trap restart EXIT
 
-lxc export "$NAME" "$OUTPUT" --instance-only --compression zstd
+lxc export "$NAME" "$OUTPUT" --instance-only --compression zstd </dev/null
+printf 'archive_bytes=%s\n' "$(stat -c %s "$OUTPUT")" >> "$TRIM_REPORT"
 install -m 0755 "$ROOT/deploy/lxd-vm/import.sh" "$BUNDLE/import.sh"
 install -m 0755 "$ROOT/deploy/lxd-vm/install-host.sh" "$BUNDLE/install-host.sh"
 install -m 0755 "$ROOT/deploy/lxd-vm/package-release.sh" "$BUNDLE/package-release.sh"
@@ -83,7 +95,9 @@ LAB_DEFAULT_NAME=$NAME
 LAB_DEFAULT_CPUS=$(prplmesh_profile_cpus "$PROFILE")
 LAB_DEFAULT_MEMORY=$(prplmesh_profile_memory "$PROFILE")
 LAB_DEFAULT_DISK=$(prplmesh_profile_disk "$PROFILE")
+LAB_BUILD_STORAGE_POOL=$BUILD_STORAGE_POOL
 LAB_SOURCE_COMMIT=$(git -C "$ROOT" rev-parse HEAD)
+LAB_TRIMMED=true
 EOF
 jq -n \
     --arg stack prplmesh --arg profile "$PROFILE" \
@@ -94,14 +108,17 @@ jq -n \
     --arg cpus "$(prplmesh_profile_cpus "$PROFILE")" \
     --arg memory "$(prplmesh_profile_memory "$PROFILE")" \
     --arg disk "$(prplmesh_profile_disk "$PROFILE")" \
+    --arg build_storage_pool "$BUILD_STORAGE_POOL" \
     '{schema_version:1,stack:$stack,profile:$profile,clients:$clients,
       hwsim_radios:$radios,source_commit:$source_commit,created_at:$created_at,
       archive:$archive,defaults:{instance:$instance,cpus:$cpus,memory:$memory,disk:$disk},
+      build:{storage_pool:$build_storage_pool},
+      trim:{applied:true,report:"trim-report.txt"},
       status:"candidate"}' > "$BUNDLE/release.json"
 (
     cd "$BUNDLE"
     sha256sum "$(basename "$OUTPUT")" import.sh install-host.sh \
-        package-release.sh README.md release.env release.json \
+        package-release.sh README.md release.env release.json trim-report.txt \
         > SHA256SUMS
 )
 echo "$BUNDLE"

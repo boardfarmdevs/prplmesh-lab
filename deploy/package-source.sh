@@ -2,9 +2,9 @@
 set -euo pipefail
 
 ROOT=$(cd "$(dirname "$0")/.." && pwd)
-OUTPUT_DIR=${1:-$ROOT/release/0829}
+OUTPUT_DIR=${1:-$ROOT/release/0831}
 SHORT=$(git -C "$ROOT" rev-parse --short=7 HEAD)
-NAME=prplmesh-lab-0829-${SHORT}
+NAME=prplmesh-lab-0831-${SHORT}
 OUTPUT="$OUTPUT_DIR/${NAME}-source.tar.bz2"
 STAGE=$(mktemp -d)
 trap 'rm -rf "$STAGE"' EXIT
@@ -26,7 +26,7 @@ if [ -x "$ROOT/build/bin/wmediumd" ]; then
         "$ROOT/build/bin/wmediumd.provenance.env" \
         "$STAGE/$NAME/build/bin/"
 fi
-printf 'release=0829\ncommit=%s\ncreated=%s\n' \
+printf 'release=0831\ncommit=%s\ncreated=%s\n' \
     "$(git -C "$ROOT" rev-parse HEAD)" "$(date -u +%FT%TZ)" \
     > "$STAGE/$NAME/RELEASE"
 

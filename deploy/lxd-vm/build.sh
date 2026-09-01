@@ -4,10 +4,12 @@ set -euo pipefail
 ROOT=$(cd "$(dirname "$0")/../.." && pwd)
 # shellcheck source=profile.sh
 source "$ROOT/deploy/lxd-vm/profile.sh"
+# shellcheck source=device-property.sh
+source "$ROOT/deploy/lxd-vm/device-property.sh"
 PROFILE=$(prplmesh_profile_name "${PRPLMESH_LAB_PROFILE:-20}")
 CLIENTS=$(prplmesh_profile_clients "$PROFILE")
 RADIOS=$(prplmesh_profile_radios "$PROFILE")
-NAME=${PRPLMESH_VM_NAME:-prplmesh-${CLIENTS}-0829}
+NAME=${PRPLMESH_VM_NAME:-prplmesh-${CLIENTS}-0831}
 IMAGE=${PRPLMESH_VM_IMAGE:-ubuntu:24.04}
 NETWORK=${PRPLMESH_LXD_NETWORK:-lxdbr0}
 CPUS=${PRPLMESH_VM_CPUS:-$(prplmesh_profile_cpus "$PROFILE")}
@@ -39,6 +41,7 @@ Site overrides:
   PRPLMESH_UI_HOST_IP=$HOST_IP
   PRPLMESH_TOPOLOGY_HOST_PORT=$TOPOLOGY_PORT
   PRPLMESH_UI_HOST_PORT=$UI_PORT
+  PRPLMESH_LXD_STORAGE=<outer LXD storage pool>
 EOF
 }
 
@@ -97,21 +100,33 @@ stop_vm()
 
 check_vm()
 {
+    local optimizer_pair optimizer_client optimizer_target
     start_vm
     run env PRPL_AGENT_COUNT=4 PRPL_CLIENT_COUNT="$CLIENTS" PRPL_TOPOLOGY=star \
         PROVISIONED_CLIENT_COUNT="$CLIENTS" HWSIM_RADIOS="$RADIOS" \
         PRPL_WMEDIUMD_CONFIG=/var/lib/prplmesh-lab/wmediumd.conf \
         /opt/prplmesh-lab/tests/run-acceptance.sh
+    optimizer_pair=$(run bash -c '
+        set -eu
+        inventory=$(mktemp /tmp/prpl-check-inventory.XXXXXX.json)
+        trap "rm -f -- $inventory" EXIT
+        cd /opt/prplmesh-lab/wmediumd/configurator
+        python3 -m wmdcfg.cli inventory -o "$inventory" >/dev/null
+        /opt/prplmesh-lab/deploy/lxd-vm/select-optimizer-stimulus.py \
+            "$inventory" prpl-agent-02
+    ')
+    read -r optimizer_client optimizer_target <<<"$optimizer_pair"
+    echo "optimizer acceptance pair: $optimizer_client -> $optimizer_target"
     run env PRPL_AGENT_COUNT=4 PRPL_CLIENT_COUNT="$CLIENTS" PRPL_TOPOLOGY=star \
         PROVISIONED_CLIENT_COUNT="$CLIENTS" HWSIM_RADIOS="$RADIOS" \
         PRPL_WMEDIUMD_CONFIG=/var/lib/prplmesh-lab/wmediumd.conf \
         /opt/prplmesh-lab/tests/optimizer-dynamic.sh recommend \
-        prpl-client-07 prpl-agent-02
+        "$optimizer_client" "$optimizer_target"
 }
 
 build_vm()
 {
-    local stage bundle commit guest_ip artifact
+    local stage bundle commit guest_ip artifact storage_pool boot_mode_error
     [ -z "$(git -C "$ROOT" status --porcelain)" ] || {
         echo "source checkout must be clean" >&2
         exit 1
@@ -126,9 +141,15 @@ build_vm()
         echo "$NAME already exists; delete it explicitly before a clean build" >&2
         exit 1
     }
+    storage_pool=${PRPLMESH_LXD_STORAGE:-${PRPLMESH_LXD_STORAGE_POOL:-$(lxc profile device get default root pool)}}
+    [ -n "$storage_pool" ] || {
+        echo "cannot determine the LXD storage pool from the default profile" >&2
+        exit 2
+    }
+    "$ROOT/deploy/lxd-vm/storage-preflight.sh" "$PROFILE" "$storage_pool"
 
     stage=$(mktemp -d /tmp/prplmesh-lxd-build.XXXXXX)
-    trap 'rm -rf -- "$stage"' EXIT
+    trap "rm -rf -- '$stage'" EXIT
     bundle="$stage/prplmesh-lab.bundle"
     commit=$(git -C "$ROOT" rev-parse HEAD)
     git -C "$ROOT" bundle create "$bundle" HEAD
@@ -142,13 +163,24 @@ build_vm()
             "$(basename "$HOSTAP_RUNTIME")" > SHA256SUMS
     )
 
-    lxc init "$IMAGE" "$NAME" --vm \
-        --config limits.cpu="$CPUS" --config limits.memory="$MEMORY"
-    lxc config set "$NAME" security.secureboot false
+    lxc init "$IMAGE" "$NAME" --vm --storage "$storage_pool" \
+        --config limits.cpu="$CPUS" --config limits.memory="$MEMORY" </dev/null
+    if ! boot_mode_error=$(lxc config set "$NAME" boot.mode uefi-nosecureboot 2>&1); then
+        case "$boot_mode_error" in
+            *'"boot.mode" is not supported'*)
+                lxc config set "$NAME" security.secureboot false
+                ;;
+            *)
+                echo "$boot_mode_error" >&2
+                exit 1
+                ;;
+        esac
+    fi
     lxc config set "$NAME" boot.autostart true
-    lxc config device override "$NAME" root size="$DISK"
+    lxd_set_device_property "$NAME" root size "$DISK"
     guest_ip=$(select_guest_ipv4)
-    lxc config device override "$NAME" eth0 network="$NETWORK" ipv4.address="$guest_ip"
+    lxd_set_device_property "$NAME" eth0 network "$NETWORK"
+    lxd_set_device_property "$NAME" eth0 ipv4.address "$guest_ip"
     lxc config device add "$NAME" topology-ui proxy nat=true \
         listen="tcp:$HOST_IP:$TOPOLOGY_PORT" connect="tcp:$guest_ip:8090"
     lxc config device add "$NAME" controller-ui proxy nat=true \
@@ -223,7 +255,8 @@ EOF"
     run rm -rf /opt/prplmesh-stage
     run systemctl start prplmesh-lab.service
     check_vm
-    lxc snapshot "$NAME" accepted
+    # package.sh reruns acceptance and exports only the instance. Avoid a
+    # full disk copy on non-copy-on-write outer storage pools.
     trap - EXIT
     rm -rf -- "$stage"
 }

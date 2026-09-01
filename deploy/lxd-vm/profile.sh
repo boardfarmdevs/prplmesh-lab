@@ -53,6 +53,17 @@ prplmesh_profile_disk()
     case "$(prplmesh_profile_name "${1:-20}")" in
         small) printf '80GiB\n' ;;
         medium) printf '88GiB\n' ;;
-        stress) printf '104GiB\n' ;;
+        # A 104 GiB disk filled while creating client 80 in qualification.
+        stress) printf '160GiB\n' ;;
+    esac
+}
+
+prplmesh_profile_min_lxd_pool_free_bytes()
+{
+    # Sparse outer VM disks need the measured build working set plus headroom.
+    case "$(prplmesh_profile_name "${1:-20}")" in
+        small) printf '%s\n' $((24 * 1024 * 1024 * 1024)) ;;
+        medium) printf '%s\n' $((48 * 1024 * 1024 * 1024)) ;;
+        stress) printf '%s\n' $((80 * 1024 * 1024 * 1024)) ;;
     esac
 }

@@ -58,10 +58,7 @@ class FakeControlClient:
         )
 
     def dump_links(self):
-        return self.generation, [
-            {"source": source, "destination": destination, "value": value}
-            for (source, destination), value in self.matrix.items()
-        ]
+        raise AssertionError("runner must not dump the full link matrix")
 
     def apply(self, generation: int, updates: list[dict]):
         if self.conflict_once:

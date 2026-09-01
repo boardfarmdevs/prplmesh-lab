@@ -1,6 +1,6 @@
 # prplMesh lab deployment
 
-The 0829 release supports the same accepted controller, four-Agent and
+The 0831 release supports the same accepted controller, four-Agent and
 20-client profile in two execution models. The EasyMesh processes always run
 in LXD containers; the only choice is whether those containers run directly
 on the host or inside a portable LXD virtual machine.
@@ -36,7 +36,7 @@ See the model-specific procedures:
 
 Release engineering uses `package-source.sh`, `lxd-vm/build.sh`, and
 `lxd-vm/package.sh`. Every
-emitted artifact has the `0829` release tag, source commit, and a sibling
+emitted artifact has the `0831` release tag, source commit, and a sibling
 SHA-256 file.
 
 Userspace wmediumd and controller-first startup are the appliance defaults.

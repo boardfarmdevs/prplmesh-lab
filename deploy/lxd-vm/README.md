@@ -23,6 +23,7 @@ controller, four Agents, both UIs, and boot service:
 
 ```sh
 PRPLMESH_LAB_PROFILE=20 \
+PRPLMESH_LXD_STORAGE=default \
 PRPL_RUNTIME_DEPS_ARCHIVE=/absolute/path/prpl-runtime-deps-6.0.0.tar.gz \
 PRPL_INSTALL_ARCHIVE=/absolute/path/prpl-install-nl80211-6.0.0.tar.gz \
 PRPL_HOSTAP_ARCHIVE=/absolute/path/hostap-runtime-2.10.tar.gz \
@@ -39,24 +40,43 @@ source mount, Git credential, fixed host address, or dependency on the build
 directory. Use `build.sh status|start|stop|restart|delete` for the named build
 instance.
 
+`PRPLMESH_LXD_STORAGE` selects the outer LXD pool for a clean build. The
+builder reports capacity, used space, free space, and the profile-aware free
+space requirement before it creates the VM. The selected build pool is saved
+as provenance in the release metadata but is never forced on another host.
+
 Package a checked export for Google Drive with:
 
 ```sh
 PRPLMESH_LAB_PROFILE=20 deploy/lxd-vm/package.sh
 deploy/lxd-vm/package-release.sh \
-  release/0829/prplmesh-20-0829-COMMIT-lxd
+  release/0831/prplmesh-20-0831-COMMIT-lxd
 ```
+
+The builder and packager each run the relevant acceptance gates. They do not
+create or export an `accepted` LXD snapshot: on non-copy-on-write storage a
+snapshot duplicates the complete VM disk, while the portable export is
+instance-only and does not consume snapshots.
+
+Before export, packaging stops the lab, removes only reconstructible package,
+journal, Docker and nested-LXD image caches, and issues filesystem discard.
+It never removes provisioned containers, identities, configuration or source.
+Every bundle includes `trim-report.txt` with before/after guest usage,
+discard output and the final compressed archive size.
 
 Upload the resulting `*-bundle.tar` and `.sha256`. From any empty working
 directory, download the selected profile, verify and extract it:
 
 ```sh
-sha256sum -c prplmesh-20-0829-COMMIT-lxd-bundle.tar.sha256
-tar -xf prplmesh-20-0829-COMMIT-lxd-bundle.tar
-cd prplmesh-20-0829-COMMIT-lxd
+sha256sum -c prplmesh-20-0831-COMMIT-lxd-bundle.tar.sha256
+tar -xf prplmesh-20-0831-COMMIT-lxd-bundle.tar
+cd prplmesh-20-0831-COMMIT-lxd
 sha256sum -c SHA256SUMS
 PRPLMESH_UI_HOST_IP=127.0.0.1 ./import.sh
 ```
+
+To import into a non-default outer LXD pool, add
+`PRPLMESH_LXD_STORAGE=POOL`. The pool must already exist.
 
 To expose both UIs on a lab LAN, select an address owned by the outer host:
 
@@ -65,7 +85,7 @@ PRPLMESH_UI_HOST_IP=192.168.2.140 \
   ./import.sh
 ```
 
-The release metadata selects instance `prplmesh-CLIENTS-0829` and its tested
+The release metadata selects instance `prplmesh-CLIENTS-0831` and its tested
 CPU/RAM limits. Host port `8090` serves the raw adapter and `8091` serves the
 Controller UI. Override them with
 `PRPLMESH_VM_NAME`, `PRPLMESH_TOPOLOGY_HOST_PORT`, and
@@ -74,17 +94,17 @@ Controller UI. Override them with
 Monitor cold reconstruction:
 
 ```sh
-lxc console prplmesh-20-0829 --show-log
-lxc exec prplmesh-20-0829 -- journalctl -fu prplmesh-lab.service
-lxc exec prplmesh-20-0829 -- prplmesh-lab-start status
+lxc console prplmesh-20-0831 --show-log
+lxc exec prplmesh-20-0831 -- journalctl -fu prplmesh-lab.service
+lxc exec prplmesh-20-0831 -- prplmesh-lab-start status
 ```
 
 Lifecycle and removal:
 
 ```sh
-lxc stop prplmesh-20-0829
-lxc start prplmesh-20-0829
-lxc delete prplmesh-20-0829       # destructive; removes the imported VM
+lxc stop prplmesh-20-0831
+lxc start prplmesh-20-0831
+lxc delete prplmesh-20-0831       # destructive; removes the imported VM
 ```
 
 The lab automatically reconstructs after a guest reboot. Imported appliances
@@ -92,13 +112,13 @@ default to `boot.autostart=true`, so an existing VM also returns after an outer
 host reboot. Disable it explicitly when that is not wanted:
 
 ```sh
-lxc config set prplmesh-20-0829 boot.autostart false
+lxc config set prplmesh-20-0831 boot.autostart false
 ```
 
 Run a post-import acceptance check after cold reconstruction:
 
 ```sh
-lxc exec prplmesh-20-0829 -- prplmesh-lab-start status
+lxc exec prplmesh-20-0831 -- prplmesh-lab-start status
 curl -fsS http://127.0.0.1:8090/api/topology >/dev/null
 curl -fsS http://127.0.0.1:8091/api/topology >/dev/null
 ```
