@@ -26,6 +26,10 @@ Packaging labels a release candidate. Acceptance requires a clean import on a
 different host and the exact profile's topology, traffic, steering, optimizer,
 resource and one-hour soak gates.
 
+All published profiles are trimmed before export. The bundle's
+`trim-report.txt` records cache removal, filesystem discard, guest usage and
+the final archive size; the report itself is covered by `SHA256SUMS`.
+
 The RDK repository's `portable-lab-releases.md` defines the shared two-stack
 catalog and publishing contract. Google credentials and site-specific Drive
 URLs are deliberately not stored in either repository.

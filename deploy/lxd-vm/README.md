@@ -58,6 +58,12 @@ create or export an `accepted` LXD snapshot: on non-copy-on-write storage a
 snapshot duplicates the complete VM disk, while the portable export is
 instance-only and does not consume snapshots.
 
+Before export, packaging stops the lab, removes only reconstructible package,
+journal, Docker and nested-LXD image caches, and issues filesystem discard.
+It never removes provisioned containers, identities, configuration or source.
+Every bundle includes `trim-report.txt` with before/after guest usage,
+discard output and the final compressed archive size.
+
 Upload the resulting `*-bundle.tar` and `.sha256`. From any empty working
 directory, download the selected profile, verify and extract it:
 
