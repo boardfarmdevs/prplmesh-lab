@@ -7,7 +7,8 @@ source "$ROOT/deploy/lxd-vm/profile.sh"
 PROFILE=$(prplmesh_profile_name "${PRPLMESH_LAB_PROFILE:-20}")
 CLIENTS=$(prplmesh_profile_clients "$PROFILE")
 RADIOS=$(prplmesh_profile_radios "$PROFILE")
-NAME=${PRPLMESH_VM_NAME:-prplmesh-${CLIENTS}-0831}
+RELEASE_NAME=$(prplmesh_profile_release_name "$PROFILE")
+NAME=${PRPLMESH_VM_NAME:-$RELEASE_NAME}
 OUTPUT_DIR=${1:-$ROOT/release/0831}
 SHORT=$(git -C "$ROOT" rev-parse --short=7 HEAD)
 BUNDLE="$OUTPUT_DIR/prplmesh-${CLIENTS}-0831-${SHORT}-lxd"
@@ -91,7 +92,7 @@ LAB_STACK=prplmesh
 LAB_PROFILE=$PROFILE
 LAB_CLIENTS=$CLIENTS
 LAB_HWSIM_RADIOS=$RADIOS
-LAB_DEFAULT_NAME=$NAME
+LAB_DEFAULT_NAME=$RELEASE_NAME
 LAB_DEFAULT_CPUS=$(prplmesh_profile_cpus "$PROFILE")
 LAB_DEFAULT_MEMORY=$(prplmesh_profile_memory "$PROFILE")
 LAB_DEFAULT_DISK=$(prplmesh_profile_disk "$PROFILE")
@@ -104,7 +105,7 @@ jq -n \
     --argjson clients "$CLIENTS" --argjson radios "$RADIOS" \
     --arg source_commit "$(git -C "$ROOT" rev-parse HEAD)" \
     --arg created_at "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
-    --arg archive "$(basename "$OUTPUT")" --arg instance "$NAME" \
+    --arg archive "$(basename "$OUTPUT")" --arg instance "$RELEASE_NAME" \
     --arg cpus "$(prplmesh_profile_cpus "$PROFILE")" \
     --arg memory "$(prplmesh_profile_memory "$PROFILE")" \
     --arg disk "$(prplmesh_profile_disk "$PROFILE")" \
