@@ -70,7 +70,7 @@ if [ "$(lxc list "$NAME" -c s --format csv)" = RUNNING ]; then
     lxc file push "$ROOT/deploy/lxd-vm/package-cleanup.sh" \
         "$NAME/run/prplmesh-package-cleanup"
     lxc exec "$NAME" -- chmod 0755 /run/prplmesh-package-cleanup
-    lxc exec "$NAME" -- /run/prplmesh-package-cleanup | tee "$TRIM_REPORT"
+    lxc exec "$NAME" -- /bin/bash /run/prplmesh-package-cleanup | tee "$TRIM_REPORT"
     lxc file delete "$NAME/run/prplmesh-package-cleanup"
     lxc stop "$NAME" --timeout 120
 fi
