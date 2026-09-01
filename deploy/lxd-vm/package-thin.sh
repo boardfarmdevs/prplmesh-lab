@@ -94,7 +94,6 @@ guest_clients=$(lxc exec "$NAME" -- bash -lc \
     exit 1
 }
 
-PRPLMESH_VM_NAME="$NAME" "$ROOT/deploy/lxd-vm/build.sh" check
 lxc exec "$NAME" -- systemctl stop prplmesh-lab.service
 lxc file push "$SOURCE_BUNDLE" "$NAME/run/prplmesh-thin-source.bundle"
 lxc exec "$NAME" -- env SOURCE_COMMIT="$SOURCE_COMMIT" bash -c '
@@ -146,6 +145,8 @@ lxc exec "$NAME" -- env SOURCE_COMMIT="$SOURCE_COMMIT" bash -c '
 lxc file delete "$NAME/run/prplmesh-thin-source.bundle"
 [ "$(lxc exec "$NAME" -- git -C /opt/prplmesh-lab rev-parse HEAD)" = "$SOURCE_COMMIT" ]
 [ -z "$(lxc exec "$NAME" -- git -C /opt/prplmesh-lab status --porcelain)" ]
+lxc exec "$NAME" -- systemctl start prplmesh-lab.service
+PRPLMESH_VM_NAME="$NAME" "$ROOT/deploy/lxd-vm/build.sh" check
 lxc exec "$NAME" -- env PRPLMESH_LAB_PROFILE="$PROFILE" \
     /opt/prplmesh-lab/deploy/guest/prepare-thin-image.sh | tee "$TRIM_REPORT"
 printf 'thin_source_bundle_sha256=%s\n' "$SOURCE_BUNDLE_SHA256" >> "$TRIM_REPORT"
