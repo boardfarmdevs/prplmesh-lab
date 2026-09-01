@@ -243,7 +243,8 @@ EOF"
     run rm -rf /opt/prplmesh-stage
     run systemctl start prplmesh-lab.service
     check_vm
-    lxc snapshot "$NAME" accepted </dev/null
+    # package.sh reruns acceptance and exports only the instance. Avoid a
+    # full disk copy on non-copy-on-write outer storage pools.
     trap - EXIT
     rm -rf -- "$stage"
 }

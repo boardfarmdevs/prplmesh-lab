@@ -53,6 +53,11 @@ deploy/lxd-vm/package-release.sh \
   release/0831/prplmesh-20-0831-COMMIT-lxd
 ```
 
+The builder and packager each run the relevant acceptance gates. They do not
+create or export an `accepted` LXD snapshot: on non-copy-on-write storage a
+snapshot duplicates the complete VM disk, while the portable export is
+instance-only and does not consume snapshots.
+
 Upload the resulting `*-bundle.tar` and `.sha256`. From any empty working
 directory, download the selected profile, verify and extract it:
 
