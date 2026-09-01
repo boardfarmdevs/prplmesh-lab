@@ -410,8 +410,8 @@ start_one_client()
     cohort_ordinal=$(client_ordinal "$ordinal")
     band=$(client_band "$ordinal")
     start_container "$name"
-    lxc exec "$name" -- /mnt/project/scripts/container/setup-client.sh \
-        "$cohort_ordinal" "$cohort" "$band"
+    "$ROOT/scripts/client-setup-with-retry.sh" \
+        "$name" "$cohort_ordinal" "$cohort" "$band"
     station_mac=$(client_mac "$cohort" "$cohort_ordinal")
     if ! wait_for_model "$station_mac" "$name station $station_mac" 30; then
         echo "$name associated but is absent from the model; reassociating once" >&2
