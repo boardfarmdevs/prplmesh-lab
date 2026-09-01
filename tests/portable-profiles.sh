@@ -63,5 +63,6 @@ test "$(grep -c 'sha256sum -c SHA256SUMS' \
 "$ROOT/tests/wmediumd-offline-build.sh"
 "$ROOT/tests/nested-stop.sh"
 "$ROOT/tests/nested-image-fingerprints.sh"
+"$ROOT/tests/data-plane-leaf.sh"
 
 echo 'PASS: prplMesh portable profiles and wmediumd rosters'

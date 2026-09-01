@@ -59,8 +59,9 @@ tests/steering-demo.sh --cycles 2 --delay 5
 ```
 
 `data-plane.sh` checks the deterministic `192.168.77.0/24` lab data network
-from every active WLAN client. It then places `iot-06` on the deepest active
-agent and sends a longer ping through the complete wireless backhaul to the
+from every active WLAN client. It then discovers a client already associated
+with the deepest active agent and sends a longer ping through that exact BSSID
+and the complete wireless backhaul to the
 controller. LXD management addresses are on a different subnet and cannot
 satisfy this test.
 
