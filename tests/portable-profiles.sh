@@ -33,6 +33,7 @@ if prplmesh_profile_name 21 >/dev/null 2>&1; then
 fi
 
 for script in \
+    controller-ui/install.sh \
     deploy/guest/prepare-thin-firstboot.sh \
     deploy/guest/prepare-thin-image.sh \
     deploy/lxd-vm/package-thin.sh; do
@@ -45,5 +46,9 @@ grep -Fq 'bundle create "$SOURCE_BUNDLE" HEAD' "$ROOT/deploy/lxd-vm/package-thin
 grep -Fq 'thin_firstboot_status=PASS' "$ROOT/deploy/guest/prepare-thin-firstboot.sh"
 grep -Fxq 'TimeoutStartSec=60min' "$ROOT/deploy/guest/prplmesh-lab.service"
 grep -Fq 'PRPLMESH_PRESERVE_IMAGE_ALIAS' "$ROOT/deploy/lxd-vm/package-cleanup.sh"
+grep -Fq 'systemctl is-active --quiet prplmesh-controller-ui.service' \
+    "$ROOT/controller-ui/install.sh"
+grep -Fq 'PRPL_UI_READY_ATTEMPTS:-30' "$ROOT/controller-ui/install.sh"
+grep -Fq 'curl -sS --max-time 2' "$ROOT/controller-ui/install.sh"
 
 echo 'PASS: prplMesh portable profiles and wmediumd rosters'
