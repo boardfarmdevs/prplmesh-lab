@@ -74,6 +74,15 @@ crossover in which one requested target becomes uniquely stronger while the
 other three candidates remain weak. The optimizer sees only prplMesh NBAPI and
 Unassociated STA Link Metrics results; it is not given the plan or target.
 
+The destination hold scales as `max(90, 6 * clients)` seconds so the 20-,
+50-, and 100-client serialized controller sweeps remain inside the RF
+stimulus. Every lab BSS uses a bounded 1200-second hostapd inactivity timeout.
+That margin prevents otherwise-silent synthetic stations from aging out during
+the stress-profile sweep; ordinary traffic and the explicit RF-outage tests
+still exercise association loss. The harness never reduces the required
+profile cardinality and does not repair missing clients during an optimizer
+decision.
+
 ```sh
 tests/optimizer-dynamic.sh recommend prpl-client-07 prpl-agent-02
 tests/optimizer-dynamic.sh act prpl-client-07 prpl-agent-02

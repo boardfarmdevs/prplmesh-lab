@@ -12,6 +12,7 @@ case "$MODE" in
 esac
 
 inventory=$(mktemp /tmp/prpl-optimizer-inventory.XXXXXX.json)
+profile_scenario=$(mktemp /tmp/prpl-optimizer-scenario-profile.XXXXXX.wmd)
 plan=$(mktemp /tmp/prpl-optimizer-plan.XXXXXX.json)
 journal=$(mktemp /tmp/prpl-optimizer-journal.XXXXXX.jsonl)
 scenario_log=$(mktemp /tmp/prpl-optimizer-scenario.XXXXXX.log)
@@ -24,7 +25,7 @@ cleanup()
         kill -TERM "$scenario_pid" 2>/dev/null || true
         wait "$scenario_pid" 2>/dev/null || true
     fi
-    rm -f "$inventory" "$plan"
+    rm -f "$inventory" "$profile_scenario" "$plan"
 }
 trap cleanup EXIT
 
@@ -110,7 +111,11 @@ target=${binding[1]}
 target_bssid=${binding[2]}
 client_sta=${binding[3]}
 
-python3 -m wmdcfg.cli compile scenarios/optimizer-five-ap-crossover.wmd \
+python3 "$ROOT/tests/optimizer-profile-scenario.py" \
+    --clients "$expected_clients" \
+    scenarios/optimizer-five-ap-crossover.wmd "$profile_scenario"
+
+python3 -m wmdcfg.cli compile "$profile_scenario" \
     --inventory "$inventory" \
     --bind "client=$CLIENT" \
     --bind "source=$source" \
