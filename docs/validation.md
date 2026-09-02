@@ -1,6 +1,6 @@
 # Validation status
 
-## Accepted on 2026-08-30
+## Accepted through 2026-09-02
 
 | Area | Accepted result |
 |---|---|
@@ -24,6 +24,7 @@
 | Bounded churn | Three leaf restart/steering cycles; inventory hash and wmediumd PID unchanged |
 | Resources | Fixed process cardinality; no snapd/unattended-upgrade runtime processes |
 | Medium backends | Full 20-client acceptance passed with default userspace wmediumd and opt-in kernel medium |
+| Medium Console | Same source and static binary as RDK; 20/20 authoritative client-owner edges with stable private/IoT labels |
 
 In the current 25-container star profile, the full readiness-gated cold start
 completed in 199 seconds with userspace wmediumd and 189 seconds with the
@@ -111,6 +112,13 @@ identity rather than treating CLI acknowledgement or Web rendering as proof.
   mistake a rejected second daemon for an active test medium. It now owns the
   canonical runtime PID plus control, metrics and observer sockets, and proves
   the 20-client 118 → 88 → 118 transition.
+- Private clients were emitted with a prpl-only `client` role, and multicast
+  packet fan-out made every active pair look non-authoritative. The inventory
+  now uses the shared `wlan-client` role, while wmediumd exposes ownership only
+  from ACKed association responses or infrastructure data. The identical RDK
+  and prpl Console binary therefore renders 20 current edges and treats event
+  ring overwrite counters as informational unless the observer reports a real
+  history gap.
 
 ## Remaining gaps
 
@@ -127,7 +135,6 @@ identity rather than treating CLI acknowledgement or Web rendering as proof.
 
 This is now sufficient for comparative onboarding, multihop, associated and
 candidate telemetry, outage, steering, dynamic-medium and reference-policy
-experiments. The same optimizer/configurator source is intentionally duplicated
-in both mesh repositories for this phase. The wmediumd Console and long soak
-history remain RDK-only, and mixed sustained traffic/congestion work remains
-open in both labs.
+experiments. The same optimizer/configurator and wmediumd Console source are
+intentionally duplicated in both mesh repositories for this phase. Long soak
+history and mixed sustained traffic/congestion work remain open in both labs.

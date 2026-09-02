@@ -53,7 +53,7 @@ def build(radios: int, agents: int, clients: int, radios_per_node: int) -> dict:
             iot = container_ordinal % 2 == 0
             entry.update(
                 label=f"{'iot' if iot else 'sta'}-{cohort_ordinal:02d}",
-                role="iot-client" if iot else "client",
+                role="iot-client" if iot else "wlan-client",
                 owner=f"prpl-client-{container_ordinal:02d}",
                 interface="wlan0",
             )

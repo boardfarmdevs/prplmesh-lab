@@ -17,7 +17,9 @@ class IdentityInventoryTests(unittest.TestCase):
         self.assertEqual(stations["42:00:00:00:00:00"]["label"], "Controller 2.4 GHz")
         self.assertEqual(stations["42:00:00:00:04:00"]["label"], "Extender-1 5 GHz")
         self.assertEqual(stations["42:00:00:00:0f:00"]["label"], "sta-01")
+        self.assertEqual(stations["42:00:00:00:0f:00"]["role"], "wlan-client")
         self.assertEqual(stations["42:00:00:00:10:00"]["label"], "iot-01")
+        self.assertEqual(stations["42:00:00:00:10:00"]["role"], "iot-client")
         self.assertEqual(stations["42:00:00:00:22:00"]["label"], "iot-10")
         self.assertEqual(stations["42:00:00:00:23:00"]["role"], "spare")
 
