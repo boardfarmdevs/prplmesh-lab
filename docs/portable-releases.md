@@ -5,7 +5,7 @@ archive supports 20, 50, and 100 clients; there are no profile-specific release
 files.
 
 The 0901 archive is 1,816,176,640 bytes. Its SHA-256 is
-`8067495912458496be23030be2b05a212c0f8ff349c8da94ec2a5505bd98b955`
+`250dc99e7390a916984478f5269c168d3dc9fbd2705b5e83bca95cf1f5d144cd`
 and its source commit is `71102b3aae319d378c36c7bf80bca11cae0b5d59`.
 
 The archive contains an installed Ubuntu 24.04/Linux 7 LXD VM, exact source,
