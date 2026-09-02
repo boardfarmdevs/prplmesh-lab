@@ -4,10 +4,15 @@
 import argparse
 import collections
 import json
+import re
 import subprocess
 import sys
 import time
 import urllib.request
+
+AP_BASE_INTERFACE = {"2.4 GHz": "wlan0", "5 GHz": "wlan2", "6 GHz": "wlan4"}
+AP_SSID_SUFFIX = {"private_ssid": "", "iot_ssid": ".0"}
+STATION = re.compile(r"(?m)^Station ([0-9a-fA-F:]{17}) ")
 
 
 def run(*args, timeout=15):
@@ -40,6 +45,33 @@ def expected_band(ordinal):
         "2.4 GHz", "5 GHz", "5 GHz", "6 GHz", "5 GHz",
         "6 GHz", "2.4 GHz", "5 GHz", "5 GHz", "6 GHz",
     )[(cohort_ordinal - 1) % 10]
+
+
+def ap_interface(band, ssid):
+    try:
+        return AP_BASE_INTERFACE[band] + AP_SSID_SUFFIX[ssid]
+    except KeyError as error:
+        raise ValueError(f"unsupported AP band/SSID: {band}/{ssid}") from error
+
+
+def parse_ap_stations(output):
+    return {match.group(1).lower() for match in STATION.finditer(output)}
+
+
+def ap_stations(device, radio, bss, cache):
+    node = device["name"]
+    container = "prpl-controller" if node == "controller" else (
+        f"prpl-agent-{int(node.split('-', 1)[1]):02d}"
+    )
+    interface = ap_interface(radio["band"], bss["ssid"])
+    key = (container, interface)
+    if key not in cache:
+        output = run(
+            "lxc", "exec", container, "--", "iw", "dev", interface,
+            "station", "dump",
+        )
+        cache[key] = parse_ap_stations(output)
+    return container, interface, cache[key]
 
 
 def main():
@@ -97,6 +129,7 @@ def main():
     assert len({row[3]["id"] for row in rows}) == args.clients, "duplicate client ownership"
 
     expected_macs = set()
+    station_cache = {}
     for ordinal in range(1, args.clients + 1):
         cohort = "private" if ordinal % 2 else "iot"
         cohort_ordinal = (ordinal + 1) // 2
@@ -105,7 +138,7 @@ def main():
         expected_macs.add(mac)
         matches = [row for row in rows if row[3]["id"] == mac]
         assert len(matches) == 1, (mac, len(matches))
-        _, radio, bss, client = matches[0]
+        device, radio, bss, client = matches[0]
         assert bss["ssid"] == f"{cohort}_ssid" if cohort == "private" else bss["ssid"] == "iot_ssid"
         assert radio["band"] == expected_band(ordinal), (mac, radio["band"], expected_band(ordinal))
         if args.require_metrics:
@@ -117,6 +150,13 @@ def main():
         assert values.get("wpa_state") == "COMPLETED", (container, values)
         assert values.get("address") == mac, (container, values.get("address"), mac)
         assert values.get("ssid") == bss["ssid"], (container, values.get("ssid"), bss["ssid"])
+
+        ap_container, interface, station_macs = ap_stations(
+            device, radio, bss, station_cache
+        )
+        assert mac in station_macs, (
+            mac, "absent from AP station table", ap_container, interface
+        )
 
     assert {row[3]["id"] for row in rows} == expected_macs
     ssids = collections.Counter(row[2]["ssid"] for row in rows)

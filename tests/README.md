@@ -29,7 +29,10 @@ PRPL_MEDIUM_BACKEND=kernel PRPL_AGENT_COUNT=4 PRPL_CLIENT_COUNT=20 \
 
 `topology-acceptance.py` checks unique device, radio, BSS and client ownership,
 all physical associations, both `private_ssid` and `iot_ssid`, 2.4/5/6 GHz
-distribution, wireless backhaul parentage and reported RCPI. `test-steering.sh`
+distribution, wireless backhaul parentage and reported RCPI. Every client must
+also exist in the owning AP interface's kernel station table; a stale client-side
+`wpa_state=COMPLETED` cannot satisfy the gate after hostapd has removed the
+station. `test-steering.sh`
 issues BTM requests for a private 5 GHz client and an IoT 6 GHz client and
 requires physical and NBAPI convergence. `resource-acceptance.sh` checks fixed
 process cardinality, reports the mesh footprint and rejects snap/automatic
