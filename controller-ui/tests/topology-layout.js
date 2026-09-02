@@ -23,11 +23,11 @@ const colocatedStar = [
   ...[1, 2, 3, 4].map(index => ({ from: 'agent-1', to: `extender-${index}` }))
 ];
 const positions = controller.topologyLandscapeLayout(nodes, colocatedStar, 1600, 900);
-assert.deepEqual(positions.get('controller'), { x: 0, y: 0 });
-assert.ok(nodes.slice(1).every(node => {
-  const position = positions.get(node.id);
-  return position && Math.hypot(position.x, position.y) > 0;
-}));
+const controllerPosition = positions.get('controller');
+assert.ok(controllerPosition, 'Controller is missing from the hierarchy');
+assert.ok(nodes.slice(1).every(node =>
+  positions.get(node.id).x > controllerPosition.x),
+  'a star satellite was not placed after the Controller');
 assert.equal(new Set(nodes.slice(1).map(node => {
   const position = positions.get(node.id);
   return `${position.x.toFixed(3)},${position.y.toFixed(3)}`;
@@ -44,4 +44,4 @@ const branchPositions = controller.topologyLandscapeLayout(nodes, branch, 1600, 
 assert.notDeepEqual(branchPositions.get('controller'), { x: 0, y: 0 },
   'a multihop branch was incorrectly classified as a star');
 
-console.log('PASS: direct and colocated-agent stars center the Controller without misclassifying a branch');
+console.log('PASS: star and branch topologies use the same space-efficient Controller-first hierarchy');

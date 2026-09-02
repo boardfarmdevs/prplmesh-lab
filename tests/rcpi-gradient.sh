@@ -45,7 +45,7 @@ wait_signal()
         result=$(python3 - "$clients" "$expected" <<'PY'
 import json,sys,urllib.request
 clients=int(sys.argv[1]); expected=int(sys.argv[2])
-with urllib.request.urlopen("http://127.0.0.1:8090/api/topology",timeout=20) as r:
+with urllib.request.urlopen("http://127.0.0.1:8092/api/topology",timeout=20) as r:
     x=json.load(r)
 signals=[c["signal_raw"] for d in x["devices"] for q in d["radios"]
          for b in q["bsses"] for c in b["clients"]

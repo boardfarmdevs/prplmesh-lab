@@ -80,7 +80,7 @@ def main():
     parser.add_argument("--clients", type=int, default=20)
     parser.add_argument("--topology", choices=("star", "branch", "chain"), default="chain")
     parser.add_argument("--require-metrics", action="store_true")
-    parser.add_argument("--url", default="http://127.0.0.1:8090/api/topology")
+    parser.add_argument("--url", default="http://127.0.0.1:8092/api/topology")
     args = parser.parse_args()
 
     data = topology(args.url)

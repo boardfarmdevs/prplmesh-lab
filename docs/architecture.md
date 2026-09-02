@@ -32,7 +32,8 @@ reused.
  |  | wpa_supplicant; 2.4 / 5 / 6 GHz   |                                             |
  |  +------------------------------------+                                             |
  |                                                                                     |
- |  NBAPI -> read-only visualizer :8090     NBAPI BTM <- named steering/tests          |
+ |  NBAPI -> internal adapter :8092 -> Controller UI :8091                            |
+ |  wmediumd observer socket -> shared wmediumd Console :8090                         |
  +-------------------------------------------------------------------------------------+
 ```
 
@@ -77,9 +78,9 @@ open.
   multichannel scheduling, learned-VIF delivery, Linux 7 rate flag,
   frequency-filtered multicast, receive-buffer, default-SNR, and associated
   correctness fixes.
-- Scenario-control, metrics, and observer socket extensions are excluded from
-  the first prplMesh milestone. Static configuration is enough to prove
-  simultaneous 2.4, 5, and 6 GHz operation.
+- Scenario-control, metrics, and bounded observer sockets use the same patched
+  wmediumd ABI as the RDK lab. The Console source and Web assets are copied
+  unchanged so medium behavior is presented identically in both labs.
 
 ## Future optimizer compatibility
 

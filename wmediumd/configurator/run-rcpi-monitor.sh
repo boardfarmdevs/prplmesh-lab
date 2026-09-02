@@ -3,7 +3,7 @@ set -euo pipefail
 
 script_dir=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
 client_container=${1:-prpl-client-01}
-api_url=${PRPL_TOPOLOGY_API:-http://127.0.0.1:8090/api/topology}
+api_url=${PRPL_TOPOLOGY_API:-http://127.0.0.1:8092/api/topology}
 output_root=${WMD_RUN_ROOT:-/tmp/wmdcfg-runs}
 traffic_target=${WMD_TRAFFIC_TARGET:-192.168.77.1}
 inventory_file=$(mktemp --suffix=.json /tmp/rcpi-monitor-inventory.XXXXXX)

@@ -6,7 +6,7 @@ import subprocess
 import time
 
 
-TOPOLOGY_URL = "http://127.0.0.1:8090/api/topology"
+TOPOLOGY_URL = "http://127.0.0.1:8092/api/topology"
 
 
 def _run(*args: str) -> str:

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Read prplMesh NBAPI state from ubus and expose a small read-only Web UI."""
+"""Read prplMesh NBAPI state from ubus for the Controller UI adapter."""
 
 import argparse
 import datetime as dt
@@ -7,8 +7,7 @@ import json
 import re
 import subprocess
 from http import HTTPStatus
-from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
-from pathlib import Path
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 ROOT = "Device.WiFi.DataElements.Network"
 
@@ -198,7 +197,7 @@ def topology():
     }
 
 
-class Handler(SimpleHTTPRequestHandler):
+class Handler(BaseHTTPRequestHandler):
     def send_json(self, status, value):
         body = json.dumps(value, indent=2).encode()
         self.send_response(status)
@@ -218,9 +217,7 @@ class Handler(SimpleHTTPRequestHandler):
         if self.path == "/health":
             self.send_json(HTTPStatus.OK, {"status": "ok"})
             return
-        if self.path == "/":
-            self.path = "/index.html"
-        super().do_GET()
+        self.send_json(HTTPStatus.NOT_FOUND, {"error": "not found"})
 
     def log_message(self, message, *args):
         print(f"{self.client_address[0]} {message % args}", flush=True)
@@ -229,12 +226,10 @@ class Handler(SimpleHTTPRequestHandler):
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--listen", default="0.0.0.0")
-    parser.add_argument("--port", type=int, default=8090)
+    parser.add_argument("--port", type=int, default=8092)
     args = parser.parse_args()
-    static = Path(__file__).resolve().parent / "static"
-    handler = lambda *values, **kwargs: Handler(*values, directory=static, **kwargs)
-    server = ThreadingHTTPServer((args.listen, args.port), handler)
-    print(f"prplMesh topology visualizer listening on {args.listen}:{args.port}", flush=True)
+    server = ThreadingHTTPServer((args.listen, args.port), Handler)
+    print(f"prplMesh internal topology adapter listening on {args.listen}:{args.port}", flush=True)
     server.serve_forever()
 
 

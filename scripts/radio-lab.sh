@@ -22,6 +22,8 @@ WMEDIUMD_PIDFILE=$WMEDIUMD_RUNTIME/wmediumd.pid
 WMEDIUMD_CONTROL=${PRPL_WMEDIUMD_CONTROL:-$WMEDIUMD_RUNTIME/control.sock}
 WMEDIUMD_METRICS=${PRPL_WMEDIUMD_METRICS:-$WMEDIUMD_RUNTIME/metrics.sock}
 WMEDIUMD_OBSERVER=${PRPL_WMEDIUMD_OBSERVER:-$WMEDIUMD_RUNTIME/telemetry.sock}
+WMEDIUMD_DAEMON_MANIFEST=${PRPL_WMEDIUMD_DAEMON_MANIFEST:-$WMEDIUMD_RUNTIME/wmediumd-binary.sha256}
+WMEDIUMD_CONFIG_SNAPSHOT=${PRPL_WMEDIUMD_CONFIG_SNAPSHOT:-$WMEDIUMD_RUNTIME/wmediumd.conf}
 WMEDIUMD_LOG=${PRPL_WMEDIUMD_LOG:-/tmp/prpl-wmediumd.log}
 WMEDIUMD_CONFIG=${PRPL_WMEDIUMD_CONFIG:-${PRPLMESH_APPLIANCE_WMEDIUMD_CONFIG:-$ROOT/manifests/wmediumd.conf}}
 WMEDIUMD_CPU_AFFINITY=${PRPL_WMEDIUMD_CPU_AFFINITY:-}
@@ -283,7 +285,7 @@ stop_medium()
     stop_pidfile "$WMEDIUMD_PIDFILE"
     pkill -x wmediumd 2>/dev/null || true
     rm -f "$WMEDIUMD_PIDFILE" "$KERNEL_MEDIUM_PROXY_PIDFILE" "$WMEDIUMD_CONTROL" \
-        "$WMEDIUMD_METRICS" "$WMEDIUMD_OBSERVER"
+        "$WMEDIUMD_METRICS" "$WMEDIUMD_OBSERVER" "$WMEDIUMD_DAEMON_MANIFEST"
     if [ -w /sys/module/mac80211_hwsim/parameters/kernel_medium ]; then
         echo 0 > /sys/module/mac80211_hwsim/parameters/kernel_medium
     fi
@@ -291,7 +293,7 @@ stop_medium()
 
 start_userspace_medium()
 {
-    local command expected_patchset provenance
+    local command expected_patchset hash pid provenance
 
     expected_patchset=$(
         cd "$ROOT"
@@ -310,6 +312,16 @@ start_userspace_medium()
        kill -0 "$(cat "$WMEDIUMD_PIDFILE")" 2>/dev/null &&
        [ -S "$WMEDIUMD_CONTROL" ] && [ -S "$WMEDIUMD_METRICS" ] &&
        [ -S "$WMEDIUMD_OBSERVER" ]; then
+        install -m 0644 "$WMEDIUMD_CONFIG" "$WMEDIUMD_CONFIG_SNAPSHOT"
+        pid=$(cat "$WMEDIUMD_PIDFILE")
+        hash=$(sha256sum "$ROOT/build/bin/wmediumd" | awk '{print $1}')
+        printf '%s\t%s\t%s\n' "$pid" "$hash" "$ROOT/build/bin/wmediumd" \
+            > "$WMEDIUMD_DAEMON_MANIFEST"
+        chmod 0644 "$WMEDIUMD_DAEMON_MANIFEST"
+        if getent group wmediumd-console >/dev/null; then
+            chgrp wmediumd-console "$WMEDIUMD_OBSERVER"
+            chmod 0660 "$WMEDIUMD_OBSERVER"
+        fi
         return
     fi
     stop_medium
@@ -337,6 +349,16 @@ start_userspace_medium()
             return 1
         }
     done
+    install -m 0644 "$WMEDIUMD_CONFIG" "$WMEDIUMD_CONFIG_SNAPSHOT"
+    pid=$(cat "$WMEDIUMD_PIDFILE")
+    hash=$(sha256sum "$ROOT/build/bin/wmediumd" | awk '{print $1}')
+    printf '%s\t%s\t%s\n' "$pid" "$hash" "$ROOT/build/bin/wmediumd" \
+        > "$WMEDIUMD_DAEMON_MANIFEST"
+    chmod 0644 "$WMEDIUMD_DAEMON_MANIFEST"
+    if getent group wmediumd-console >/dev/null; then
+        chgrp wmediumd-console "$WMEDIUMD_OBSERVER"
+        chmod 0660 "$WMEDIUMD_OBSERVER"
+    fi
 }
 
 start_kernel_medium()
@@ -754,7 +776,7 @@ case "$ACTION" in
             timeout 15 lxc exec "$CONTROLLER" -- \
                 /opt/prpl-install-nl80211/bin/beerocks_cli \
                 -c bml_conn_map || \
-                echo "bml_conn_map did not complete; use the NBAPI visualizer/status tests" >&2
+                echo "bml_conn_map did not complete; use the NBAPI adapter/status tests" >&2
         fi
         for ordinal in $(seq 1 "$PROVISIONED_CLIENT_COUNT"); do
             name=$(client_name "$ordinal")

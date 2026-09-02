@@ -29,7 +29,7 @@ live data. All other pages are explicit placeholders.
 The default source is:
 
 ```text
-http://127.0.0.1:8090/api/topology
+http://127.0.0.1:8092/api/topology
 ```
 
 Override it with `-source` or `EASYMESH_TOPOLOGY_URL`. The EM CLI-compatible

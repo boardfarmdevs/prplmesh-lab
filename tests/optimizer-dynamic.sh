@@ -133,7 +133,7 @@ sleep 2
 
 cd "$ROOT/optimizer"
 args=(
-    "$MODE" --backend prplmesh --base-url http://127.0.0.1:8090
+    "$MODE" --backend prplmesh --base-url http://127.0.0.1:8092
     --candidate-provider controller --allow-simulated-candidates
     --policy configs/threshold-policy.yaml --journal "$journal"
     --expected-clients "$expected_clients"

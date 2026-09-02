@@ -19,7 +19,7 @@ KERNEL=${PRPLMESH_KERNEL:-7.0.0-30-generic}
 HOST_IP=${PRPLMESH_UI_HOST_IP:-$(ip -4 route get 1.1.1.1 2>/dev/null |
     awk '{for (i=1; i<=NF; i++) if ($i == "src") {print $(i+1); exit}}')}
 HOST_IP=${HOST_IP:-127.0.0.1}
-TOPOLOGY_PORT=${PRPLMESH_TOPOLOGY_HOST_PORT:-8090}
+CONSOLE_PORT=${PRPLMESH_WMEDIUMD_CONSOLE_HOST_PORT:-8090}
 UI_PORT=${PRPLMESH_UI_HOST_PORT:-8091}
 RUNTIME_DEPS=${PRPL_RUNTIME_DEPS_ARCHIVE:-}
 PRPL_INSTALL=${PRPL_INSTALL_ARCHIVE:-}
@@ -39,7 +39,7 @@ Site overrides:
   PRPLMESH_LAB_PROFILE=$CLIENTS (20, 50 or 100)
   PRPLMESH_VM_NAME=$NAME
   PRPLMESH_UI_HOST_IP=$HOST_IP
-  PRPLMESH_TOPOLOGY_HOST_PORT=$TOPOLOGY_PORT
+  PRPLMESH_WMEDIUMD_CONSOLE_HOST_PORT=$CONSOLE_PORT
   PRPLMESH_UI_HOST_PORT=$UI_PORT
   PRPLMESH_LXD_STORAGE=<outer LXD storage pool>
 EOF
@@ -181,8 +181,8 @@ build_vm()
     guest_ip=$(select_guest_ipv4)
     lxd_set_device_property "$NAME" eth0 network "$NETWORK"
     lxd_set_device_property "$NAME" eth0 ipv4.address "$guest_ip"
-    lxc config device add "$NAME" topology-ui proxy nat=true \
-        listen="tcp:$HOST_IP:$TOPOLOGY_PORT" connect="tcp:$guest_ip:8090"
+    lxc config device add "$NAME" wmediumd-console proxy nat=true \
+        listen="tcp:$HOST_IP:$CONSOLE_PORT" connect="tcp:$guest_ip:8090"
     lxc config device add "$NAME" controller-ui proxy nat=true \
         listen="tcp:$HOST_IP:$UI_PORT" connect="tcp:$guest_ip:8091"
     lxc start "$NAME"

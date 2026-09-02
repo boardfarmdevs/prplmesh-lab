@@ -84,21 +84,25 @@ sudo PRPL_AGENT_COUNT=4 PRPL_CLIENT_COUNT=20 PRPL_TOPOLOGY=chain \
 sudo PRPL_AGENT_COUNT=4 PRPL_CLIENT_COUNT=20 PRPL_TOPOLOGY=chain \
   scripts/radio-lab.sh clients
 
-sudo scripts/topology-visualizer.sh start
+sudo scripts/topology-adapter.sh start
+sudo scripts/wmediumd-console.sh start
 sudo PRPL_AGENT_COUNT=4 PRPL_CLIENT_COUNT=20 PRPL_TOPOLOGY=chain \
   tests/run-acceptance.sh
 ```
 
-Install the optional host EasyMesh Controller UI after the topology adapter on
-port 8090 is healthy:
+Install the host EasyMesh Controller UI after the internal topology adapter on
+port 8092 is healthy, then install the shared wmediumd Console:
 
 ```sh
 controller-ui/install.sh
+wmediumd/observer/install-prplmesh.sh
 curl -fsS http://127.0.0.1:8091/health | jq .
+curl -fsS http://127.0.0.1:8090/api/v1/health | jq .
 ```
 
-Open `http://HOST-IP:8091/`. The raw NBAPI topology adapter remains available
-at `http://HOST-IP:8090/`.
+Open `http://HOST-IP:8091/` for the Controller UI and
+`http://HOST-IP:8090/` for the wmediumd Console. The raw NBAPI topology
+adapter remains loopback-only at `http://127.0.0.1:8092/api/topology`.
 
 ## 4. Stop, restart and rebuild
 

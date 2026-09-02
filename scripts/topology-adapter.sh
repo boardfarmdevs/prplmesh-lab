@@ -3,15 +3,24 @@ set -euo pipefail
 
 ROOT=$(cd "$(dirname "$0")/.." && pwd)
 CONTROLLER=prpl-controller
-UNIT=prpl-topology.service
-PROXY_UNIT=prpl-topology-proxy.service
-PORT=${PRPL_TOPOLOGY_PORT:-8090}
+UNIT=prpl-topology-adapter.service
+PROXY_UNIT=prpl-topology-adapter-proxy.service
+PORT=${PRPL_TOPOLOGY_ADAPTER_PORT:-8092}
 ACTION=${1:-status}
 
 stop_visualizer()
 {
     systemctl stop "$PROXY_UNIT" 2>/dev/null || true
     lxc exec "$CONTROLLER" -- systemctl stop "$UNIT" 2>/dev/null || true
+}
+
+stop_legacy_visualizer()
+{
+    # Releases before 0901 exposed a second topology page on port 8090.
+    # Stop its proxy before the shared wmediumd Console claims that port.
+    systemctl stop prpl-topology-proxy.service 2>/dev/null || true
+    lxc exec "$CONTROLLER" -- systemctl stop prpl-topology.service \
+        2>/dev/null || true
 }
 
 if [ "$ACTION" = restart ]; then
@@ -21,20 +30,20 @@ fi
 
 case "$ACTION" in
     start)
+        stop_legacy_visualizer
         if lxc exec "$CONTROLLER" -- python3 -c \
                 "import urllib.request; urllib.request.urlopen('http://127.0.0.1:${PORT}/health', timeout=1)" \
                 >/dev/null 2>&1 && \
            python3 -c \
                 "import urllib.request; urllib.request.urlopen('http://127.0.0.1:${PORT}/health', timeout=1)" \
                 >/dev/null 2>&1; then
-            address=$(hostname -I | awk '{print $1}')
-            echo "prplMesh topology visualizer: http://${address}:${PORT}/"
+            echo "prplMesh internal topology adapter: http://127.0.0.1:${PORT}/api/topology"
             exit 0
         fi
         lxc exec "$CONTROLLER" -- systemctl stop "$UNIT" 2>/dev/null || true
         lxc exec "$CONTROLLER" -- systemd-run --unit "${UNIT%.service}" \
             --property Restart=on-failure \
-            /usr/bin/python3 /mnt/project/visualizer/server.py \
+            /usr/bin/python3 /mnt/project/topology-adapter/server.py \
             --listen 0.0.0.0 --port "$PORT" >/dev/null
         for unused in $(seq 1 50); do
             if lxc exec "$CONTROLLER" -- python3 -c \
@@ -47,7 +56,7 @@ case "$ACTION" in
         lxc exec "$CONTROLLER" -- python3 -c \
             "import urllib.request; urllib.request.urlopen('http://127.0.0.1:${PORT}/health', timeout=1)" \
             >/dev/null 2>&1 || {
-                echo "topology visualizer did not become ready" >&2
+                echo "topology adapter did not become ready" >&2
                 exit 1
             }
         # The tabular/CSV address column can contain several interfaces and is
@@ -69,20 +78,19 @@ print(next(address["address"] for address in addresses
         fi
         systemctl stop "$PROXY_UNIT" 2>/dev/null || true
         systemd-run --unit "${PROXY_UNIT%.service}" --property Restart=on-failure \
-            /usr/bin/python3 "$ROOT/visualizer/proxy.py" \
-            --listen 0.0.0.0 --port "$PORT" --target-host "$target" \
+            /usr/bin/python3 "$ROOT/topology-adapter/proxy.py" \
+            --listen 127.0.0.1 --port "$PORT" --target-host "$target" \
             --target-port "$PORT" >/dev/null
         for unused in $(seq 1 50); do
             if python3 -c \
                 "import urllib.request; urllib.request.urlopen('http://127.0.0.1:${PORT}/health', timeout=1)" \
                 >/dev/null 2>&1; then
-                address=$(hostname -I | awk '{print $1}')
-                echo "prplMesh topology visualizer: http://${address}:${PORT}/"
+                echo "prplMesh internal topology adapter: http://127.0.0.1:${PORT}/api/topology"
                 exit 0
             fi
             sleep 0.2
         done
-        echo "topology visualizer proxy did not become ready" >&2
+        echo "topology adapter proxy did not become ready" >&2
         exit 1
         ;;
     stop)

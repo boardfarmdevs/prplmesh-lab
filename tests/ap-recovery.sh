@@ -31,7 +31,7 @@ done
 
 agent_id=$(printf '02:00:00:27:%02x:01' "$((leaf + 1))")
 for attempt in $(seq 1 30); do
-    if ! timeout 30 curl -fsS http://127.0.0.1:8090/api/topology | \
+    if ! timeout 30 curl -fsS http://127.0.0.1:8092/api/topology | \
             grep -F "$agent_id" >/dev/null; then
         aged=1
         break

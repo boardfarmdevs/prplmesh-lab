@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Small TCP forwarder from the radio VM to the nested visualizer."""
+"""Loopback-only forwarder from the radio VM to the nested NBAPI adapter."""
 
 import argparse
 import select
@@ -30,10 +30,10 @@ class Server(socketserver.ThreadingTCPServer):
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--listen", default="0.0.0.0")
-    parser.add_argument("--port", type=int, default=8090)
+    parser.add_argument("--listen", default="127.0.0.1")
+    parser.add_argument("--port", type=int, default=8092)
     parser.add_argument("--target-host", required=True)
-    parser.add_argument("--target-port", type=int, default=8090)
+    parser.add_argument("--target-port", type=int, default=8092)
     args = parser.parse_args()
     with Server((args.listen, args.port), Proxy) as server:
         server.target = (args.target_host, args.target_port)

@@ -9,8 +9,8 @@ The 0831 archive is 1,777,039,360 bytes. Its SHA-256 is
 and its source commit is `4eb6bcc32beff12e90328660fcd10970a4694a16`.
 
 The archive contains an installed Ubuntu 24.04/Linux 7 LXD VM, exact source,
-the local prplMesh runtime image, hwsim/wmediumd support, and both topology
-interfaces. It contains zero provisioned nested lab instances and no selected
+the local prplMesh runtime image, hwsim/wmediumd support, the shared wmediumd
+Console, and the Controller UI. It contains zero provisioned nested lab instances and no selected
 profile.
 
 ## Install from an empty directory
@@ -53,8 +53,9 @@ PRPLMESH_UI_HOST_IP=192.168.2.140 \
   ./import.sh --profile 50
 ```
 
-Default host ports are `8090` for the topology adapter and `8091` for the
-Controller UI. The included README documents instance-name and port overrides.
+Default host ports are `8090` for the wmediumd Console and `8091` for the
+Controller UI. The internal NBAPI adapter is not exposed. The included README
+documents instance-name and port overrides.
 
 ## Monitor and operate
 

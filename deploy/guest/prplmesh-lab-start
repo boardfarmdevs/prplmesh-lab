@@ -59,7 +59,8 @@ start_lab()
     fi
     phase mesh env "${PROFILE[@]}" scripts/radio-lab.sh start
     phase clients env "${PROFILE[@]}" scripts/radio-lab.sh clients
-    phase topology scripts/topology-visualizer.sh start
+    phase medium-console scripts/wmediumd-console.sh start
+    phase topology-adapter scripts/topology-adapter.sh start
     if systemctl list-unit-files prplmesh-controller-ui.service --no-legend |
             grep -q '^prplmesh-controller-ui.service'; then
         systemctl restart prplmesh-controller-ui.service
@@ -67,8 +68,9 @@ start_lab()
     # systemctl restart returning only means the process was launched.  On a
     # cold boot the listener may bind a fraction later, so gate completion on
     # bounded endpoint readiness instead of racing the first connect().
-    wait_for_health http://127.0.0.1:8090/health
+    wait_for_health http://127.0.0.1:8090/
     wait_for_health http://127.0.0.1:8091/health
+    wait_for_health http://127.0.0.1:8092/health
     if [ "$thin_pending" = 1 ]; then
         phase thin-acceptance env "${PROFILE[@]}" "$ROOT/tests/run-acceptance.sh"
         phase thin-finalize "$ROOT/deploy/guest/prepare-thin-firstboot.sh" finalize
@@ -80,7 +82,8 @@ stop_lab()
 {
     cd "$ROOT"
     systemctl stop prplmesh-controller-ui.service 2>/dev/null || true
-    scripts/topology-visualizer.sh stop 2>/dev/null || true
+    scripts/wmediumd-console.sh stop 2>/dev/null || true
+    scripts/topology-adapter.sh stop 2>/dev/null || true
     scripts/radio-lab.sh stop
 }
 
@@ -89,10 +92,12 @@ status_lab()
     wait_for_lxd
     cd "$ROOT"
     scripts/radio-lab.sh status
-    printf '\n%-30s %s\n' 'NBAPI topology adapter' \
-        "$(curl -fsS http://127.0.0.1:8090/health 2>/dev/null || echo unavailable)"
+    printf '\n%-30s %s\n' 'wmediumd Console' \
+        "$(curl -fsS http://127.0.0.1:8090/api/v1/health 2>/dev/null || echo unavailable)"
     printf '%-30s %s\n' 'EasyMesh Controller UI' \
         "$(curl -fsS http://127.0.0.1:8091/health 2>/dev/null || echo unavailable)"
+    printf '%-30s %s\n' 'internal topology adapter' \
+        "$(curl -fsS http://127.0.0.1:8092/health 2>/dev/null || echo unavailable)"
 }
 
 exec 9>"$LOCK"

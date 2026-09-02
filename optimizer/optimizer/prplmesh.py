@@ -58,11 +58,11 @@ def _flatten(topology: dict[str, Any]) -> tuple[list[dict], list[dict], list[dic
 
 
 class PrplMeshObserver:
-    """Normalize the prplMesh NBAPI visualizer without reading RF truth."""
+    """Normalize the prplMesh topology adapter without reading RF truth."""
 
     def __init__(
         self,
-        base_url: str = "http://127.0.0.1:8090",
+        base_url: str = "http://127.0.0.1:8092",
         *,
         fetcher=None,
         candidate_provider=None,

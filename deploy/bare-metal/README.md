@@ -27,8 +27,9 @@ Watch cold start and check the result:
 ```sh
 journalctl -fu prplmesh-lab.service
 deploy/guest/prplmesh-lab-start status
-curl -fsS http://127.0.0.1:8090/health
+curl -fsS http://127.0.0.1:8090/api/v1/health
 curl -fsS http://127.0.0.1:8091/health
+curl -fsS http://127.0.0.1:8092/health
 ```
 
 Daily lifecycle is:

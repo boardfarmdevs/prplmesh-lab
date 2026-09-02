@@ -45,7 +45,7 @@ ports `8090` and `8091`. Override them without changing the appliance:
 ```sh
 PRPLMESH_LXD_STORAGE=bpi-lab \
 PRPLMESH_UI_HOST_IP=192.168.2.140 \
-PRPLMESH_TOPOLOGY_HOST_PORT=18090 \
+PRPLMESH_WMEDIUMD_CONSOLE_HOST_PORT=18090 \
 PRPLMESH_UI_HOST_PORT=18091 \
 PRPLMESH_VM_NAME=my-prplmesh-lab \
   ./import.sh --profile 50
@@ -66,8 +66,9 @@ lxc exec prplmesh-20-0831 -- journalctl -fu prplmesh-lab.service
 lxc exec prplmesh-20-0831 -- prplmesh-lab-start status
 ```
 
-When ready, the topology adapter is on host port `8090` and the Controller UI
-is on `8091`. Normal lifecycle is:
+When ready, the wmediumd Console is on host port `8090` and the Controller UI
+is on `8091`. The NBAPI adapter is internal on guest loopback port `8092`.
+Normal lifecycle is:
 
 ```sh
 lxc stop prplmesh-20-0831

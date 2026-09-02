@@ -37,7 +37,7 @@ Read-only associated observations:
 
 ```sh
 python3 -m optimizer.cli observe \
-  --backend prplmesh --base-url http://127.0.0.1:8090 \
+  --backend prplmesh --base-url http://127.0.0.1:8092 \
   --count 5 --interval 1 --journal /tmp/prpl-observe.jsonl
 ```
 
@@ -45,7 +45,7 @@ Collect live same-band candidates and recommend without changing the mesh:
 
 ```sh
 python3 -m optimizer.cli recommend \
-  --backend prplmesh --base-url http://127.0.0.1:8090 \
+  --backend prplmesh --base-url http://127.0.0.1:8092 \
   --candidate-provider controller --allow-simulated-candidates \
   --policy configs/threshold-policy.yaml \
   --count 10 --interval 1 --journal /tmp/prpl-recommend.jsonl
