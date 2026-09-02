@@ -6,18 +6,77 @@ if [ -r "$SCRIPT_DIR/release.env" ]; then
     # shellcheck disable=SC1091
     . "$SCRIPT_DIR/release.env"
 fi
-BACKUP=${1:-}
+usage()
+{
+    if [ "${LAB_PROFILE_SELECTABLE:-false}" = true ]; then
+        echo "usage: $0 --profile 20|50|100 [PRPLMESH-LXD-BACKUP.tar.zst]" >&2
+    else
+        echo "usage: $0 [PRPLMESH-LXD-BACKUP.tar.zst]" >&2
+    fi
+}
+
+SELECTED_CLIENTS=
+BACKUP=
+while [ "$#" -gt 0 ]; do
+    case "$1" in
+        --profile)
+            [ "$#" -ge 2 ] || { usage; exit 2; }
+            SELECTED_CLIENTS=$2
+            shift 2
+            ;;
+        -h|--help) usage; exit 0 ;;
+        --)
+            shift
+            [ "$#" -le 1 ] || { usage; exit 2; }
+            BACKUP=${1:-}
+            shift "$#"
+            ;;
+        -*) echo "unknown option: $1" >&2; usage; exit 2 ;;
+        *)
+            [ -z "$BACKUP" ] || { usage; exit 2; }
+            BACKUP=$1
+            shift
+            ;;
+    esac
+done
+
+PROFILE_SELECTABLE=${LAB_PROFILE_SELECTABLE:-false}
+if [ "$PROFILE_SELECTABLE" = true ]; then
+    case "$SELECTED_CLIENTS" in
+        20) SELECTED_PROFILE=small; SELECTED_RADIOS=40; SELECTED_CPUS=6; SELECTED_MEMORY=8GiB ;;
+        50) SELECTED_PROFILE=medium; SELECTED_RADIOS=72; SELECTED_CPUS=8; SELECTED_MEMORY=12GiB ;;
+        100) SELECTED_PROFILE=stress; SELECTED_RADIOS=120; SELECTED_CPUS=12; SELECTED_MEMORY=20GiB ;;
+        *)
+            echo "the universal thin release requires --profile 20, 50 or 100" >&2
+            usage
+            exit 2
+            ;;
+    esac
+    DEFAULT_NAME=prplmesh-${SELECTED_CLIENTS}-0831
+else
+    [ -z "$SELECTED_CLIENTS" ] || {
+        echo "--profile is valid only for a profile-selectable thin release" >&2
+        exit 2
+    }
+    SELECTED_CLIENTS=${LAB_CLIENTS:-unknown}
+    SELECTED_PROFILE=${LAB_PROFILE:-unknown}
+    SELECTED_RADIOS=${LAB_HWSIM_RADIOS:-unknown}
+    SELECTED_CPUS=${LAB_DEFAULT_CPUS:-6}
+    SELECTED_MEMORY=${LAB_DEFAULT_MEMORY:-8GiB}
+    DEFAULT_NAME=${LAB_DEFAULT_NAME:-prplmesh-20-0831}
+fi
+
 if [ -z "$BACKUP" ]; then
     mapfile -t candidates < <(find "$SCRIPT_DIR" -maxdepth 1 -type f \
         -name '*.tar.zst' -printf '%p\n' | sort)
     [ "${#candidates[@]}" -eq 1 ] || {
-        echo "usage: $0 PRPLMESH-LXD-BACKUP.tar.zst" >&2
+        usage
         echo "automatic selection requires exactly one .tar.zst beside import.sh" >&2
         exit 2
     }
     BACKUP=${candidates[0]}
 fi
-NAME=${PRPLMESH_VM_NAME:-${LAB_DEFAULT_NAME:-prplmesh-20-0831}}
+NAME=${PRPLMESH_VM_NAME:-$DEFAULT_NAME}
 NETWORK=${PRPLMESH_LXD_NETWORK:-lxdbr0}
 HOST_IP=${PRPLMESH_UI_HOST_IP:-$(ip -4 route get 1.1.1.1 2>/dev/null | \
     awk '{for (i=1; i<=NF; i++) if ($i == "src") {print $(i+1); exit}}')}
@@ -55,8 +114,8 @@ lxc config set "$NAME" volatile.uuid "$instance_uuid"
 lxc config set "$NAME" volatile.uuid.generation "$instance_uuid"
 lxc config set "$NAME" volatile.cloud-init.instance-id "$instance_uuid"
 lxc config set "$NAME" volatile.vsock_id "$vsock_id"
-lxc config set "$NAME" limits.cpu "${PRPLMESH_VM_CPUS:-${LAB_DEFAULT_CPUS:-6}}"
-lxc config set "$NAME" limits.memory "${PRPLMESH_VM_MEMORY:-${LAB_DEFAULT_MEMORY:-8GiB}}"
+lxc config set "$NAME" limits.cpu "${PRPLMESH_VM_CPUS:-$SELECTED_CPUS}"
+lxc config set "$NAME" limits.memory "${PRPLMESH_VM_MEMORY:-$SELECTED_MEMORY}"
 lxc config set "$NAME" boot.autostart true
 if lxc config device show "$NAME" | grep -q '^canonical-source:'; then
     lxc config device remove "$NAME" canonical-source
@@ -88,6 +147,27 @@ lxc config device set "$NAME" eth0 network "$NETWORK"
 lxc config device set "$NAME" eth0 ipv4.address "$guest_ip"
 lxc start "$NAME"
 
+agent_ready=false
+for unused in $(seq 1 120); do
+    if lxc exec "$NAME" -- true >/dev/null 2>&1; then
+        agent_ready=true
+        break
+    fi
+    sleep 1
+done
+[ "$agent_ready" = true ] || {
+    echo "$NAME did not expose its LXD VM agent within 120 seconds" >&2
+    exit 1
+}
+
+if [ "$PROFILE_SELECTABLE" = true ]; then
+    lxc exec "$NAME" -- /opt/prplmesh-lab/deploy/guest/select-thin-profile.sh \
+        "$SELECTED_CLIENTS"
+    lxc exec "$NAME" -- grep -Fx \
+        "PROVISIONED_CLIENT_COUNT=$SELECTED_CLIENTS" \
+        /var/lib/prplmesh-lab/thin-profile.lock.env >/dev/null
+fi
+
 # LXD virtual machines support only NAT-mode proxy devices. Connect each
 # proxy to the selected static guest address rather than guest loopback.
 lxc config device add "$NAME" topology-ui proxy nat=true \
@@ -95,8 +175,13 @@ lxc config device add "$NAME" topology-ui proxy nat=true \
 lxc config device add "$NAME" controller-ui proxy nat=true \
     listen="tcp:${HOST_IP}:${UI_PORT}" connect="tcp:${guest_ip}:8091"
 
+if [ "$PROFILE_SELECTABLE" = true ]; then
+    lxc exec "$NAME" -- systemctl reset-failed prplmesh-lab.service
+    lxc exec "$NAME" -- systemctl --no-block start prplmesh-lab.service
+fi
+
 echo "LXD VM started: $NAME"
-echo "profile:          ${LAB_CLIENTS:-unknown} clients (${LAB_PROFILE:-unknown})"
+echo "profile:          $SELECTED_CLIENTS clients ($SELECTED_PROFILE), $SELECTED_RADIOS radios"
 echo "topology adapter: http://${HOST_IP}:${TOPOLOGY_PORT}/"
 echo "Controller UI:    http://${HOST_IP}:${UI_PORT}/"
 echo "monitor: lxc exec $NAME -- journalctl -fu prplmesh-lab.service"

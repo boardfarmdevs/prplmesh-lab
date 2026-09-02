@@ -3,6 +3,8 @@ set -euo pipefail
 
 ROOT=$(cd "$(dirname "$0")/../.." && pwd)
 MARKER=${PRPLMESH_THIN_MARKER:-/var/lib/prplmesh-lab/thin-pending.env}
+TEMPLATE=${PRPLMESH_THIN_TEMPLATE:-/var/lib/prplmesh-lab/thin-firstboot.template.env}
+SELECTION_REQUIRED=${PRPLMESH_THIN_SELECTION_REQUIRED:-/var/lib/prplmesh-lab/thin-profile-selection.required}
 REPORT=${PRPLMESH_THIN_REPORT:-/var/lib/prplmesh-lab/thin-firstboot-report.txt}
 RUNTIME_IMAGE=${PRPLMESH_RUNTIME_IMAGE:-prpl-runtime-local}
 CANDIDATE_ALIAS=prpl-runtime-thin-candidate
@@ -62,16 +64,26 @@ done < <(lxc image list --format json | jq -r '.[].fingerprint')
 lxc image info "$RUNTIME_IMAGE" >/dev/null
 
 install -d -m 0755 "$(dirname "$MARKER")"
-rm -f -- "$REPORT"
-marker_tmp=${MARKER}.tmp
+rm -f -- "$REPORT" "$MARKER" "$TEMPLATE" "$SELECTION_REQUIRED" \
+    /var/lib/prplmesh-lab/thin-profile.lock.env
+marker_tmp=${TEMPLATE}.tmp
 {
     printf 'THIN_RELEASE_FLAVOR=thin\n'
-    printf 'THIN_PROFILE=%s\n' "${PRPLMESH_LAB_PROFILE:-unknown}"
-    printf 'THIN_CLIENTS=%s\n' "$clients"
     printf 'THIN_RUNTIME_IMAGE=%s\n' "$RUNTIME_IMAGE"
     printf 'THIN_PREPARED_AT=%s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 } > "$marker_tmp"
-mv -f -- "$marker_tmp" "$MARKER"
+if [ "${PRPLMESH_THIN_PROFILE_SELECTABLE:-0}" = 1 ]; then
+    mv -f -- "$marker_tmp" "$TEMPLATE"
+    : > "$SELECTION_REQUIRED"
+    chmod 0444 "$SELECTION_REQUIRED"
+    rm -f /etc/default/prplmesh-lab
+else
+    {
+        printf 'THIN_PROFILE=%s\n' "${PRPLMESH_LAB_PROFILE:-unknown}"
+        printf 'THIN_CLIENTS=%s\n' "$clients"
+    } >> "$marker_tmp"
+    mv -f -- "$marker_tmp" "$MARKER"
+fi
 sync
 
 printf 'thin_nested_instances=0\n'

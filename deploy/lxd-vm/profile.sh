@@ -24,6 +24,11 @@ prplmesh_profile_release_name()
     printf 'prplmesh-%s-0831\n' "$(prplmesh_profile_clients "${1:-20}")"
 }
 
+prplmesh_thin_release_name()
+{
+    printf 'prplmesh-0831-thin\n'
+}
+
 prplmesh_profile_radios()
 {
     # Five tri-band mesh nodes consume 15 radios. Keep a small spare pool

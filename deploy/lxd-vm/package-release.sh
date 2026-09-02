@@ -9,7 +9,11 @@ bundle=$(realpath "$bundle")
 (cd "$bundle" && sha256sum -c SHA256SUMS)
 parent=$(dirname "$bundle")
 leaf=$(basename "$bundle")
-output=${2:-$parent/$leaf-bundle.tar}
+case "$leaf" in
+    prplmesh-0831-thin|rdkeasymesh-0831-thin) default_output=$parent/$leaf.tar ;;
+    *) default_output=$parent/$leaf-bundle.tar ;;
+esac
+output=${2:-$default_output}
 case "$output" in
     "$bundle"/*) echo 'output must not be inside the bundle being archived' >&2; exit 2 ;;
 esac

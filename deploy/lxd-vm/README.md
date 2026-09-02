@@ -31,9 +31,10 @@ PRPL_HOSTAP_ARCHIVE=/absolute/path/hostap-runtime-2.10.tar.gz \
 PRPLMESH_LAB_PROFILE=20 deploy/lxd-vm/build.sh check
 ```
 
-Profiles `20`, `50`, and `100` produce separate, pre-provisioned appliances.
-Do not resize an imported appliance: use the artifact matching the required
-roster so cold start only reconstructs runtime state. The source checkout must
+Profiles `20`, `50`, and `100` produce separate, pre-provisioned ready builders.
+The portable thin release is one profile-neutral artifact; its importer asks
+for a profile and locks that choice before creating any nested instance. The
+source checkout must
 be clean. Source enters the VM as a commit-bounded
 Git bundle; runtime archives enter as checksummed files. The result has no host
 source mount, Git credential, fixed host address, or dependency on the build
@@ -64,13 +65,14 @@ It never removes provisioned containers, identities, configuration or source.
 Every bundle includes `trim-report.txt` with before/after guest usage,
 discard output and the final compressed archive size.
 
-## Offline thin flavor
+## Universal offline thin release
 
-The ready flavor above contains the complete provisioned roster and starts it
-on every boot. The optional thin flavor is an installed appliance with the
-same kernel, services, runtime artifacts and profile, but its export contains
-zero nested lab instances. It retains one local `prpl-runtime-local` image, so
-first boot provisions the selected 20, 50 or 100-client roster without a
+The ready builder above contains the complete provisioned roster and starts it
+on every boot. `prplmesh-0831-thin.tar` is the portable release. It is an
+installed appliance with the same kernel, services and runtime artifacts, but
+its export contains zero nested lab instances and no preselected profile. It
+retains one local `prpl-runtime-local` image, so import can lock and provision
+the selected 20, 50 or 100-client roster without a
 network download or operator repair, then starts and validates the normal lab.
 The pending marker is removed only after topology, steering, data-plane and
 resource acceptance pass. The persistent
@@ -87,26 +89,33 @@ PRPLMESH_LAB_PROFILE=20 \
 PRPLMESH_VM_NAME=prplmesh-20-thin-source \
 PRPLMESH_THIN_CONFIRM=prplmesh-20-thin-source \
   deploy/lxd-vm/package-thin.sh release/0831
-deploy/lxd-vm/package-release.sh \
-  release/0831/prplmesh-20-0831-COMMIT-thin-lxd
+deploy/lxd-vm/package-release.sh release/0831/prplmesh-0831-thin
 ```
 
-The source VM remains stopped and thin-pending after export. Import acceptance
-must use the exact emitted archive and confirm `nested_instances_before=0`,
-the profile-sized final roster, and the same full gates as the ready flavor.
+The source VM remains stopped and awaiting profile selection after export. A
+systemd condition prevents lab reconstruction until import writes the
+selection. Import acceptance must use the exact same artifact bytes separately
+with profiles 20, 50 and 100 and confirm `nested_instances_before=0`, the
+profile-sized final roster, and the same full gates as the ready flavor.
 Release metadata records both the thin tooling source and the accepted ready
 runtime base so those two code identities are not conflated.
 
-Upload the resulting `*-bundle.tar` and `.sha256`. From any empty working
-directory, download the selected profile, verify and extract it:
+The common sparse logical disk is 160 GiB, sufficient for the stress profile;
+smaller profiles consume only the blocks written during their first boot.
+Upload `prplmesh-0831-thin.tar` and its `.sha256`. From any empty working
+directory, verify and extract it:
 
 ```sh
-sha256sum -c prplmesh-20-0831-COMMIT-lxd-bundle.tar.sha256
-tar -xf prplmesh-20-0831-COMMIT-lxd-bundle.tar
-cd prplmesh-20-0831-COMMIT-lxd
+sha256sum -c prplmesh-0831-thin.tar.sha256
+tar -xf prplmesh-0831-thin.tar
+cd prplmesh-0831-thin
 sha256sum -c SHA256SUMS
-PRPLMESH_UI_HOST_IP=127.0.0.1 ./import.sh
+PRPLMESH_UI_HOST_IP=127.0.0.1 ./import.sh --profile 20
 ```
+
+Use `--profile 50` or `--profile 100` on a sufficiently sized host. Defaults
+are 6 vCPU/8 GiB, 8 vCPU/12 GiB, and 12 vCPU/20 GiB. A missing or invalid
+choice is rejected; selection never silently defaults.
 
 To import into a non-default outer LXD pool, add
 `PRPLMESH_LXD_STORAGE=POOL`. The pool must already exist.
@@ -123,7 +132,7 @@ PRPLMESH_UI_HOST_IP=192.168.2.140 \
   ./import.sh
 ```
 
-The release metadata selects instance `prplmesh-CLIENTS-0831` and its tested
+The selected profile determines instance `prplmesh-CLIENTS-0831` and its tested
 CPU/RAM limits. Host port `8090` serves the raw adapter and `8091` serves the
 Controller UI. Override them with
 `PRPLMESH_VM_NAME`, `PRPLMESH_TOPOLOGY_HOST_PORT`, and

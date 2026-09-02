@@ -21,4 +21,9 @@ printf 'payload\n' > "$bundle/payload.txt"
 )
 test "$(awk '{print $2}' "$output.sha256")" = "$(basename "$output")"
 
+mv "$bundle" "$work/prplmesh-0831-thin"
+"$ROOT/deploy/lxd-vm/package-release.sh" "$work/prplmesh-0831-thin" >/dev/null
+test -f "$work/prplmesh-0831-thin.tar"
+test -f "$work/prplmesh-0831-thin.tar.sha256"
+
 echo 'PASS: outer bundle checksum is portable and basename-only'

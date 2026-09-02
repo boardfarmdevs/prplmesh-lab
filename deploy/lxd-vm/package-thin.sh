@@ -4,6 +4,8 @@ set -euo pipefail
 ROOT=$(cd "$(dirname "$0")/../.." && pwd)
 # shellcheck source=profile.sh
 source "$ROOT/deploy/lxd-vm/profile.sh"
+# shellcheck source=device-property.sh
+source "$ROOT/deploy/lxd-vm/device-property.sh"
 PROFILE=$(prplmesh_profile_name "${PRPLMESH_LAB_PROFILE:-20}")
 CLIENTS=$(prplmesh_profile_clients "$PROFILE")
 RADIOS=$(prplmesh_profile_radios "$PROFILE")
@@ -11,8 +13,8 @@ RELEASE_NAME=$(prplmesh_profile_release_name "$PROFILE")
 NAME=${PRPLMESH_VM_NAME:-$RELEASE_NAME}
 OUTPUT_DIR=${1:-$ROOT/release/0831}
 SHORT=$(git -C "$ROOT" rev-parse --short=7 HEAD)
-BUNDLE="$OUTPUT_DIR/prplmesh-${CLIENTS}-0831-${SHORT}-thin-lxd"
-OUTPUT="$BUNDLE/prplmesh-${CLIENTS}-0831-${SHORT}-thin-lxd.tar.zst"
+BUNDLE="$OUTPUT_DIR/prplmesh-0831-thin"
+OUTPUT="$BUNDLE/prplmesh-0831-${SHORT}-thin-lxd.tar.zst"
 TRIM_REPORT="$BUNDLE/trim-report.txt"
 BUILD_STORAGE_POOL=
 RUNTIME_IMAGE=prpl-runtime-local
@@ -158,6 +160,7 @@ lxc exec "$NAME" -- systemctl reset-failed prplmesh-lab.service
 lxc exec "$NAME" -- systemctl start prplmesh-lab.service
 PRPLMESH_VM_NAME="$NAME" "$ROOT/deploy/lxd-vm/build.sh" check
 lxc exec "$NAME" -- env PRPLMESH_LAB_PROFILE="$PROFILE" \
+    PRPLMESH_THIN_PROFILE_SELECTABLE=1 \
     /opt/prplmesh-lab/deploy/guest/prepare-thin-image.sh | tee "$TRIM_REPORT"
 printf 'thin_source_bundle_sha256=%s\n' "$SOURCE_BUNDLE_SHA256" >> "$TRIM_REPORT"
 
@@ -168,7 +171,9 @@ nested_count=$(lxc exec "$NAME" -- lxc list --format csv -c n |
     exit 1
 }
 lxc exec "$NAME" -- lxc image info "$RUNTIME_IMAGE" >/dev/null
-lxc exec "$NAME" -- test -r /var/lib/prplmesh-lab/thin-pending.env
+lxc exec "$NAME" -- test -r /var/lib/prplmesh-lab/thin-firstboot.template.env
+lxc exec "$NAME" -- test -r /var/lib/prplmesh-lab/thin-profile-selection.required
+lxc exec "$NAME" -- test ! -e /var/lib/prplmesh-lab/thin-pending.env
 printf 'nested_instances_before_export=%s\n' "$nested_count" >> "$TRIM_REPORT"
 
 lxc file push "$ROOT/deploy/lxd-vm/package-cleanup.sh" \
@@ -179,6 +184,11 @@ lxc exec "$NAME" -- env PRPLMESH_PRESERVE_IMAGE_ALIAS="$RUNTIME_IMAGE" \
 lxc file delete "$NAME/run/prplmesh-package-cleanup"
 lxc exec "$NAME" -- lxc image info "$RUNTIME_IMAGE" >/dev/null
 [ "$(lxc exec "$NAME" -- lxc list --format csv -c n | awk 'NF {n++} END {print n+0}')" -eq 0 ]
+lxd_set_device_property "$NAME" root size 160GiB
+[ "$(lxc config device get "$NAME" root size)" = 160GiB ] || {
+    echo "universal thin root disk did not expand to 160GiB" >&2
+    exit 1
+}
 lxc stop "$NAME" --timeout 120
 
 lxc export "$NAME" "$OUTPUT" --instance-only --compression zstd </dev/null
@@ -190,13 +200,9 @@ install -m 0644 "$ROOT/deploy/lxd-vm/README.md" "$BUNDLE/README.md"
 cat > "$BUNDLE/release.env" <<EOF
 LAB_STACK=prplmesh
 LAB_FLAVOR=thin
-LAB_PROFILE=$PROFILE
-LAB_CLIENTS=$CLIENTS
-LAB_HWSIM_RADIOS=$RADIOS
-LAB_DEFAULT_NAME=$RELEASE_NAME
-LAB_DEFAULT_CPUS=$(prplmesh_profile_cpus "$PROFILE")
-LAB_DEFAULT_MEMORY=$(prplmesh_profile_memory "$PROFILE")
-LAB_DEFAULT_DISK=$(prplmesh_profile_disk "$PROFILE")
+LAB_PROFILE_SELECTABLE=true
+LAB_SUPPORTED_PROFILES=20,50,100
+LAB_DEFAULT_DISK=160GiB
 LAB_BUILD_STORAGE_POOL=$BUILD_STORAGE_POOL
 LAB_SOURCE_COMMIT=$(git -C "$ROOT" rev-parse HEAD)
 LAB_RUNTIME_BASE_COMMIT=$RUNTIME_BASE_COMMIT
@@ -204,20 +210,20 @@ LAB_TRIMMED=true
 LAB_FIRST_BOOT_PROVISION=true
 EOF
 jq -n \
-    --arg stack prplmesh --arg flavor thin --arg profile "$PROFILE" \
-    --argjson clients "$CLIENTS" --argjson radios "$RADIOS" \
+    --arg stack prplmesh --arg flavor thin \
     --arg source_commit "$(git -C "$ROOT" rev-parse HEAD)" \
     --arg runtime_base_commit "$RUNTIME_BASE_COMMIT" \
     --arg created_at "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
-    --arg archive "$(basename "$OUTPUT")" --arg instance "$RELEASE_NAME" \
-    --arg cpus "$(prplmesh_profile_cpus "$PROFILE")" \
-    --arg memory "$(prplmesh_profile_memory "$PROFILE")" \
-    --arg disk "$(prplmesh_profile_disk "$PROFILE")" \
+    --arg archive "$(basename "$OUTPUT")" --arg disk 160GiB \
     --arg build_storage_pool "$BUILD_STORAGE_POOL" \
-    '{schema_version:1,stack:$stack,flavor:$flavor,profile:$profile,clients:$clients,
-      hwsim_radios:$radios,source_commit:$source_commit,created_at:$created_at,
+    '{schema_version:2,stack:$stack,flavor:$flavor,profile_selectable:true,
+      supported_profiles:[20,50,100],source_commit:$source_commit,created_at:$created_at,
       runtime_base_commit:$runtime_base_commit,
-      archive:$archive,defaults:{instance:$instance,cpus:$cpus,memory:$memory,disk:$disk},
+      archive:$archive,
+      profiles:{"20":{name:"small",instance:"prplmesh-20-0831",clients:20,hwsim_radios:40,cpus:6,memory:"8GiB"},
+                "50":{name:"medium",instance:"prplmesh-50-0831",clients:50,hwsim_radios:72,cpus:8,memory:"12GiB"},
+                "100":{name:"stress",instance:"prplmesh-100-0831",clients:100,hwsim_radios:120,cpus:12,memory:"20GiB"}},
+      defaults:{disk:$disk},
       build:{storage_pool:$build_storage_pool},
       trim:{applied:true,report:"trim-report.txt"},
       first_boot:{provision:true,offline:true,initial_nested_instances:0},
