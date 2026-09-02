@@ -21,12 +21,14 @@ prplmesh_profile_clients()
 
 prplmesh_profile_release_name()
 {
-    printf 'prplmesh-%s-0831\n' "$(prplmesh_profile_clients "${1:-20}")"
+    printf 'prplmesh-%s-%s\n' \
+        "$(prplmesh_profile_clients "${1:-20}")" \
+        "${PRPLMESH_RELEASE_ID:-0831}"
 }
 
 prplmesh_thin_release_name()
 {
-    printf 'prplmesh-0831-thin\n'
+    printf 'prplmesh-%s-thin\n' "${PRPLMESH_RELEASE_ID:-0831}"
 }
 
 prplmesh_profile_radios()

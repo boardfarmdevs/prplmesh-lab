@@ -41,6 +41,11 @@ while [ "$#" -gt 0 ]; do
 done
 
 PROFILE_SELECTABLE=${LAB_PROFILE_SELECTABLE:-false}
+RELEASE_ID=${LAB_RELEASE_ID:-0831}
+case "$RELEASE_ID" in
+    [0-9][0-9][0-9][0-9]) ;;
+    *) echo "invalid LAB_RELEASE_ID: $RELEASE_ID" >&2; exit 2 ;;
+esac
 if [ "$PROFILE_SELECTABLE" = true ]; then
     case "$SELECTED_CLIENTS" in
         20) SELECTED_PROFILE=small; SELECTED_RADIOS=40; SELECTED_CPUS=6; SELECTED_MEMORY=8GiB ;;
@@ -52,7 +57,7 @@ if [ "$PROFILE_SELECTABLE" = true ]; then
             exit 2
             ;;
     esac
-    DEFAULT_NAME=prplmesh-${SELECTED_CLIENTS}-0831
+    DEFAULT_NAME=prplmesh-${SELECTED_CLIENTS}-${RELEASE_ID}
 else
     [ -z "$SELECTED_CLIENTS" ] || {
         echo "--profile is valid only for a profile-selectable thin release" >&2
@@ -63,7 +68,7 @@ else
     SELECTED_RADIOS=${LAB_HWSIM_RADIOS:-unknown}
     SELECTED_CPUS=${LAB_DEFAULT_CPUS:-6}
     SELECTED_MEMORY=${LAB_DEFAULT_MEMORY:-8GiB}
-    DEFAULT_NAME=${LAB_DEFAULT_NAME:-prplmesh-20-0831}
+    DEFAULT_NAME=${LAB_DEFAULT_NAME:-prplmesh-20-${RELEASE_ID}}
 fi
 
 if [ -z "$BACKUP" ]; then

@@ -16,3 +16,12 @@ Release identifiers describe tested lab delivery checkpoints, not upstream prplM
 - Made LXD VM the primary portable appliance and supplied immutable 20-, 50-, and 100-client profiles.
 - Stabilized tri-band startup and 6 GHz classification with stock hostapd, and aligned dynamic RCPI scenarios with the canonical medium runtime.
 - Added the optional kernel-medium research backend alongside default userspace wmediumd, common performance tests, portable release packaging, and cross-host import guidance.
+
+## 0901
+
+- Made the shared wmediumd Console the public port-8090 service and retained
+  the controller topology UI on port 8091 with its NBAPI adapter on loopback.
+- Hid unassigned reserve radios from the operational medium graph and selectors
+  while retaining them in raw inventory and telemetry.
+- Added explicit release identifiers to portable metadata and instance names so
+  one universal 0901 archive still selects 20, 50, or 100 clients at import.

@@ -10,7 +10,9 @@ bundle=$(realpath "$bundle")
 parent=$(dirname "$bundle")
 leaf=$(basename "$bundle")
 case "$leaf" in
-    prplmesh-0831-thin|rdkeasymesh-0831-thin) default_output=$parent/$leaf.tar ;;
+    prplmesh-[0-9][0-9][0-9][0-9]-thin|rdkeasymesh-[0-9][0-9][0-9][0-9]-thin)
+        default_output=$parent/$leaf.tar
+        ;;
     *) default_output=$parent/$leaf-bundle.tar ;;
 esac
 output=${2:-$default_output}

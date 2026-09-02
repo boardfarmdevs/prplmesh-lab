@@ -29,6 +29,10 @@ check medium medium 50 72 prplmesh-50-0831
 check 100 stress 100 120 prplmesh-100-0831
 check stress stress 100 120 prplmesh-100-0831
 test "$(prplmesh_thin_release_name)" = prplmesh-0831-thin
+test "$(PRPLMESH_RELEASE_ID=0901 prplmesh_profile_release_name 20)" = \
+    prplmesh-20-0901
+test "$(PRPLMESH_RELEASE_ID=0901 prplmesh_thin_release_name)" = \
+    prplmesh-0901-thin
 if prplmesh_profile_name 21 >/dev/null 2>&1; then
     echo 'invalid profile was accepted' >&2
     exit 1

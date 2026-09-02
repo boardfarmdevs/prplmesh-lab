@@ -4,6 +4,11 @@ set -euo pipefail
 ROOT=$(cd "$(dirname "$0")/../.." && pwd)
 # shellcheck source=profile.sh
 source "$ROOT/deploy/lxd-vm/profile.sh"
+RELEASE_ID=${PRPLMESH_RELEASE_ID:-0831}
+case "$RELEASE_ID" in
+    [0-9][0-9][0-9][0-9]) ;;
+    *) echo "invalid PRPLMESH_RELEASE_ID: $RELEASE_ID" >&2; exit 2 ;;
+esac
 # shellcheck source=device-property.sh
 source "$ROOT/deploy/lxd-vm/device-property.sh"
 PROFILE=$(prplmesh_profile_name "${PRPLMESH_LAB_PROFILE:-20}")
@@ -11,10 +16,10 @@ CLIENTS=$(prplmesh_profile_clients "$PROFILE")
 RADIOS=$(prplmesh_profile_radios "$PROFILE")
 RELEASE_NAME=$(prplmesh_profile_release_name "$PROFILE")
 NAME=${PRPLMESH_VM_NAME:-$RELEASE_NAME}
-OUTPUT_DIR=${1:-$ROOT/release/0831}
+OUTPUT_DIR=${1:-$ROOT/release/$RELEASE_ID}
 SHORT=$(git -C "$ROOT" rev-parse --short=7 HEAD)
-BUNDLE="$OUTPUT_DIR/prplmesh-0831-thin"
-OUTPUT="$BUNDLE/prplmesh-0831-${SHORT}-thin-lxd.tar.zst"
+BUNDLE="$OUTPUT_DIR/prplmesh-${RELEASE_ID}-thin"
+OUTPUT="$BUNDLE/prplmesh-${RELEASE_ID}-${SHORT}-thin-lxd.tar.zst"
 TRIM_REPORT="$BUNDLE/trim-report.txt"
 BUILD_STORAGE_POOL=
 RUNTIME_IMAGE=prpl-runtime-local
@@ -196,9 +201,12 @@ printf 'archive_bytes=%s\n' "$(stat -c %s "$OUTPUT")" >> "$TRIM_REPORT"
 install -m 0755 "$ROOT/deploy/lxd-vm/import.sh" "$BUNDLE/import.sh"
 install -m 0755 "$ROOT/deploy/lxd-vm/install-host.sh" "$BUNDLE/install-host.sh"
 install -m 0755 "$ROOT/deploy/lxd-vm/package-release.sh" "$BUNDLE/package-release.sh"
-install -m 0644 "$ROOT/deploy/lxd-vm/README.md" "$BUNDLE/README.md"
+sed "s/0831/${RELEASE_ID}/g" "$ROOT/deploy/lxd-vm/README.md" \
+    > "$BUNDLE/README.md"
+chmod 0644 "$BUNDLE/README.md"
 cat > "$BUNDLE/release.env" <<EOF
 LAB_STACK=prplmesh
+LAB_RELEASE_ID=$RELEASE_ID
 LAB_FLAVOR=thin
 LAB_PROFILE_SELECTABLE=true
 LAB_SUPPORTED_PROFILES=20,50,100
@@ -210,19 +218,19 @@ LAB_TRIMMED=true
 LAB_FIRST_BOOT_PROVISION=true
 EOF
 jq -n \
-    --arg stack prplmesh --arg flavor thin \
+    --arg stack prplmesh --arg flavor thin --arg release_id "$RELEASE_ID" \
     --arg source_commit "$(git -C "$ROOT" rev-parse HEAD)" \
     --arg runtime_base_commit "$RUNTIME_BASE_COMMIT" \
     --arg created_at "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
     --arg archive "$(basename "$OUTPUT")" --arg disk 160GiB \
     --arg build_storage_pool "$BUILD_STORAGE_POOL" \
-    '{schema_version:2,stack:$stack,flavor:$flavor,profile_selectable:true,
+    '{schema_version:2,stack:$stack,release_id:$release_id,flavor:$flavor,profile_selectable:true,
       supported_profiles:[20,50,100],source_commit:$source_commit,created_at:$created_at,
       runtime_base_commit:$runtime_base_commit,
       archive:$archive,
-      profiles:{"20":{name:"small",instance:"prplmesh-20-0831",clients:20,hwsim_radios:40,cpus:6,memory:"8GiB"},
-                "50":{name:"medium",instance:"prplmesh-50-0831",clients:50,hwsim_radios:72,cpus:8,memory:"12GiB"},
-                "100":{name:"stress",instance:"prplmesh-100-0831",clients:100,hwsim_radios:120,cpus:12,memory:"20GiB"}},
+      profiles:{"20":{name:"small",instance:("prplmesh-20-"+$release_id),clients:20,hwsim_radios:40,cpus:6,memory:"8GiB"},
+                "50":{name:"medium",instance:("prplmesh-50-"+$release_id),clients:50,hwsim_radios:72,cpus:8,memory:"12GiB"},
+                "100":{name:"stress",instance:("prplmesh-100-"+$release_id),clients:100,hwsim_radios:120,cpus:12,memory:"20GiB"}},
       defaults:{disk:$disk},
       build:{storage_pool:$build_storage_pool},
       trim:{applied:true,report:"trim-report.txt"},
