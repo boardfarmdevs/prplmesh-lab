@@ -57,8 +57,9 @@ apply_patch_file()
 # Patches 0001 and 0002 preserve the established multichannel/6 GHz lab.
 # Patches 0003-0007 add an explicitly opt-in kernel data path, its dynamic
 # link matrix, rate/PER and timing controls, observability, and the larger
-# static-radio ceiling needed by scale profiles.  Userspace wmediumd remains
-# the default because kernel_medium defaults to false.
+# static-radio ceiling needed by scale profiles. Patch 0008 makes the
+# userspace-medium monitor ACK path channel-context safe. Userspace wmediumd
+# remains the default because kernel_medium defaults to false.
 for patch_file in "$ROOT"/patches/hwsim/000*.patch; do
     case "$(basename "$patch_file")" in
         0002-*)

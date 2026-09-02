@@ -31,16 +31,31 @@ done
 # Prove a data path through the deepest active backhaul, not merely through a
 # client that happens to be attached to the colocated controller agent.
 if [ "$agents" -gt 0 ]; then
-    leaf="agent-$agents"
-    "$ROOT/scripts/steer-client.sh" iot-06 "$leaf"
-    bssid=$(lxc exec prpl-client-12 -- wpa_cli -i wlan0 status | \
-        sed -n 's/^bssid=//p')
-    expected=$(printf '02:00:00:00:%02x:01' "$((agents * 3 + 2))")
-    [ "$bssid" = "$expected" ] || {
-        echo "FAIL: iot-06 BSSID=$bssid expected leaf BSSID=$expected" >&2
+    leaf_container=
+    leaf_bssid=
+    for ordinal in $(seq 1 "$clients"); do
+        printf -v container 'prpl-client-%02d' "$ordinal"
+        bssid=$(lxc exec "$container" -- wpa_cli -i wlan0 status | \
+            sed -n 's/^bssid=//p')
+        case "$bssid" in
+            02:00:00:00:*:00|02:00:00:00:*:01) ;;
+            *) continue ;;
+        esac
+        radio_octet=$(printf '%s\n' "$bssid" | cut -d: -f5)
+        case "$radio_octet" in
+            ''|*[!0-9a-fA-F]*) continue ;;
+        esac
+        [ "$((16#$radio_octet / 3))" -eq "$agents" ] || continue
+        leaf_container=$container
+        leaf_bssid=$bssid
+        break
+    done
+    [ -n "$leaf_container" ] || {
+        echo "FAIL: no client is associated with a BSSID on deepest agent-$agents" >&2
         exit 1
     }
-    summary=$(lxc exec prpl-client-12 -- \
+    echo "deepest data path: $leaf_container via agent-$agents ($leaf_bssid)"
+    summary=$(lxc exec "$leaf_container" -- \
         ping -q -c 10 -W 2 "$controller_ip" | tail -n 2)
     printf '%s\n' "$summary"
 fi

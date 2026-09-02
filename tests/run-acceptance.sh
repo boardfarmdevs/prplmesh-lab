@@ -25,7 +25,7 @@ for node in prpl-controller $(seq -f 'prpl-agent-%02g' 1 "$agents"); do
     fi
 done
 
-"$ROOT/scripts/topology-visualizer.sh" start >/dev/null
+"$ROOT/scripts/topology-adapter.sh" start >/dev/null
 for attempt in $(seq 1 12); do
     if "$ROOT/tests/topology-acceptance.py" \
         --agents "$agents" --clients "$clients" --topology "$topology" \

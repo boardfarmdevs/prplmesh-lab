@@ -83,7 +83,8 @@ for radio number 2 rather than pretending the unused setting already works.
   source hostapd reported `BSS-TM-RESP status_code=0`, wpa_supplicant moved to
   the requested BSSID, and the DataElements object moved to the destination
   agent. The repeatable gate is `scripts/test-steering.sh`.
-- Added a separate read-only topology visualizer. It discovers dynamic model
+- Added the read-only topology adapter that became the Controller UI's
+  loopback data source. It discovers dynamic model
   instances through `_get_instances`, reads parameters through `_get`, and
   renders devices, tri-band radios, backhaul and clients without modifying
   prplMesh.

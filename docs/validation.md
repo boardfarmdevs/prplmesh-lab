@@ -122,7 +122,7 @@ identity rather than treating CLI acknowledgement or Web rendering as proof.
   metrics checks.
 - Stock-hostapd raw association-frame compatibility remains a candidate for
   upstream-quality cleanup.
-- The topology visualizer is read-only and deliberately smaller than the RDK
+- The internal topology adapter is read-only and deliberately smaller than the RDK
   EM CLI. It is an observability aid, not a policy or optimizer component.
 
 This is now sufficient for comparative onboarding, multihop, associated and

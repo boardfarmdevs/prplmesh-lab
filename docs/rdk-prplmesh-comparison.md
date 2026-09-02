@@ -41,7 +41,7 @@ research facilities before end-to-end optimizer behavior can be compared.
 | Northbound | Product-specific em_cli REST/WebUI plus controller database | `Device.WiFi.DataElements` NBAPI over Ambiorix/ubus |
 | Persistence | MariaDB and retained `/nvram` identity | Primarily an in-memory controller model |
 | Virtual-radio product patches so far | Large, distributed series | Five focused native Linux/NL80211 corrections |
-| Lab infrastructure | Mature lifecycle, configurator, Console, optimizer, tests and VM packaging | LXD lifecycle, stable inventory, scale tests and read-only topology visualizer |
+| Lab infrastructure | Lifecycle, configurator, Console, optimizer, tests and VM packaging | Equivalent lifecycle, configurator, Console, optimizer adapters, tests and LXD packaging |
 
 The RDK `codex/0824-clean` patch inventory currently contains 126 patch files
 under Unified EasyMesh, 30 under Wi-Fi HAL, 20 under OneWifi, 12 under
@@ -249,8 +249,10 @@ The positive evidence is strong:
 - four wireless backhaul STAs support star, branch and four-hop chain;
 - 20 clients report associated RCPI and follow a live wmediumd SNR step;
 - leaf outage, topology aging, client roam and stable-identity rejoin pass; and
-- the external topology visualizer can remain a read-only NBAPI client rather
-  than becoming controller code.
+- the Controller UI consumes a loopback-only, read-only NBAPI adapter rather
+  than adding presentation code to the controller; and
+- the shared wmediumd Console presents the medium with the same source and
+  Web assets used by the RDK lab.
 
 There was also material negative evidence in the stock native NL80211 wireless
 backhaul path:
@@ -349,7 +351,8 @@ packaging remain.
    REST/controller data and prplMesh NBAPI.
 6. For prplMesh, retain the focused native NL80211 fixes and next qualify the
    shared optimizer adapter, candidate metrics and traffic profiles. Keep the
-   visualizer read-only rather than creating another controller policy plane.
+   internal topology adapter read-only rather than creating another controller
+   policy plane.
 7. Retain hwsim/wmediumd as a fault-finding platform even for product fixes
    intended for physical hardware. Every generic fix should also be validated
    on the physical MediaTek target before upstreaming.

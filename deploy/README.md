@@ -17,14 +17,16 @@ cold onboarding and optimizer candidate collection materially slower.
 
 The appliance guest owns its complete repository at `/opt/prplmesh-lab` and
 starts `prplmesh-lab.service` at boot. That service reconstructs the radio
-pool, wmediumd, controller, Agents, clients, NBAPI topology adapter and
-Controller UI. It does not rely on a directory mounted from the packaging
+pool, wmediumd, controller, Agents, clients, internal NBAPI adapter, common
+wmediumd Console and Controller UI. It does not rely on a directory mounted from the packaging
 host.
 
 The two browser surfaces are:
 
-- `8090`: raw NBAPI topology adapter;
+- `8090`: wmediumd Console, identical to the RDK lab;
 - `8091`: EasyMesh Controller UI.
+
+The NBAPI normalization adapter listens only on guest loopback port `8092`.
 
 Host bind addresses and host ports are deployment settings, not image
 identity. They are selected during LXD import.

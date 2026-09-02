@@ -22,6 +22,8 @@ WMEDIUMD_PIDFILE=$WMEDIUMD_RUNTIME/wmediumd.pid
 WMEDIUMD_CONTROL=${PRPL_WMEDIUMD_CONTROL:-$WMEDIUMD_RUNTIME/control.sock}
 WMEDIUMD_METRICS=${PRPL_WMEDIUMD_METRICS:-$WMEDIUMD_RUNTIME/metrics.sock}
 WMEDIUMD_OBSERVER=${PRPL_WMEDIUMD_OBSERVER:-$WMEDIUMD_RUNTIME/telemetry.sock}
+WMEDIUMD_DAEMON_MANIFEST=${PRPL_WMEDIUMD_DAEMON_MANIFEST:-$WMEDIUMD_RUNTIME/wmediumd-binary.sha256}
+WMEDIUMD_CONFIG_SNAPSHOT=${PRPL_WMEDIUMD_CONFIG_SNAPSHOT:-$WMEDIUMD_RUNTIME/wmediumd.conf}
 WMEDIUMD_LOG=${PRPL_WMEDIUMD_LOG:-/tmp/prpl-wmediumd.log}
 WMEDIUMD_CONFIG=${PRPL_WMEDIUMD_CONFIG:-${PRPLMESH_APPLIANCE_WMEDIUMD_CONFIG:-$ROOT/manifests/wmediumd.conf}}
 WMEDIUMD_CPU_AFFINITY=${PRPL_WMEDIUMD_CPU_AFFINITY:-}
@@ -65,6 +67,20 @@ require_count()
         echo "$label $value exceeds provisioned maximum $maximum" >&2
         exit 2
     }
+}
+
+instance_state()
+{
+    local name=$1 state
+    state=$(lxc list "^${name}$" -c s --format csv) || {
+        echo "cannot read nested instance state: $name" >&2
+        return 1
+    }
+    [ -n "$state" ] || {
+        echo "nested instance is missing: $name" >&2
+        return 1
+    }
+    printf '%s\n' "$state"
 }
 
 require_count "$ACTIVE_AGENTS" "$PROVISIONED_AGENT_COUNT" PRPL_AGENT_COUNT
@@ -215,7 +231,7 @@ create_node()
     if ! lxc info "$name" >/dev/null 2>&1; then
         lxc init "$RUNTIME_IMAGE" "$name" -c security.privileged=true
     fi
-    [ "$(lxc list "$name" -c s --format csv)" != RUNNING ] || {
+    [ "$(instance_state "$name")" != RUNNING ] || {
         echo "$name must be stopped before provisioning" >&2
         return 1
     }
@@ -238,7 +254,7 @@ create_client()
     if ! lxc info "$name" >/dev/null 2>&1; then
         lxc init "$RUNTIME_IMAGE" "$name" -c security.privileged=true
     fi
-    [ "$(lxc list "$name" -c s --format csv)" != RUNNING ] || {
+    [ "$(instance_state "$name")" != RUNNING ] || {
         echo "$name must be stopped before provisioning" >&2
         return 1
     }
@@ -269,7 +285,7 @@ stop_medium()
     stop_pidfile "$WMEDIUMD_PIDFILE"
     pkill -x wmediumd 2>/dev/null || true
     rm -f "$WMEDIUMD_PIDFILE" "$KERNEL_MEDIUM_PROXY_PIDFILE" "$WMEDIUMD_CONTROL" \
-        "$WMEDIUMD_METRICS" "$WMEDIUMD_OBSERVER"
+        "$WMEDIUMD_METRICS" "$WMEDIUMD_OBSERVER" "$WMEDIUMD_DAEMON_MANIFEST"
     if [ -w /sys/module/mac80211_hwsim/parameters/kernel_medium ]; then
         echo 0 > /sys/module/mac80211_hwsim/parameters/kernel_medium
     fi
@@ -277,7 +293,7 @@ stop_medium()
 
 start_userspace_medium()
 {
-    local command expected_patchset provenance
+    local command expected_patchset hash pid provenance
 
     expected_patchset=$(
         cd "$ROOT"
@@ -296,6 +312,16 @@ start_userspace_medium()
        kill -0 "$(cat "$WMEDIUMD_PIDFILE")" 2>/dev/null &&
        [ -S "$WMEDIUMD_CONTROL" ] && [ -S "$WMEDIUMD_METRICS" ] &&
        [ -S "$WMEDIUMD_OBSERVER" ]; then
+        install -m 0644 "$WMEDIUMD_CONFIG" "$WMEDIUMD_CONFIG_SNAPSHOT"
+        pid=$(cat "$WMEDIUMD_PIDFILE")
+        hash=$(sha256sum "$ROOT/build/bin/wmediumd" | awk '{print $1}')
+        printf '%s\t%s\t%s\n' "$pid" "$hash" "$ROOT/build/bin/wmediumd" \
+            > "$WMEDIUMD_DAEMON_MANIFEST"
+        chmod 0644 "$WMEDIUMD_DAEMON_MANIFEST"
+        if getent group wmediumd-console >/dev/null; then
+            chgrp wmediumd-console "$WMEDIUMD_OBSERVER"
+            chmod 0660 "$WMEDIUMD_OBSERVER"
+        fi
         return
     fi
     stop_medium
@@ -323,6 +349,16 @@ start_userspace_medium()
             return 1
         }
     done
+    install -m 0644 "$WMEDIUMD_CONFIG" "$WMEDIUMD_CONFIG_SNAPSHOT"
+    pid=$(cat "$WMEDIUMD_PIDFILE")
+    hash=$(sha256sum "$ROOT/build/bin/wmediumd" | awk '{print $1}')
+    printf '%s\t%s\t%s\n' "$pid" "$hash" "$ROOT/build/bin/wmediumd" \
+        > "$WMEDIUMD_DAEMON_MANIFEST"
+    chmod 0644 "$WMEDIUMD_DAEMON_MANIFEST"
+    if getent group wmediumd-console >/dev/null; then
+        chgrp wmediumd-console "$WMEDIUMD_OBSERVER"
+        chmod 0660 "$WMEDIUMD_OBSERVER"
+    fi
 }
 
 start_kernel_medium()
@@ -383,7 +419,7 @@ start_medium()
 start_container()
 {
     local name=$1
-    if [ "$(lxc list "$name" -c s --format csv)" != RUNNING ]; then
+    if [ "$(instance_state "$name")" != RUNNING ]; then
         lxc start "$name"
     fi
 }
@@ -410,8 +446,8 @@ start_one_client()
     cohort_ordinal=$(client_ordinal "$ordinal")
     band=$(client_band "$ordinal")
     start_container "$name"
-    lxc exec "$name" -- /mnt/project/scripts/container/setup-client.sh \
-        "$cohort_ordinal" "$cohort" "$band"
+    "$ROOT/scripts/client-setup-with-retry.sh" \
+        "$name" "$cohort_ordinal" "$cohort" "$band"
     station_mac=$(client_mac "$cohort" "$cohort_ordinal")
     if ! wait_for_model "$station_mac" "$name station $station_mac" 30; then
         echo "$name associated but is absent from the model; reassociating once" >&2
@@ -594,7 +630,7 @@ stop_agent()
     local ordinal=$1 name
     require_count "$ordinal" "$PROVISIONED_AGENT_COUNT" agent
     name=$(agent_name "$ordinal")
-    [ "$(lxc list "$name" -c s --format csv)" = RUNNING ] || return 0
+    [ "$(instance_state "$name")" = RUNNING ] || return 0
     lxc exec "$name" -- \
         /mnt/project/scripts/container/cleanup-nl80211-node.sh >/dev/null
     lxc stop "$name" --timeout 5 >/dev/null 2>&1 || \
@@ -625,7 +661,7 @@ stop_all()
             "$CONTROLLER"|prpl-agent-*) ;;
             *) continue ;;
         esac
-        [ "$(lxc list "$name" -c s --format csv)" = RUNNING ] || continue
+        [ "$(instance_state "$name")" = RUNNING ] || continue
         lxc exec "$name" -- \
             /mnt/project/scripts/container/cleanup-nl80211-node.sh \
             >/dev/null 2>&1 &
@@ -636,27 +672,7 @@ stop_all()
     done
     pids=()
 
-    # Container shutdown is independent. Waiting serially for the LXD timeout
-    # makes a scaled lab take count * timeout seconds to stop. Give all nodes a
-    # short graceful window concurrently, then force only the non-responsive
-    # remainder down.
-    for name in "${names[@]}"; do
-        [ "$(lxc list "$name" -c s --format csv)" = RUNNING ] || continue
-        lxc stop "$name" --timeout 5 >/dev/null 2>&1 &
-        pids+=("$!")
-    done
-    for pid in "${pids[@]}"; do
-        wait "$pid" 2>/dev/null || true
-    done
-    pids=()
-    for name in "${names[@]}"; do
-        [ "$(lxc list "$name" -c s --format csv)" = RUNNING ] || continue
-        lxc stop "$name" --force >/dev/null 2>&1 &
-        pids+=("$!")
-    done
-    for pid in "${pids[@]}"; do
-        wait "$pid" 2>/dev/null || true
-    done
+    "$ROOT/scripts/stop-nested-instances.sh" "${names[@]}"
     stop_medium
 }
 
@@ -756,15 +772,15 @@ case "$ACTION" in
         else
             echo "medium: $MEDIUM_BACKEND stopped"
         fi
-        if [ "$(lxc list "$CONTROLLER" -c s --format csv)" = RUNNING ]; then
+        if [ "$(instance_state "$CONTROLLER")" = RUNNING ]; then
             timeout 15 lxc exec "$CONTROLLER" -- \
                 /opt/prpl-install-nl80211/bin/beerocks_cli \
                 -c bml_conn_map || \
-                echo "bml_conn_map did not complete; use the NBAPI visualizer/status tests" >&2
+                echo "bml_conn_map did not complete; use the NBAPI adapter/status tests" >&2
         fi
         for ordinal in $(seq 1 "$PROVISIONED_CLIENT_COUNT"); do
             name=$(client_name "$ordinal")
-            [ "$(lxc list "$name" -c s --format csv)" = RUNNING ] || continue
+            [ "$(instance_state "$name")" = RUNNING ] || continue
             echo "[$name]"
             lxc exec "$name" -- wpa_cli -i wlan0 status | \
                 grep -E '^(bssid|ssid|freq|wpa_state)=' || true

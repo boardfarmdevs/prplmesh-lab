@@ -1,7 +1,29 @@
 import subprocess
 from unittest.mock import patch
 
-from wmdcfg.inventory import _run, discover
+from wmdcfg.inventory import CLIENT_NAME, _run, discover
+
+
+def test_client_name_accepts_canonical_two_and_three_digit_ordinals():
+    for name in (
+        "prpl-client-01",
+        "prpl-client-10",
+        "prpl-client-99",
+        "prpl-client-100",
+        "prpl-client-999",
+    ):
+        assert CLIENT_NAME.fullmatch(name), name
+
+
+def test_client_name_rejects_malformed_ordinals():
+    for name in (
+        "prpl-client-1",
+        "prpl-client-1a",
+        "prpl-client-100-extra",
+        "prpl-client--10",
+        "prpl-client-",
+    ):
+        assert not CLIENT_NAME.fullmatch(name), name
 
 
 def test_inventory_probe_retries_a_lost_lxc_exec_transport():

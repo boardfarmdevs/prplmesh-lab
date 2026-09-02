@@ -67,7 +67,7 @@ def _live_policy(path: str, expected_clients: int | None) -> ThresholdPolicy:
 
 def _live(args, mode: str) -> int:
     base_url = args.base_url or (
-        "http://127.0.0.1:8090"
+        "http://127.0.0.1:8092"
         if args.backend == "prplmesh"
         else "http://127.0.0.1:8888"
     )

@@ -1,7 +1,7 @@
 # prplMesh software architecture
 
 This document describes the prplMesh 6.0.0 native Linux software used by this
-experiment and the separate read-only topology visualizer layered over NBAPI.
+experiment and the internal read-only topology adapter layered over NBAPI.
 
 ## Complete process and protocol view
 
@@ -12,7 +12,9 @@ flowchart LR
         PMCLI[prplmesh_cli]
         UBUSCLI[ubus / Ambiorix clients]
         UCC[EasyMesh certification client]
-        VIZ[read-only topology visualizer]
+        ADAPTER[internal topology adapter]
+        UI[EasyMesh Controller UI]
+        CONSOLE[wmediumd Console]
         BROWSER[Web browser]
     end
 
@@ -89,8 +91,11 @@ flowchart LR
     PMCLI -->|controller/agent status| CTL
     UBUSCLI -->|ubus socket| CUBUS
     UCC -->|TCP 8002 when enabled| CTL
-    VIZ -->|DataElements _get_instances / _get| CUBUS
-    BROWSER -->|HTTP JSON + SVG| VIZ
+    ADAPTER -->|DataElements _get_instances / _get| CUBUS
+    UI -->|loopback HTTP JSON| ADAPTER
+    BROWSER -->|HTTP :8091| UI
+    BROWSER -->|HTTP :8090| CONSOLE
+    WMD -->|observer socket| CONSOLE
 ```
 
 The three per-agent fronthaul processes map to `wlan0`/2.4 GHz,
@@ -233,14 +238,15 @@ actions. The tested steering action is the per-STA
 `MultiAPSTA.BTMRequest`; it produces an EasyMesh Client Steering Request,
 hostapd `BSS_TM_REQ`, station response, and controller-model update.
 
-### Topology visualizer
+### Internal topology adapter and Controller UI
 
-`visualizer/server.py` is a separate process, not controller code. It runs in
+`topology-adapter/server.py` is a separate process, not controller code. It runs in
 the controller container because ubus is a local Unix-domain interface. It
 uses only `_get_instances` and `_get`, normalizes Device/Radio/BSS/STA objects
-to `/api/topology`, and serves a dependency-free responsive SVG page. A small
-TCP forwarder in the radio VM makes the read-only service reachable without
-placing Web concerns in prplMesh.
+to `/api/topology`. A loopback-only TCP forwarder makes that JSON available to
+the separate Controller UI on port 8091. The adapter has no public page and is
+not exposed outside the appliance. This keeps Web concerns out of prplMesh
+while the Controller UI can share the RDK topology presentation.
 
 Dynamic instances must be discovered through the DataElements
 `_get_instances` method. `ubus list` describes registered object endpoints but

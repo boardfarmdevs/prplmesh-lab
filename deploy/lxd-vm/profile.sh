@@ -19,6 +19,18 @@ prplmesh_profile_clients()
     esac
 }
 
+prplmesh_profile_release_name()
+{
+    printf 'prplmesh-%s-%s\n' \
+        "$(prplmesh_profile_clients "${1:-20}")" \
+        "${PRPLMESH_RELEASE_ID:-0831}"
+}
+
+prplmesh_thin_release_name()
+{
+    printf 'prplmesh-%s-thin\n' "${PRPLMESH_RELEASE_ID:-0831}"
+}
+
 prplmesh_profile_radios()
 {
     # Five tri-band mesh nodes consume 15 radios. Keep a small spare pool
@@ -66,4 +78,11 @@ prplmesh_profile_min_lxd_pool_free_bytes()
         medium) printf '%s\n' $((48 * 1024 * 1024 * 1024)) ;;
         stress) printf '%s\n' $((80 * 1024 * 1024 * 1024)) ;;
     esac
+}
+
+prplmesh_thin_guest_source_allowed()
+{
+    local guest=$1 runtime_base=$2 source=$3
+
+    [ "$guest" = "$runtime_base" ] || [ "$guest" = "$source" ]
 }

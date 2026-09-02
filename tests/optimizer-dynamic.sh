@@ -12,6 +12,7 @@ case "$MODE" in
 esac
 
 inventory=$(mktemp /tmp/prpl-optimizer-inventory.XXXXXX.json)
+profile_scenario=$(mktemp /tmp/prpl-optimizer-scenario-profile.XXXXXX.wmd)
 plan=$(mktemp /tmp/prpl-optimizer-plan.XXXXXX.json)
 journal=$(mktemp /tmp/prpl-optimizer-journal.XXXXXX.jsonl)
 scenario_log=$(mktemp /tmp/prpl-optimizer-scenario.XXXXXX.log)
@@ -24,15 +25,28 @@ cleanup()
         kill -TERM "$scenario_pid" 2>/dev/null || true
         wait "$scenario_pid" 2>/dev/null || true
     fi
-    rm -f "$inventory" "$plan"
+    rm -f "$inventory" "$profile_scenario" "$plan"
 }
 trap cleanup EXIT
 
 cd "$ROOT/wmediumd/configurator"
 python3 -m wmdcfg.cli inventory -o "$inventory"
-expected_clients=$(jq '[.radios[] | select(.kind == "station")] | length' "$inventory")
-[ "$expected_clients" -gt 0 ] || {
-    echo "optimizer inventory contains no station radios" >&2
+discovered_clients=$(jq '[.radios[] | select(.kind == "station")] | length' "$inventory")
+expected_clients=${PRPL_CLIENT_COUNT:-}
+if [ -z "$expected_clients" ] && [ -r /etc/default/prplmesh-lab ]; then
+    expected_clients=$(bash -c '
+        . /etc/default/prplmesh-lab
+        printf "%s" "${PROVISIONED_CLIENT_COUNT:-}"
+    ')
+fi
+case "$expected_clients" in
+    ''|*[!0-9]*|0)
+        echo "PRPL_CLIENT_COUNT must specify the positive profile cardinality" >&2
+        exit 1
+        ;;
+esac
+[ "$discovered_clients" -eq "$expected_clients" ] || {
+    echo "optimizer inventory client cardinality $discovered_clients does not match required profile count $expected_clients" >&2
     exit 1
 }
 
@@ -97,7 +111,11 @@ target=${binding[1]}
 target_bssid=${binding[2]}
 client_sta=${binding[3]}
 
-python3 -m wmdcfg.cli compile scenarios/optimizer-five-ap-crossover.wmd \
+python3 "$ROOT/tests/optimizer-profile-scenario.py" \
+    --clients "$expected_clients" \
+    scenarios/optimizer-five-ap-crossover.wmd "$profile_scenario"
+
+python3 -m wmdcfg.cli compile "$profile_scenario" \
     --inventory "$inventory" \
     --bind "client=$CLIENT" \
     --bind "source=$source" \
@@ -115,7 +133,7 @@ sleep 2
 
 cd "$ROOT/optimizer"
 args=(
-    "$MODE" --backend prplmesh --base-url http://127.0.0.1:8090
+    "$MODE" --backend prplmesh --base-url http://127.0.0.1:8092
     --candidate-provider controller --allow-simulated-candidates
     --policy configs/threshold-policy.yaml --journal "$journal"
     --expected-clients "$expected_clients"

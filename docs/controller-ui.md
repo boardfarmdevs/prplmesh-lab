@@ -9,7 +9,7 @@ adapter. It runs on the radio host rather than inside an EasyMesh node.
  Device.WiFi.DataElements NBAPI
               |
               v
- existing read-only external projection :8090
+ internal read-only NBAPI adapter :8092
               |
               | JSON devices/radios/BSSs/STAs/backhaul
               v
@@ -41,11 +41,10 @@ the graph with an empty topology.
 Dashboard, coverage, policy, performance, security, firmware, reports and
 system settings are explicit placeholders. They do not display canned data.
 
-`Optimize Layout` is aware of the live backhaul graph. A star places the
-controller at the center, a complete chain follows parent-child order across
-an upper and lower row, and a branched graph uses a depth-aware landscape
-layout. The topology pane is bounded to the visible browser area and does not
-grow in response to SVG resize events.
+`Optimize Layout` uses the same Controller-first landscape hierarchy as the
+RDK UI for star and branch topologies. A complete chain follows parent-child
+order across an upper and lower row. The topology pane is bounded to the
+visible browser area and does not grow in response to SVG resize events.
 
 ## Steering visualization
 

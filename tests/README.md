@@ -29,7 +29,10 @@ PRPL_MEDIUM_BACKEND=kernel PRPL_AGENT_COUNT=4 PRPL_CLIENT_COUNT=20 \
 
 `topology-acceptance.py` checks unique device, radio, BSS and client ownership,
 all physical associations, both `private_ssid` and `iot_ssid`, 2.4/5/6 GHz
-distribution, wireless backhaul parentage and reported RCPI. `test-steering.sh`
+distribution, wireless backhaul parentage and reported RCPI. Every client must
+also exist in the owning AP interface's kernel station table; a stale client-side
+`wpa_state=COMPLETED` cannot satisfy the gate after hostapd has removed the
+station. `test-steering.sh`
 issues BTM requests for a private 5 GHz client and an IoT 6 GHz client and
 requires physical and NBAPI convergence. `resource-acceptance.sh` checks fixed
 process cardinality, reports the mesh footprint and rejects snap/automatic
@@ -59,8 +62,9 @@ tests/steering-demo.sh --cycles 2 --delay 5
 ```
 
 `data-plane.sh` checks the deterministic `192.168.77.0/24` lab data network
-from every active WLAN client. It then places `iot-06` on the deepest active
-agent and sends a longer ping through the complete wireless backhaul to the
+from every active WLAN client. It then discovers a client already associated
+with the deepest active agent and sends a longer ping through that exact BSSID
+and the complete wireless backhaul to the
 controller. LXD management addresses are on a different subnet and cannot
 satisfy this test.
 
@@ -73,6 +77,15 @@ selected client's current node, SSID and band, then compiles a five-node
 crossover in which one requested target becomes uniquely stronger while the
 other three candidates remain weak. The optimizer sees only prplMesh NBAPI and
 Unassociated STA Link Metrics results; it is not given the plan or target.
+
+The destination hold scales as `max(90, 6 * clients)` seconds so the 20-,
+50-, and 100-client serialized controller sweeps remain inside the RF
+stimulus. Every lab BSS uses a bounded 1200-second hostapd inactivity timeout.
+That margin prevents otherwise-silent synthetic stations from aging out during
+the stress-profile sweep; ordinary traffic and the explicit RF-outage tests
+still exercise association loss. The harness never reduces the required
+profile cardinality and does not repair missing clients during an optimizer
+decision.
 
 ```sh
 tests/optimizer-dynamic.sh recommend prpl-client-07 prpl-agent-02
@@ -97,6 +110,13 @@ It requires topology/physical ownership and process cardinality on every cycle,
 and proves that the hwsim inventory hash and wmediumd PID do not change. Set
 `PRPL_CHURN_ITERATIONS` to choose another bounded count; this is not a
 long-duration soak.
+
+`hwsim-monitor-ack.sh` is a live kernel/userspace regression for multichannel
+TX status. It temporarily enables the normally-down `hwsim0` radiotap monitor,
+generates acknowledged traffic, and proves that wmediumd remains alive, no
+hwsim NULL-dereference appears, and a subsequent nl80211 station dump
+completes. Run it after rebuilding and loading the lab's patched Linux 7.0
+hwsim module.
 
 Topology modes are selected at start time with `PRPL_TOPOLOGY=star`, `branch`
 or `chain`. The manifest remains the source of provisioned radio identities;

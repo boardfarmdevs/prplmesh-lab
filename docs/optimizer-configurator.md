@@ -49,7 +49,8 @@ The four important boundaries are:
 | prplMesh monitor HAL | read-only metrics socket | Converts lab SNR to RSSI and emits ordinary monitor events |
 | prplMesh Agent | IEEE 1905 CMDUs | Reports associated and unassociated STA link metrics |
 | prplMesh controller | `Device.WiFi.DataElements` on ubus | Owns topology, metrics and steering actions |
-| topology adapter | HTTP `/api/topology` on port 8090 | Read-only normalized associated topology |
+| topology adapter | loopback HTTP `/api/topology` on port 8092 | Read-only normalized associated topology |
+| wmediumd Console | HTTP/UI on port 8090 | Shared live medium state and frame-path presentation |
 | optimizer | Python CLI and library | Observe, recommend, act, replay, simulate and journal |
 | steering actuator | per-STA `MultiAPSTA.BTMRequest` | Executes one controller-approved target BSSID |
 
@@ -226,7 +227,7 @@ process against its own lab:
 
 ```text
 RDK repository process:      lab_id=rdk-a   API=http://LAB-A:8888
-prplMesh repository process: lab_id=prpl-b  API=http://LAB-B:8090
+prplMesh repository process: lab_id=prpl-b  API=http://127.0.0.1:8092
 ```
 
 They may execute concurrently, but must use different journal/output roots,

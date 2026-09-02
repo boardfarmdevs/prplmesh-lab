@@ -1,35 +1,82 @@
-# Portable profiles
+# Portable prplMesh appliance
 
-The prplMesh lab is distributed as pre-provisioned LXD virtual machines with
-20, 50, or 100 clients. Each profile has its own hwsim and generated wmediumd
-roster, nested containers, identities, resource defaults, release metadata and
-checksum. Importing another profile is supported; resizing an imported profile
-is not.
+`prplmesh-0831-thin.tar` is the only portable prplMesh download. The same
+archive supports 20, 50, and 100 clients; there are no profile-specific release
+files.
 
-Build and package one profile:
+The 0831 archive is 1,777,039,360 bytes. Its SHA-256 is
+`9ef007df292742ebc8c36e9405d71810c8754e7f1f802baa58b68cd9bf45f598`
+and its source commit is `4eb6bcc32beff12e90328660fcd10970a4694a16`.
+
+The archive contains an installed Ubuntu 24.04/Linux 7 LXD VM, exact source,
+the local prplMesh runtime image, hwsim/wmediumd support, the shared wmediumd
+Console, and the Controller UI. It contains zero provisioned nested lab instances and no selected
+profile.
+
+## Install from an empty directory
+
+Download the tar and its adjacent checksum, then run:
 
 ```sh
-PRPLMESH_LAB_PROFILE=20 \
-PRPL_RUNTIME_DEPS_ARCHIVE=/absolute/path/prpl-runtime-deps-6.0.0.tar.gz \
-PRPL_INSTALL_ARCHIVE=/absolute/path/prpl-install-nl80211-6.0.0.tar.gz \
-PRPL_HOSTAP_ARCHIVE=/absolute/path/hostap-runtime-2.10.tar.gz \
-  deploy/lxd-vm/build.sh build
-
-PRPLMESH_LAB_PROFILE=20 deploy/lxd-vm/package.sh
-deploy/lxd-vm/package-release.sh \
-  release/0831/prplmesh-20-0831-COMMIT-lxd
+sha256sum -c prplmesh-0831-thin.tar.sha256
+tar -xf prplmesh-0831-thin.tar
+cd prplmesh-0831-thin
+sha256sum -c SHA256SUMS
+sudo ./install-host.sh
+newgrp lxd
+./import.sh --profile 20
 ```
 
-The final `*-bundle.tar` and `.sha256` are suitable for manual Google Drive
-upload. The bundle README begins with the empty-directory import workflow.
-Packaging labels a release candidate. Acceptance requires a clean import on a
-different host and the exact profile's topology, traffic, steering, optimizer,
-resource and one-hour soak gates.
+Use `--profile 50` or `--profile 100` on a sufficiently sized host. Import
+waits for nested LXD, writes an immutable profile lock, creates the complete
+roster from local inputs, and starts the lab. A missing or invalid profile is
+rejected.
 
-All published profiles are trimmed before export. The bundle's
-`trim-report.txt` records cache removal, filesystem discard, guest usage and
-the final archive size; the report itself is covered by `SHA256SUMS`.
+| Profile | vCPU | RAM | hwsim radios | Sparse disk |
+| ---: | ---: | ---: | ---: | ---: |
+| 20 | 6 | 8 GiB | 40 | 160 GiB |
+| 50 | 8 | 12 GiB | 72 | 160 GiB |
+| 100 | 12 | 20 GiB | 120 | 160 GiB |
 
-The RDK repository's `portable-lab-releases.md` defines the shared two-stack
-catalog and publishing contract. Google credentials and site-specific Drive
-URLs are deliberately not stored in either repository.
+First boot is intentionally longer because it creates the selected roster.
+Provisioning is offline: it does not clone, pull, or download runtime inputs.
+Normal later boots reconstruct the existing lab.
+
+## Site settings
+
+Select an existing destination storage pool or LAN-facing UI address without
+changing the appliance:
+
+```sh
+PRPLMESH_LXD_STORAGE=bpi-lab \
+PRPLMESH_UI_HOST_IP=192.168.2.140 \
+  ./import.sh --profile 50
+```
+
+Default host ports are `8090` for the wmediumd Console and `8091` for the
+Controller UI. The internal NBAPI adapter is not exposed. The included README
+documents instance-name and port overrides.
+
+## Monitor and operate
+
+Replace `20` with the selected profile:
+
+```sh
+lxc exec prplmesh-20-0831 -- journalctl -fu prplmesh-lab.service
+lxc exec prplmesh-20-0831 -- prplmesh-lab-start status
+lxc stop prplmesh-20-0831
+lxc start prplmesh-20-0831
+```
+
+Imported appliances default to `boot.autostart=true`. The importer refuses to
+overwrite an existing instance.
+
+## Release identity
+
+The outer `.tar.sha256` verifies the download. After extraction,
+`SHA256SUMS` verifies the VM backup and every bundled instruction/metadata
+file. `release.json` records schema 2, the source commit, runtime base, profile
+map, sparse disk, and zero-instance offline-first-boot contract.
+
+The archive contains no host source mount, Git credential, fixed LAN address,
+or profile-specific nested inventory.

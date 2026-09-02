@@ -4,6 +4,7 @@ Wants=network-online.target
 After=network-online.target snap.lxd.daemon.service
 Requires=snap.lxd.daemon.service
 ConditionPathExists=/opt/prplmesh-lab/scripts/radio-lab.sh
+ConditionPathExists=!/var/lib/prplmesh-lab/thin-profile-selection.required
 
 [Service]
 Type=oneshot
@@ -12,7 +13,7 @@ EnvironmentFile=-/etc/default/prplmesh-lab
 ExecStart=/usr/local/sbin/prplmesh-lab-start start
 ExecStop=/usr/local/sbin/prplmesh-lab-start stop
 RemainAfterExit=yes
-TimeoutStartSec=30min
+TimeoutStartSec=60min
 TimeoutStopSec=5min
 
 [Install]

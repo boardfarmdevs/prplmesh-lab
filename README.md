@@ -19,8 +19,9 @@ The current scale profile contains:
   Link Metrics transaction;
 - dynamic scenario execution through the live wmediumd control plane;
 - an external reference optimizer with recommend and bounded act modes;
-- a read-only topology Web application on port 8090; and
-- a host EasyMesh Controller UI on port 8091.
+- the same read-only wmediumd Console used by the RDK lab on port 8090;
+- a host EasyMesh Controller UI on port 8091; and
+- a loopback-only NBAPI normalization adapter on port 8092.
 
 The four-hop chain, 20 clients, all metrics, 30-cell tri-band/two-SSID
 steering matrix, leaf-agent outage/rejoin, and global RCPI medium step all
@@ -42,8 +43,9 @@ PRPL_AGENT_COUNT=4 PRPL_CLIENT_COUNT=20 PRPL_TOPOLOGY=chain \
 PRPL_AGENT_COUNT=4 PRPL_CLIENT_COUNT=20 PRPL_TOPOLOGY=chain \
   scripts/radio-lab.sh clients
 
-# Start the read-only topology service and run the normal acceptance gate.
-scripts/topology-visualizer.sh start
+# Start the internal NBAPI adapter and the common medium Console.
+scripts/topology-adapter.sh start
+scripts/wmediumd-console.sh start
 PRPL_AGENT_COUNT=4 PRPL_CLIENT_COUNT=20 PRPL_TOPOLOGY=chain \
   tests/run-acceptance.sh
 ```
@@ -92,15 +94,16 @@ AL-MAC and BSSID identities plus fixed process counts.
 
 - `manifests/` — fixed inventory, SSIDs, credentials and medium baseline.
 - `patches/` — small hwsim, wmediumd and prplMesh NL80211 deltas.
-- `scripts/` — build, provisioning, lifecycle, named steering and visualizer.
+- `scripts/` — build, provisioning, lifecycle, named steering and service launchers.
 - `artifacts/` — ignored, reproducibly generated runtime archives.
 - `tests/` — acceptance, scale, steering, outage, metrics and resource tests.
 - `optimizer/` — normalized observations, policies, replay, journals and
   bounded actuation.
 - `wmediumd/configurator/` — scenario language, world compiler and atomic
   dynamic-medium runner.
-- `visualizer/` — read-only NBAPI adapter and SVG Web UI.
+- `topology-adapter/` — internal read-only NBAPI normalization API; no public UI.
 - `controller-ui/` — host Go port of the RDK EM CLI topology application.
+- `wmediumd/observer/` — exact shared RDK wmediumd Console implementation.
 - `docs/architecture.md` — lab topology, state boundaries and optimizer seam.
 - `docs/controller-ui.md` — host UI adapter, API and multi-network model.
 - `docs/software-architecture.md` — prplMesh processes, IEEE 1905 and APIs.
