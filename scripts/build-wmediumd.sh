@@ -24,6 +24,7 @@ PATCHES=(
     0014-wmediumd-add-bounded-observer-telemetry.patch
     0015-wmediumd-resolve-learned-vif-control-identities.patch
     0016-wmediumd-index-hot-path-lookups.patch
+    0017-wmediumd-return-tx-frequency.patch
 )
 
 case "${1:-}" in

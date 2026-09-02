@@ -111,6 +111,13 @@ and proves that the hwsim inventory hash and wmediumd PID do not change. Set
 `PRPL_CHURN_ITERATIONS` to choose another bounded count; this is not a
 long-duration soak.
 
+`hwsim-monitor-ack.sh` is a live kernel/userspace regression for multichannel
+TX status. It temporarily enables the normally-down `hwsim0` radiotap monitor,
+generates acknowledged traffic, and proves that wmediumd remains alive, no
+hwsim NULL-dereference appears, and a subsequent nl80211 station dump
+completes. Run it after rebuilding and loading the lab's patched Linux 7.0
+hwsim module.
+
 Topology modes are selected at start time with `PRPL_TOPOLOGY=star`, `branch`
 or `chain`. The manifest remains the source of provisioned radio identities;
 changing topology does not allocate new hwsim radios.
