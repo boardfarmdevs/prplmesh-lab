@@ -84,6 +84,21 @@ HOST_IP=${HOST_IP:-127.0.0.1}
 TOPOLOGY_PORT=${PRPLMESH_TOPOLOGY_HOST_PORT:-8090}
 UI_PORT=${PRPLMESH_UI_HOST_PORT:-8091}
 STORAGE=${PRPLMESH_LXD_STORAGE:-}
+NESTED_READY_ATTEMPTS=${PRPLMESH_NESTED_LXD_READY_ATTEMPTS:-120}
+NESTED_READY_INTERVAL=${PRPLMESH_NESTED_LXD_READY_INTERVAL:-1}
+
+case "$NESTED_READY_ATTEMPTS" in
+    ''|*[!0-9]*|0)
+        echo 'PRPLMESH_NESTED_LXD_READY_ATTEMPTS must be a positive integer' >&2
+        exit 2
+        ;;
+esac
+case "$NESTED_READY_INTERVAL" in
+    ''|*[!0-9]*)
+        echo 'PRPLMESH_NESTED_LXD_READY_INTERVAL must be a non-negative integer' >&2
+        exit 2
+        ;;
+esac
 
 [ -c /dev/kvm ] || { echo "/dev/kvm is unavailable; enable hardware virtualization" >&2; exit 1; }
 command -v lxc >/dev/null 2>&1 || { echo "lxc is not installed; run install-host.sh" >&2; exit 1; }
@@ -161,6 +176,18 @@ done
 }
 
 if [ "$PROFILE_SELECTABLE" = true ]; then
+    nested_ready=false
+    for unused in $(seq 1 "$NESTED_READY_ATTEMPTS"); do
+        if lxc exec "$NAME" -- lxc query /1.0 >/dev/null 2>&1; then
+            nested_ready=true
+            break
+        fi
+        sleep "$NESTED_READY_INTERVAL"
+    done
+    [ "$nested_ready" = true ] || {
+        echo "$NAME nested LXD did not become ready after $NESTED_READY_ATTEMPTS attempts" >&2
+        exit 1
+    }
     lxc exec "$NAME" -- /opt/prplmesh-lab/deploy/guest/select-thin-profile.sh \
         "$SELECTED_CLIENTS"
     lxc exec "$NAME" -- grep -Fx \
