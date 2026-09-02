@@ -1,25 +1,91 @@
-# LXD-VM appliance
+# prplMesh LXD-VM appliance
 
-LXD VM is the primary portable deployment. It avoids a second hypervisor
-management stack while retaining a complete guest boundary around the radio
-host, nested containers and lab services.
+LXD VM is the primary portable deployment. It keeps the Linux 7 radio host,
+nested containers, hwsim/wmediumd, prplMesh services, and UIs within one VM.
 
-On an Ubuntu 22.04 or 24.04 x86-64 host, install the prerequisites once:
+## Use the universal appliance
+
+Start with `prplmesh-0831-thin.tar` and its adjacent checksum in an empty
+directory:
 
 ```sh
+sha256sum -c prplmesh-0831-thin.tar.sha256
+tar -xf prplmesh-0831-thin.tar
+cd prplmesh-0831-thin
+sha256sum -c SHA256SUMS
 sudo ./install-host.sh
 newgrp lxd
+PRPLMESH_UI_HOST_IP=192.168.2.140 ./import.sh --profile 20
 ```
 
-The installer verifies hardware virtualization and initializes LXD only when
-it has no storage pool. Review its output before importing a VM.
+The same archive supports all profiles:
 
-## Build a clean appliance
+| Profile | vCPU | RAM | hwsim radios | Sparse disk |
+| ---: | ---: | ---: | ---: | ---: |
+| 20 | 6 | 8 GiB | 40 | 160 GiB |
+| 50 | 8 | 12 GiB | 72 | 160 GiB |
+| 100 | 12 | 20 GiB | 120 | 160 GiB |
 
-Release builders select an immutable client profile, provide the three
-checksum-verified runtime archives, and let the builder create the Ubuntu
-24.04/Linux 7 guest, nested LXD inventory, generated wmediumd roster,
-controller, four Agents, both UIs, and boot service:
+Use `--profile 50` or `--profile 100` only on a sufficiently sized host. The
+choice is mandatory and immutable. To use another profile, import the universal
+archive as a different instance.
+
+The importer refuses to overwrite an existing instance. It reseeds the VM,
+waits for both the outer VM agent and nested LXD API, writes the profile lock,
+adds site-specific proxy devices, and starts offline first-boot provisioning.
+The profile cannot be published while nested LXD is unavailable. Slow hosts
+may adjust `PRPLMESH_NESTED_LXD_READY_ATTEMPTS` and
+`PRPLMESH_NESTED_LXD_READY_INTERVAL`.
+
+## Site settings
+
+The defaults use outer LXD network `lxdbr0`, its default storage pool, and host
+ports `8090` and `8091`. Override them without changing the appliance:
+
+```sh
+PRPLMESH_LXD_STORAGE=bpi-lab \
+PRPLMESH_UI_HOST_IP=192.168.2.140 \
+PRPLMESH_TOPOLOGY_HOST_PORT=18090 \
+PRPLMESH_UI_HOST_PORT=18091 \
+PRPLMESH_VM_NAME=my-prplmesh-lab \
+  ./import.sh --profile 50
+```
+
+The selected storage pool must already exist. The source host's pool name is
+provenance only and is not imposed on the destination.
+
+## First boot and operation
+
+First boot creates the selected roster from the local `prpl-runtime-local`
+image. It does not clone repositories or download runtime artifacts. Monitor
+it with the selected instance name:
+
+```sh
+lxc console prplmesh-20-0831 --show-log
+lxc exec prplmesh-20-0831 -- journalctl -fu prplmesh-lab.service
+lxc exec prplmesh-20-0831 -- prplmesh-lab-start status
+```
+
+When ready, the topology adapter is on host port `8090` and the Controller UI
+is on `8091`. Normal lifecycle is:
+
+```sh
+lxc stop prplmesh-20-0831
+lxc start prplmesh-20-0831
+lxc config set prplmesh-20-0831 boot.autostart false  # optional
+```
+
+Imported appliances default to `boot.autostart=true`. Deleting the VM is
+destructive and must be explicit:
+
+```sh
+lxc delete prplmesh-20-0831
+```
+
+## Release engineering
+
+Normal users do not need a source checkout or the build commands below. A
+release builder creates a ready VM from clean, checksummed inputs:
 
 ```sh
 PRPLMESH_LAB_PROFILE=20 \
@@ -31,145 +97,18 @@ PRPL_HOSTAP_ARCHIVE=/absolute/path/hostap-runtime-2.10.tar.gz \
 PRPLMESH_LAB_PROFILE=20 deploy/lxd-vm/build.sh check
 ```
 
-Profiles `20`, `50`, and `100` produce separate, pre-provisioned ready builders.
-The portable thin release is one profile-neutral artifact; its importer asks
-for a profile and locks that choice before creating any nested instance. The
-source checkout must
-be clean. Source enters the VM as a commit-bounded
-Git bundle; runtime archives enter as checksummed files. The result has no host
-source mount, Git credential, fixed host address, or dependency on the build
-directory. Use `build.sh status|start|stop|restart|delete` for the named build
-instance.
-
-`PRPLMESH_LXD_STORAGE` selects the outer LXD pool for a clean build. The
-builder reports capacity, used space, free space, and the profile-aware free
-space requirement before it creates the VM. The selected build pool is saved
-as provenance in the release metadata but is never forced on another host.
-
-Package a checked export for Google Drive with:
-
-```sh
-PRPLMESH_LAB_PROFILE=20 deploy/lxd-vm/package.sh
-deploy/lxd-vm/package-release.sh \
-  release/0831/prplmesh-20-0831-COMMIT-lxd
-```
-
-The builder and packager each run the relevant acceptance gates. They do not
-create or export an `accepted` LXD snapshot: on non-copy-on-write storage a
-snapshot duplicates the complete VM disk, while the portable export is
-instance-only and does not consume snapshots.
-
-Before export, packaging stops the lab, removes only reconstructible package,
-journal, Docker and nested-LXD image caches, and issues filesystem discard.
-It never removes provisioned containers, identities, configuration or source.
-Every bundle includes `trim-report.txt` with before/after guest usage,
-discard output and the final compressed archive size.
-
-## Universal offline thin release
-
-The ready builder above contains the complete provisioned roster and starts it
-on every boot. `prplmesh-0831-thin.tar` is the portable release. It is an
-installed appliance with the same kernel, services and runtime artifacts, but
-its export contains zero nested lab instances and no preselected profile. It
-retains one local `prpl-runtime-local` image, so import can lock and provision
-the selected 20, 50 or 100-client roster without a
-network download or operator repair, then starts and validates the normal lab.
-The pending marker is removed only after topology, steering, data-plane and
-resource acceptance pass. The persistent
-`/var/lib/prplmesh-lab/thin-firstboot-report.txt` records the zero-instance
-starting condition, final roster count and PASS state.
-
-Create a thin candidate only from a separately imported and fully accepted
-ready appliance. The explicit confirmation is required because conversion
-removes that VM's nested roster:
+Convert an accepted ready VM into the single universal release:
 
 ```sh
 PRPLMESH_RUNTIME_BASE_COMMIT=READY-COMMIT \
 PRPLMESH_LAB_PROFILE=20 \
-PRPLMESH_VM_NAME=prplmesh-20-thin-source \
-PRPLMESH_THIN_CONFIRM=prplmesh-20-thin-source \
+PRPLMESH_VM_NAME=READY-VM \
+PRPLMESH_THIN_CONFIRM=READY-VM \
   deploy/lxd-vm/package-thin.sh release/0831
 deploy/lxd-vm/package-release.sh release/0831/prplmesh-0831-thin
 ```
 
-The source VM remains stopped and awaiting profile selection after export. A
-systemd condition prevents lab reconstruction until import writes the
-selection. Import acceptance must use the exact same artifact bytes separately
-with profiles 20, 50 and 100 and confirm `nested_instances_before=0`, the
-profile-sized final roster, and the same full gates as the ready flavor.
-Release metadata records both the thin tooling source and the accepted ready
-runtime base so those two code identities are not conflated.
-
-The common sparse logical disk is 160 GiB, sufficient for the stress profile;
-smaller profiles consume only the blocks written during their first boot.
-Upload `prplmesh-0831-thin.tar` and its `.sha256`. From any empty working
-directory, verify and extract it:
-
-```sh
-sha256sum -c prplmesh-0831-thin.tar.sha256
-tar -xf prplmesh-0831-thin.tar
-cd prplmesh-0831-thin
-sha256sum -c SHA256SUMS
-PRPLMESH_UI_HOST_IP=127.0.0.1 ./import.sh --profile 20
-```
-
-Use `--profile 50` or `--profile 100` on a sufficiently sized host. Defaults
-are 6 vCPU/8 GiB, 8 vCPU/12 GiB, and 12 vCPU/20 GiB. A missing or invalid
-choice is rejected; selection never silently defaults.
-
-To import into a non-default outer LXD pool, add
-`PRPLMESH_LXD_STORAGE=POOL`. The pool must already exist.
-
-For a thin bundle, first boot takes longer because the VM creates the offline
-nested inventory before starting the radios and executing acceptance. The
-service allows up to 60 minutes for a stress-profile first boot. Monitor
-`prplmesh-lab.service`; no extra provisioning command is required.
-
-To expose both UIs on a lab LAN, select an address owned by the outer host:
-
-```sh
-PRPLMESH_UI_HOST_IP=192.168.2.140 \
-  ./import.sh
-```
-
-The selected profile determines instance `prplmesh-CLIENTS-0831` and its tested
-CPU/RAM limits. Host port `8090` serves the raw adapter and `8091` serves the
-Controller UI. Override them with
-`PRPLMESH_VM_NAME`, `PRPLMESH_TOPOLOGY_HOST_PORT`, and
-`PRPLMESH_UI_HOST_PORT`.
-
-Monitor cold reconstruction:
-
-```sh
-lxc console prplmesh-20-0831 --show-log
-lxc exec prplmesh-20-0831 -- journalctl -fu prplmesh-lab.service
-lxc exec prplmesh-20-0831 -- prplmesh-lab-start status
-```
-
-Lifecycle and removal:
-
-```sh
-lxc stop prplmesh-20-0831
-lxc start prplmesh-20-0831
-lxc delete prplmesh-20-0831       # destructive; removes the imported VM
-```
-
-The lab automatically reconstructs after a guest reboot. Imported appliances
-default to `boot.autostart=true`, so an existing VM also returns after an outer
-host reboot. Disable it explicitly when that is not wanted:
-
-```sh
-lxc config set prplmesh-20-0831 boot.autostart false
-```
-
-Run a post-import acceptance check after cold reconstruction:
-
-```sh
-lxc exec prplmesh-20-0831 -- prplmesh-lab-start status
-curl -fsS http://127.0.0.1:8090/api/topology >/dev/null
-curl -fsS http://127.0.0.1:8091/api/topology >/dev/null
-```
-
-Release engineering runs `deploy/lxd-vm/build.sh check` before
-`deploy/lxd-vm/package.sh`, then imports the emitted backup under a different
-instance name and host ports and repeats the same acceptance.
+Thin conversion removes provisioned nested instances from the source VM,
+retains the verified local runtime image and exact source, and exports a
+stopped instance-only backup. It emits `prplmesh-0831-thin.tar`, its adjacent
+`.sha256`, schema-2 `release.json`, inner `SHA256SUMS`, and this README.
