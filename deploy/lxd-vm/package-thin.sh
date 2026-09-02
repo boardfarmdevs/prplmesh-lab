@@ -204,6 +204,7 @@ install -m 0755 "$ROOT/deploy/lxd-vm/package-release.sh" "$BUNDLE/package-releas
 sed "s/0831/${RELEASE_ID}/g" "$ROOT/deploy/lxd-vm/README.md" \
     > "$BUNDLE/README.md"
 chmod 0644 "$BUNDLE/README.md"
+install -m 0644 "$ROOT/docs/release-notes.md" "$BUNDLE/RELEASE-NOTES.md"
 cat > "$BUNDLE/release.env" <<EOF
 LAB_STACK=prplmesh
 LAB_RELEASE_ID=$RELEASE_ID
@@ -239,7 +240,7 @@ jq -n \
 (
     cd "$BUNDLE"
     sha256sum "$(basename "$OUTPUT")" import.sh install-host.sh \
-        package-release.sh README.md release.env release.json trim-report.txt \
+        package-release.sh README.md RELEASE-NOTES.md release.env release.json trim-report.txt \
         > SHA256SUMS
 )
 echo "$BUNDLE"

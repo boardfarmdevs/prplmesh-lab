@@ -114,3 +114,4 @@ Thin conversion removes provisioned nested instances from the source VM,
 retains the verified local runtime image and exact source, and exports a
 stopped instance-only backup. It emits `prplmesh-0901-thin.tar`, its adjacent
 `.sha256`, schema-2 `release.json`, inner `SHA256SUMS`, and this README.
+The bundle also includes `RELEASE-NOTES.md` for the delivered checkpoint.
