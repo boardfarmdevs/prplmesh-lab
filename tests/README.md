@@ -7,7 +7,7 @@ client containers. Enter the selected VM as root from its outer host, then load
 the immutable profile before running tests:
 
 ```sh
-VM=prplmesh-50-0901
+VM=prplmesh-50-0902
 lxc exec "$VM" -- bash
 
 cd /opt/prplmesh-lab

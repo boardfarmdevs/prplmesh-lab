@@ -38,7 +38,7 @@ See the model-specific procedures:
 
 Release engineering uses `package-source.sh`, `lxd-vm/build.sh`, and
 `lxd-vm/package.sh`. Every
-emitted artifact has the `0831` release tag, source commit, and a sibling
+emitted artifact has the current `0902` release tag, source commit, and a sibling
 SHA-256 file.
 
 Userspace wmediumd and controller-first startup are the appliance defaults.

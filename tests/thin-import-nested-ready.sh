@@ -92,7 +92,7 @@ run_import 5 3 > "$work/delayed.out" 2> "$work/delayed.err"
 test "$(cat "$work/query-count")" = 3
 test -e "$work/profile-lock"
 test -e "$work/proxy-added"
-query_line=$(grep -nF 'exec prplmesh-20-0831 -- lxc query /1.0' \
+query_line=$(grep -nF 'exec prplmesh-20-0902 -- lxc query /1.0' \
     "$work/actions" | tail -n 1 | cut -d: -f1)
 select_line=$(grep -nF 'select-thin-profile.sh 20' "$work/actions" |
     cut -d: -f1)

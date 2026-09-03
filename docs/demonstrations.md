@@ -23,7 +23,7 @@ actual profile and release in its name:
 
 ```sh
 lxc list
-VM=prplmesh-50-0901
+VM=prplmesh-50-0902
 lxc exec "$VM" -- bash
 ```
 

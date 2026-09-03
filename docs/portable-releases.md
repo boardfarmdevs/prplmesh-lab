@@ -1,12 +1,13 @@
 # Portable prplMesh appliance
 
-`prplmesh-0901-thin.tar` is the only portable prplMesh download. The same
+`prplmesh-0902-thin.tar` is the current portable prplMesh download. The same
 archive supports 20, 50, and 100 clients; there are no profile-specific release
 files.
 
-The 0901 archive is 1,816,176,640 bytes. Its SHA-256 is
-`250dc99e7390a916984478f5269c168d3dc9fbd2705b5e83bca95cf1f5d144cd`
-and its source commit is `71102b3aae319d378c36c7bf80bca11cae0b5d59`.
+The 0902 archive is 1,821,071,360 bytes. Its SHA-256 is
+`cdd62269fe8b45d8fb3b0fde5964ca947f3221d18cfdf12fd076d39d66aaf6d3`
+and its packaged source commit is
+`75cd0b30267db558d65bbc61a8373a50d085114d`.
 
 The archive contains an installed Ubuntu 24.04/Linux 7 LXD VM, exact source,
 the local prplMesh runtime image, hwsim/wmediumd support, the shared wmediumd
@@ -18,9 +19,9 @@ profile.
 Download the tar and its adjacent checksum, then run:
 
 ```sh
-sha256sum -c prplmesh-0901-thin.tar.sha256
-tar -xf prplmesh-0901-thin.tar
-cd prplmesh-0901-thin
+sha256sum -c prplmesh-0902-thin.tar.sha256
+tar -xf prplmesh-0902-thin.tar
+cd prplmesh-0902-thin
 sha256sum -c SHA256SUMS
 sudo ./install-host.sh
 newgrp lxd
@@ -62,10 +63,10 @@ documents instance-name and port overrides.
 Replace `20` with the selected profile:
 
 ```sh
-lxc exec prplmesh-20-0901 -- journalctl -fu prplmesh-lab.service
-lxc exec prplmesh-20-0901 -- prplmesh-lab-start status
-lxc stop prplmesh-20-0901
-lxc start prplmesh-20-0901
+lxc exec prplmesh-20-0902 -- journalctl -fu prplmesh-lab.service
+lxc exec prplmesh-20-0902 -- prplmesh-lab-start status
+lxc stop prplmesh-20-0902
+lxc start prplmesh-20-0902
 ```
 
 Imported appliances default to `boot.autostart=true`. The importer refuses to

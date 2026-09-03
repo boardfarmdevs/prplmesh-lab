@@ -9,7 +9,7 @@ source "$ROOT/deploy/lxd-vm/device-property.sh"
 PROFILE=$(prplmesh_profile_name "${PRPLMESH_LAB_PROFILE:-20}")
 CLIENTS=$(prplmesh_profile_clients "$PROFILE")
 RADIOS=$(prplmesh_profile_radios "$PROFILE")
-NAME=${PRPLMESH_VM_NAME:-prplmesh-${CLIENTS}-0831}
+NAME=${PRPLMESH_VM_NAME:-prplmesh-${CLIENTS}-0902}
 IMAGE=${PRPLMESH_VM_IMAGE:-ubuntu:24.04}
 NETWORK=${PRPLMESH_LXD_NETWORK:-lxdbr0}
 CPUS=${PRPLMESH_VM_CPUS:-$(prplmesh_profile_cpus "$PROFILE")}
