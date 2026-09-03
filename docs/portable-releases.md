@@ -4,10 +4,10 @@
 archive supports 20, 50, and 100 clients; there are no profile-specific release
 files.
 
-The 0902 archive is 1,821,071,360 bytes. Its SHA-256 is
-`cdd62269fe8b45d8fb3b0fde5964ca947f3221d18cfdf12fd076d39d66aaf6d3`
+The 0902 archive is 1,821,276,160 bytes. Its SHA-256 is
+`283245367c053c9ca9811156e3a62a459b735b2c46207e6e1a37311788df7816`
 and its packaged source commit is
-`75cd0b30267db558d65bbc61a8373a50d085114d`.
+`55f1fb76e37d1bfb7f86524be297647d9267c4cb`.
 
 The archive contains an installed Ubuntu 24.04/Linux 7 LXD VM, exact source,
 the local prplMesh runtime image, hwsim/wmediumd support, the shared wmediumd
