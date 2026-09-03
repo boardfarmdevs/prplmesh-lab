@@ -56,7 +56,7 @@ git -C "$ROOT" merge-base --is-ancestor "$RUNTIME_BASE_COMMIT" HEAD || {
 SOURCE_STAGE=$(mktemp -d /tmp/prplmesh-thin-source.XXXXXX)
 SOURCE_BUNDLE=$SOURCE_STAGE/prplmesh-lab.bundle
 git -C "$ROOT" bundle create "$SOURCE_BUNDLE" HEAD
-git bundle verify "$SOURCE_BUNDLE" >/dev/null
+git -C "$ROOT" bundle verify "$SOURCE_BUNDLE" >/dev/null
 SOURCE_BUNDLE_SHA256=$(sha256sum "$SOURCE_BUNDLE" | awk '{print $1}')
 rm -rf -- "$BUNDLE"
 mkdir -p "$BUNDLE"

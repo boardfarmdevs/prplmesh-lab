@@ -37,8 +37,9 @@ Demo and live-acceptance scripts announce each operation and wait explicitly:
 - blue section and note messages provide scenario context.
 
 These messages use stderr so machine-readable stdout remains stable. ANSI
-colors appear only on an interactive terminal; set `NO_COLOR=1` to show the
-same progress in plain text.
+colors appear only on an interactive terminal. Set `PRPLMESH_COLOR=always` to
+force them through a nested console or `PRPLMESH_COLOR=never`/`NO_COLOR=1` for
+plain text.
 
 The tests compare three independent views instead of accepting a Web UI alone:
 
