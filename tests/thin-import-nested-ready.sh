@@ -38,6 +38,10 @@ case "${1:-} ${2:-}" in
             'true  ')
                 exit 0
                 ;;
+            'ip -4 -o')
+                printf '1.1.1.1 via 10.99.0.1 dev enp5s0 src 10.99.0.42 uid 0\n'
+                exit 0
+                ;;
             'lxc query /1.0')
                 count=0
                 [ ! -r "$root/query-count" ] || count=$(cat "$root/query-count")
@@ -106,9 +110,12 @@ grep -F 'eth0,network=lxdbr0' "$work/actions" | grep -F \
 ! sed -n "${import_line}p" "$work/actions" | grep -Eq \
     'wmediumd-console|controller-ui|topology-ui'
 grep -F 'config device add prplmesh-20-0902 wmediumd-console proxy' \
-    "$work/actions" | grep -F 'connect=tcp:10.99.0.250:8090' >/dev/null
+    "$work/actions" | grep -F 'connect=tcp:10.99.0.42:8090' >/dev/null
 grep -F 'config device add prplmesh-20-0902 controller-ui proxy' \
-    "$work/actions" | grep -F 'connect=tcp:10.99.0.250:8091' >/dev/null
+    "$work/actions" | grep -F 'connect=tcp:10.99.0.42:8091' >/dev/null
+grep -Fq \
+    'config device set prplmesh-20-0902 eth0 ipv4.address 10.99.0.42' \
+    "$work/actions"
 test "$import_line" -lt "$query_line"
 test "$query_line" -lt "$select_line"
 test "$select_line" -lt "$proxy_line"

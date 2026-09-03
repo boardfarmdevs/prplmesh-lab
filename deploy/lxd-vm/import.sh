@@ -193,6 +193,22 @@ done
     exit 1
 }
 
+# LXD may assign a different address after the imported volatile NIC identity
+# is replaced.  Discover the address actually selected by the running guest,
+# then pin that address in the managed-network reservation before creating the
+# host proxy devices.
+runtime_guest_ip=$(lxc exec "$NAME" -- ip -4 -o route get 1.1.1.1 | \
+    awk '{for (i=1; i<=NF; i++) if ($i == "src") {print $(i+1); exit}}')
+[ -n "$runtime_guest_ip" ] || {
+    echo "$NAME did not report a routed IPv4 address" >&2
+    exit 1
+}
+if [ "$runtime_guest_ip" != "$guest_ip" ]; then
+    echo "guest address changed after NIC regeneration: $guest_ip -> $runtime_guest_ip"
+    guest_ip=$runtime_guest_ip
+    lxc config device set "$NAME" eth0 ipv4.address "$guest_ip"
+fi
+
 if [ "$PROFILE_SELECTABLE" = true ]; then
     nested_ready=false
     for unused in $(seq 1 "$NESTED_READY_ATTEMPTS"); do
