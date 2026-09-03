@@ -172,18 +172,28 @@ running_names=$(lxc exec "$NAME" -- lxc list --format csv -c ns |
     exit 1
 }
 lxc exec "$NAME" -- systemctl reset-failed prplmesh-lab.service
-lxc exec "$NAME" -- systemctl start prplmesh-lab.service
 if [ "$ALREADY_THIN" -eq 0 ]; then
+    lxc exec "$NAME" -- systemctl start prplmesh-lab.service
     PRPLMESH_VM_NAME="$NAME" "$ROOT/deploy/lxd-vm/build.sh" check
+    lxc exec "$NAME" -- env PRPLMESH_LAB_PROFILE="$PROFILE" \
+        PRPLMESH_THIN_PROFILE_SELECTABLE=1 \
+        /opt/prplmesh-lab/deploy/guest/prepare-thin-image.sh | tee "$TRIM_REPORT"
 else
+    lxc exec "$NAME" -- systemctl stop prplmesh-lab.service
     lxc exec "$NAME" -- test -r \
         /var/lib/prplmesh-lab/thin-profile-selection.required
     [ "$(lxc exec "$NAME" -- lxc list --format csv -c n |
         awk 'NF {n++} END {print n+0}')" -eq 0 ]
+    runtime_fingerprint=$(lxc exec "$NAME" -- lxc image info "$RUNTIME_IMAGE" |
+        sed -n 's/^Fingerprint: //p')
+    [ -n "$runtime_fingerprint" ]
+    {
+        printf 'thin_nested_instances=0\n'
+        printf 'thin_runtime_image=%s\n' "$RUNTIME_IMAGE"
+        printf 'thin_runtime_fingerprint=%s\n' "$runtime_fingerprint"
+        printf 'thin_repackaged=true\n'
+    } | tee "$TRIM_REPORT"
 fi
-lxc exec "$NAME" -- env PRPLMESH_LAB_PROFILE="$PROFILE" \
-    PRPLMESH_THIN_PROFILE_SELECTABLE=1 \
-    /opt/prplmesh-lab/deploy/guest/prepare-thin-image.sh | tee "$TRIM_REPORT"
 printf 'thin_source_bundle_sha256=%s\n' "$SOURCE_BUNDLE_SHA256" >> "$TRIM_REPORT"
 
 nested_count=$(lxc exec "$NAME" -- lxc list --format csv -c n |
