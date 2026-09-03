@@ -120,6 +120,7 @@ grep -Fq 'systemctl is-active --quiet prplmesh-controller-ui.service' \
 grep -Fq 'PRPL_UI_READY_ATTEMPTS:-30' "$ROOT/controller-ui/install.sh"
 grep -Fq 'curl -sS --max-time 2' "$ROOT/controller-ui/install.sh"
 grep -Fq 'build-wmediumd.sh --offline' "$ROOT/deploy/lxd-vm/package-thin.sh"
+grep -Fq 'thin-profile-selection.required' "$ROOT/deploy/lxd-vm/package-thin.sh"
 grep -Fq 'cp -a /opt/prplmesh-lab/build "$next/build"' \
     "$ROOT/deploy/lxd-vm/package-thin.sh"
 grep -Fq 'cp -a /opt/prplmesh-lab/artifacts/. "$next/artifacts/"' \

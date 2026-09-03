@@ -95,12 +95,20 @@ prplmesh_thin_guest_source_allowed "$guest_commit" \
     echo "accepted guest source checkout is dirty" >&2
     exit 1
 }
-guest_clients=$(lxc exec "$NAME" -- bash -lc \
-    '. /etc/default/prplmesh-lab; printf "%s" "$PROVISIONED_CLIENT_COUNT"')
-[ "$guest_clients" = "$CLIENTS" ] || {
-    echo "guest has $guest_clients clients; requested release profile has $CLIENTS" >&2
+if lxc exec "$NAME" -- test -r /etc/default/prplmesh-lab; then
+    guest_clients=$(lxc exec "$NAME" -- bash -lc \
+        '. /etc/default/prplmesh-lab; printf "%s" "$PROVISIONED_CLIENT_COUNT"')
+    [ "$guest_clients" = "$CLIENTS" ] || {
+        echo "guest has $guest_clients clients; requested release profile has $CLIENTS" >&2
+        exit 1
+    }
+elif lxc exec "$NAME" -- test -r \
+    /var/lib/prplmesh-lab/thin-profile-selection.required; then
+    echo "$NAME is already universal-thin; no provisioned client roster to compare"
+else
+    echo "guest has neither a provisioned profile nor the universal-thin marker" >&2
     exit 1
-}
+fi
 
 lxc exec "$NAME" -- systemctl stop prplmesh-lab.service
 lxc file push "$SOURCE_BUNDLE" "$NAME/run/prplmesh-thin-source.bundle"
