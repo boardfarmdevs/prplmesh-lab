@@ -8,6 +8,9 @@ The demonstrations change live association or medium state. Run only one
 writer at a time and require its final pass and restoration checks before
 starting the next one.
 
+Use [the experiment catalog](experiments.md) to distinguish validated,
+runnable, disruptive and experimental scenarios for each client profile.
+
 ## Enter the appliance
 
 The portable lab has two LXD layers:

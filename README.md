@@ -110,6 +110,8 @@ AL-MAC and BSSID identities plus fixed process counts.
 - `docs/optimizer-configurator.md` — closed-loop operation and extension guide.
 - `docs/demonstrations.md` — appliance entry, live demonstrations, recovery,
   and evidence rules.
+- `docs/experiments.md` — experiment selection, commands, mechanisms and
+  profile-specific readiness.
 - `docs/validation.md` — accepted results and remaining gaps.
 - `docs/wmediumd-performance.md` — CPU, affinity and overload measurements.
 - `docs/from-scratch.md` — complete host-to-accepted-lab build procedure.
