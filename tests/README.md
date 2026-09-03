@@ -170,3 +170,21 @@ wireless agents in star, branch and chain layouts, validates each physical
 backhaul against NBAPI, then restores the complete selected client profile in
 a chain and waits for all metrics. It intentionally stops and reconstructs the
 active lab.
+
+## Comparable performance snapshot
+
+The lifecycle service writes `/var/lib/prplmesh-lab/last-start-timing.json`
+and `last-stop-timing.json`. Each record uses the same phase/timing structure
+as the RDK appliance. Capture a PSS-based ready-state sample as root inside the
+outer VM:
+
+```sh
+sudo tests/lab-performance-snapshot.py \
+  --stack prplmesh --profile 20 --label ready \
+  --output /var/tmp/prplmesh-ready.json
+```
+
+The collector is identical in both repositories. It records outer-VM memory
+and load, nested LXD cardinality, cumulative lifecycle milestones, relevant
+process details, and PSS/RSS, private memory, swap, threads and file-descriptor
+totals by functional group.
