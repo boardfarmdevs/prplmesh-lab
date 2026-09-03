@@ -230,6 +230,54 @@ def lifecycle(stack: str, explicit: Path | None) -> dict[str, Any] | None:
     return None
 
 
+def elapsed_ms(started: str | None, finished: str | None) -> int | None:
+    if not started or not finished:
+        return None
+    try:
+        start = dt.datetime.fromisoformat(started.replace("Z", "+00:00"))
+        finish = dt.datetime.fromisoformat(finished.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    return max(0, round((finish - start).total_seconds() * 1000))
+
+
+def first_boot(stack: str) -> dict[str, Any] | None:
+    if stack == "rdk":
+        path = Path("/var/lib/easymesh-lab/thin-firstboot-report.json")
+        try:
+            record = json.loads(path.read_text())
+        except (OSError, json.JSONDecodeError):
+            return None
+        started = record.get("started_at")
+        finished = record.get("finished_at")
+        result = record.get("result")
+    else:
+        path = Path("/var/lib/prplmesh-lab/thin-firstboot-report.txt")
+        try:
+            fields = dict(
+                line.split("=", 1)
+                for line in path.read_text().splitlines()
+                if "=" in line
+            )
+        except OSError:
+            return None
+        record = {
+            key: int(value) if value.isdigit() else value
+            for key, value in fields.items()
+        }
+        started = fields.get("thin_firstboot_started_at")
+        finished = fields.get("thin_firstboot_finished_at")
+        result = fields.get("thin_firstboot_status", "pending")
+    return {
+        "source": str(path),
+        "started_at_utc": started,
+        "finished_at_utc": finished,
+        "elapsed_ms": elapsed_ms(started, finished),
+        "result": result,
+        "record": record,
+    }
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--stack", required=True, choices=("rdk", "prplmesh"))
@@ -265,6 +313,7 @@ def main() -> int:
             "cgroup_memory_peak_bytes": read_int(Path("/sys/fs/cgroup/memory.peak")),
         },
         "nested_lxd": nested_lxd(),
+        "first_boot": first_boot(args.stack),
         "lifecycle": lifecycle(args.stack, args.timing_file),
         "relevant_process_totals": relevant_totals,
         "process_groups": groups,

@@ -185,6 +185,6 @@ sudo tests/lab-performance-snapshot.py \
 ```
 
 The collector is identical in both repositories. It records outer-VM memory
-and load, nested LXD cardinality, cumulative lifecycle milestones, relevant
-process details, and PSS/RSS, private memory, swap, threads and file-descriptor
-totals by functional group.
+and load, nested LXD cardinality, normalized thin first-boot start/finish time,
+cumulative lifecycle milestones, relevant process details, and PSS/RSS,
+private memory, swap, threads and file-descriptor totals by functional group.
