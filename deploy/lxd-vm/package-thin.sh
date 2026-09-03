@@ -221,9 +221,16 @@ lxd_set_device_property "$NAME" root size 160GiB
     echo "universal thin root disk did not expand to 160GiB" >&2
     exit 1
 }
+# Keep the backup consumable by both LXD 5.21 and newer LXD releases.  Newer
+# daemons serialize boot.mode, but older daemons reject that key before the
+# import script can select their equivalent security.secureboot setting.
+lxc config unset "$NAME" boot.mode 2>/dev/null || true
+lxc config unset "$NAME" security.secureboot 2>/dev/null || true
 lxc stop "$NAME" --timeout 120
 
 lxc export "$NAME" "$OUTPUT" --instance-only --compression zstd </dev/null
+lxc config set "$NAME" boot.mode uefi-nosecureboot 2>/dev/null || \
+    lxc config set "$NAME" security.secureboot false
 printf 'archive_bytes=%s\n' "$(stat -c %s "$OUTPUT")" >> "$TRIM_REPORT"
 install -m 0755 "$ROOT/deploy/lxd-vm/import.sh" "$BUNDLE/import.sh"
 install -m 0755 "$ROOT/deploy/lxd-vm/install-host.sh" "$BUNDLE/install-host.sh"

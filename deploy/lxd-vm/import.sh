@@ -117,34 +117,6 @@ if lxc info "$NAME" >/dev/null 2>&1; then
     echo "stop and delete it explicitly before importing a replacement" >&2
     exit 1
 fi
-import_args=()
-if [ -n "$STORAGE" ]; then
-    lxc storage show "$STORAGE" >/dev/null 2>&1 || {
-        echo "LXD storage pool does not exist: $STORAGE" >&2
-        exit 1
-    }
-    import_args+=(--storage "$STORAGE")
-fi
-
-lxc import "$BACKUP" "$NAME" "${import_args[@]}"
-instance_uuid=$(cat /proc/sys/kernel/random/uuid)
-vsock_id=$(od -An -N4 -tu4 /dev/urandom | tr -d ' ')
-lxc config unset "$NAME" volatile.eth0.hwaddr
-lxc config set "$NAME" volatile.uuid "$instance_uuid"
-lxc config set "$NAME" volatile.uuid.generation "$instance_uuid"
-lxc config set "$NAME" volatile.cloud-init.instance-id "$instance_uuid"
-lxc config set "$NAME" volatile.vsock_id "$vsock_id"
-lxc config set "$NAME" limits.cpu "${PRPLMESH_VM_CPUS:-$SELECTED_CPUS}"
-lxc config set "$NAME" limits.memory "${PRPLMESH_VM_MEMORY:-$SELECTED_MEMORY}"
-lxc config set "$NAME" boot.autostart true
-if lxc config device show "$NAME" | grep -q '^canonical-source:'; then
-    lxc config device remove "$NAME" canonical-source
-fi
-for device in topology-ui wmediumd-console controller-ui; do
-    if lxc config device show "$NAME" | grep -q "^${device}:"; then
-        lxc config device remove "$NAME" "$device"
-    fi
-done
 lxc_cidr=$(lxc network get "$NETWORK" ipv4.address)
 used=$(lxc network list-leases "$NETWORK" --format csv \
     | awk -F, '$3 ~ /^[0-9]+\./ {print $3}' | paste -sd, -)
@@ -163,6 +135,50 @@ else:
     raise SystemExit(f"no free appliance address found near the end of {network}")
 PY
 )
+import_args=()
+if [ -n "$STORAGE" ]; then
+    lxc storage show "$STORAGE" >/dev/null 2>&1 || {
+        echo "LXD storage pool does not exist: $STORAGE" >&2
+        exit 1
+    }
+    import_args+=(--storage "$STORAGE")
+fi
+# A portable backup retains its builder's NIC reservation and proxy targets.
+# Override them in the import transaction because LXD validates every archived
+# device before the instance exists and before config-device set can run.
+import_args+=(
+    --device "eth0,network=$NETWORK"
+    --device "eth0,ipv4.address=$guest_ip"
+    --device "wmediumd-console,listen=tcp:$HOST_IP:$CONSOLE_PORT"
+    --device "wmediumd-console,connect=tcp:$guest_ip:8090"
+    --device "controller-ui,listen=tcp:$HOST_IP:$UI_PORT"
+    --device "controller-ui,connect=tcp:$guest_ip:8091"
+)
+
+lxc import "$BACKUP" "$NAME" "${import_args[@]}"
+instance_uuid=$(cat /proc/sys/kernel/random/uuid)
+vsock_id=$(od -An -N4 -tu4 /dev/urandom | tr -d ' ')
+lxc config unset "$NAME" volatile.eth0.hwaddr
+lxc config set "$NAME" volatile.uuid "$instance_uuid"
+lxc config set "$NAME" volatile.uuid.generation "$instance_uuid"
+lxc config set "$NAME" volatile.cloud-init.instance-id "$instance_uuid"
+lxc config set "$NAME" volatile.vsock_id "$vsock_id"
+lxc config set "$NAME" limits.cpu "${PRPLMESH_VM_CPUS:-$SELECTED_CPUS}"
+lxc config set "$NAME" limits.memory "${PRPLMESH_VM_MEMORY:-$SELECTED_MEMORY}"
+lxc config set "$NAME" boot.autostart true
+if lxc config set "$NAME" boot.mode uefi-nosecureboot 2>/dev/null; then
+    lxc config unset "$NAME" security.secureboot 2>/dev/null || true
+else
+    lxc config set "$NAME" security.secureboot false
+fi
+if lxc config device show "$NAME" | grep -q '^canonical-source:'; then
+    lxc config device remove "$NAME" canonical-source
+fi
+for device in topology-ui wmediumd-console controller-ui; do
+    if lxc config device show "$NAME" | grep -q "^${device}:"; then
+        lxc config device remove "$NAME" "$device"
+    fi
+done
 lxc config device set "$NAME" eth0 network "$NETWORK"
 lxc config device set "$NAME" eth0 ipv4.address "$guest_ip"
 lxc start "$NAME"

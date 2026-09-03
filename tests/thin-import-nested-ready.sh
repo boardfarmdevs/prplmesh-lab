@@ -98,6 +98,16 @@ select_line=$(grep -nF 'select-thin-profile.sh 20' "$work/actions" |
     cut -d: -f1)
 proxy_line=$(grep -nF 'config device add' "$work/actions" | head -n 1 |
     cut -d: -f1)
+import_line=$(grep -nF \
+    'import '"$work"'/release/appliance.tar.zst prplmesh-20-0902' \
+    "$work/actions" | cut -d: -f1)
+grep -F 'eth0,network=lxdbr0' "$work/actions" | grep -F \
+    'eth0,ipv4.address=10.99.0.250' >/dev/null
+grep -F 'wmediumd-console,connect=tcp:10.99.0.250:8090' \
+    "$work/actions" >/dev/null
+grep -F 'controller-ui,connect=tcp:10.99.0.250:8091' \
+    "$work/actions" >/dev/null
+test "$import_line" -lt "$query_line"
 test "$query_line" -lt "$select_line"
 test "$select_line" -lt "$proxy_line"
 
