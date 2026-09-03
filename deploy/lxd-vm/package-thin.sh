@@ -26,6 +26,7 @@ RUNTIME_IMAGE=prpl-runtime-local
 RUNTIME_BASE_COMMIT=${PRPLMESH_RUNTIME_BASE_COMMIT:-}
 SOURCE_COMMIT=$(git -C "$ROOT" rev-parse HEAD)
 SOURCE_STAGE=
+ALREADY_THIN=0
 
 cleanup()
 {
@@ -104,6 +105,7 @@ if lxc exec "$NAME" -- test -r /etc/default/prplmesh-lab; then
     }
 elif lxc exec "$NAME" -- test -r \
     /var/lib/prplmesh-lab/thin-profile-selection.required; then
+    ALREADY_THIN=1
     echo "$NAME is already universal-thin; no provisioned client roster to compare"
 else
     echo "guest has neither a provisioned profile nor the universal-thin marker" >&2
@@ -171,7 +173,14 @@ running_names=$(lxc exec "$NAME" -- lxc list --format csv -c ns |
 }
 lxc exec "$NAME" -- systemctl reset-failed prplmesh-lab.service
 lxc exec "$NAME" -- systemctl start prplmesh-lab.service
-PRPLMESH_VM_NAME="$NAME" "$ROOT/deploy/lxd-vm/build.sh" check
+if [ "$ALREADY_THIN" -eq 0 ]; then
+    PRPLMESH_VM_NAME="$NAME" "$ROOT/deploy/lxd-vm/build.sh" check
+else
+    lxc exec "$NAME" -- test -r \
+        /var/lib/prplmesh-lab/thin-profile-selection.required
+    [ "$(lxc exec "$NAME" -- lxc list --format csv -c n |
+        awk 'NF {n++} END {print n+0}')" -eq 0 ]
+fi
 lxc exec "$NAME" -- env PRPLMESH_LAB_PROFILE="$PROFILE" \
     PRPLMESH_THIN_PROFILE_SELECTABLE=1 \
     /opt/prplmesh-lab/deploy/guest/prepare-thin-image.sh | tee "$TRIM_REPORT"
