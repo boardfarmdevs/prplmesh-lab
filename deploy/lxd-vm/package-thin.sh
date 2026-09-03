@@ -4,7 +4,7 @@ set -euo pipefail
 ROOT=$(cd "$(dirname "$0")/../.." && pwd)
 # shellcheck source=profile.sh
 source "$ROOT/deploy/lxd-vm/profile.sh"
-RELEASE_ID=${PRPLMESH_RELEASE_ID:-0831}
+RELEASE_ID=${PRPLMESH_RELEASE_ID:-0902}
 case "$RELEASE_ID" in
     [0-9][0-9][0-9][0-9]) ;;
     *) echo "invalid PRPLMESH_RELEASE_ID: $RELEASE_ID" >&2; exit 2 ;;
@@ -26,6 +26,7 @@ RUNTIME_IMAGE=prpl-runtime-local
 RUNTIME_BASE_COMMIT=${PRPLMESH_RUNTIME_BASE_COMMIT:-}
 SOURCE_COMMIT=$(git -C "$ROOT" rev-parse HEAD)
 SOURCE_STAGE=
+ALREADY_THIN=0
 
 cleanup()
 {
@@ -56,7 +57,7 @@ git -C "$ROOT" merge-base --is-ancestor "$RUNTIME_BASE_COMMIT" HEAD || {
 SOURCE_STAGE=$(mktemp -d /tmp/prplmesh-thin-source.XXXXXX)
 SOURCE_BUNDLE=$SOURCE_STAGE/prplmesh-lab.bundle
 git -C "$ROOT" bundle create "$SOURCE_BUNDLE" HEAD
-git bundle verify "$SOURCE_BUNDLE" >/dev/null
+git -C "$ROOT" bundle verify "$SOURCE_BUNDLE" >/dev/null
 SOURCE_BUNDLE_SHA256=$(sha256sum "$SOURCE_BUNDLE" | awk '{print $1}')
 rm -rf -- "$BUNDLE"
 mkdir -p "$BUNDLE"
@@ -95,12 +96,21 @@ prplmesh_thin_guest_source_allowed "$guest_commit" \
     echo "accepted guest source checkout is dirty" >&2
     exit 1
 }
-guest_clients=$(lxc exec "$NAME" -- bash -lc \
-    '. /etc/default/prplmesh-lab; printf "%s" "$PROVISIONED_CLIENT_COUNT"')
-[ "$guest_clients" = "$CLIENTS" ] || {
-    echo "guest has $guest_clients clients; requested release profile has $CLIENTS" >&2
+if lxc exec "$NAME" -- test -r /etc/default/prplmesh-lab; then
+    guest_clients=$(lxc exec "$NAME" -- bash -lc \
+        '. /etc/default/prplmesh-lab; printf "%s" "$PROVISIONED_CLIENT_COUNT"')
+    [ "$guest_clients" = "$CLIENTS" ] || {
+        echo "guest has $guest_clients clients; requested release profile has $CLIENTS" >&2
+        exit 1
+    }
+elif lxc exec "$NAME" -- test -r \
+    /var/lib/prplmesh-lab/thin-profile-selection.required; then
+    ALREADY_THIN=1
+    echo "$NAME is already universal-thin; no provisioned client roster to compare"
+else
+    echo "guest has neither a provisioned profile nor the universal-thin marker" >&2
     exit 1
-}
+fi
 
 lxc exec "$NAME" -- systemctl stop prplmesh-lab.service
 lxc file push "$SOURCE_BUNDLE" "$NAME/run/prplmesh-thin-source.bundle"
@@ -162,11 +172,28 @@ running_names=$(lxc exec "$NAME" -- lxc list --format csv -c ns |
     exit 1
 }
 lxc exec "$NAME" -- systemctl reset-failed prplmesh-lab.service
-lxc exec "$NAME" -- systemctl start prplmesh-lab.service
-PRPLMESH_VM_NAME="$NAME" "$ROOT/deploy/lxd-vm/build.sh" check
-lxc exec "$NAME" -- env PRPLMESH_LAB_PROFILE="$PROFILE" \
-    PRPLMESH_THIN_PROFILE_SELECTABLE=1 \
-    /opt/prplmesh-lab/deploy/guest/prepare-thin-image.sh | tee "$TRIM_REPORT"
+if [ "$ALREADY_THIN" -eq 0 ]; then
+    lxc exec "$NAME" -- systemctl start prplmesh-lab.service
+    PRPLMESH_VM_NAME="$NAME" "$ROOT/deploy/lxd-vm/build.sh" check
+    lxc exec "$NAME" -- env PRPLMESH_LAB_PROFILE="$PROFILE" \
+        PRPLMESH_THIN_PROFILE_SELECTABLE=1 \
+        /opt/prplmesh-lab/deploy/guest/prepare-thin-image.sh | tee "$TRIM_REPORT"
+else
+    lxc exec "$NAME" -- systemctl stop prplmesh-lab.service
+    lxc exec "$NAME" -- test -r \
+        /var/lib/prplmesh-lab/thin-profile-selection.required
+    [ "$(lxc exec "$NAME" -- lxc list --format csv -c n |
+        awk 'NF {n++} END {print n+0}')" -eq 0 ]
+    runtime_fingerprint=$(lxc exec "$NAME" -- lxc image info "$RUNTIME_IMAGE" |
+        sed -n 's/^Fingerprint: //p')
+    [ -n "$runtime_fingerprint" ]
+    {
+        printf 'thin_nested_instances=0\n'
+        printf 'thin_runtime_image=%s\n' "$RUNTIME_IMAGE"
+        printf 'thin_runtime_fingerprint=%s\n' "$runtime_fingerprint"
+        printf 'thin_repackaged=true\n'
+    } | tee "$TRIM_REPORT"
+fi
 printf 'thin_source_bundle_sha256=%s\n' "$SOURCE_BUNDLE_SHA256" >> "$TRIM_REPORT"
 
 nested_count=$(lxc exec "$NAME" -- lxc list --format csv -c n |
@@ -201,9 +228,10 @@ printf 'archive_bytes=%s\n' "$(stat -c %s "$OUTPUT")" >> "$TRIM_REPORT"
 install -m 0755 "$ROOT/deploy/lxd-vm/import.sh" "$BUNDLE/import.sh"
 install -m 0755 "$ROOT/deploy/lxd-vm/install-host.sh" "$BUNDLE/install-host.sh"
 install -m 0755 "$ROOT/deploy/lxd-vm/package-release.sh" "$BUNDLE/package-release.sh"
-sed "s/0831/${RELEASE_ID}/g" "$ROOT/deploy/lxd-vm/README.md" \
+sed "s/0902/${RELEASE_ID}/g" "$ROOT/deploy/lxd-vm/README.md" \
     > "$BUNDLE/README.md"
 chmod 0644 "$BUNDLE/README.md"
+install -m 0644 "$ROOT/docs/release-notes.md" "$BUNDLE/RELEASE-NOTES.md"
 cat > "$BUNDLE/release.env" <<EOF
 LAB_STACK=prplmesh
 LAB_RELEASE_ID=$RELEASE_ID
@@ -239,7 +267,7 @@ jq -n \
 (
     cd "$BUNDLE"
     sha256sum "$(basename "$OUTPUT")" import.sh install-host.sh \
-        package-release.sh README.md release.env release.json trim-report.txt \
+        package-release.sh README.md RELEASE-NOTES.md release.env release.json trim-report.txt \
         > SHA256SUMS
 )
 echo "$BUNDLE"

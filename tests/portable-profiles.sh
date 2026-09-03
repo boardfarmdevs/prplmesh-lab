@@ -22,13 +22,13 @@ check()
         -eq "$radios"
 }
 
-check 20 small 20 40 prplmesh-20-0831
-check small small 20 40 prplmesh-20-0831
-check 50 medium 50 72 prplmesh-50-0831
-check medium medium 50 72 prplmesh-50-0831
-check 100 stress 100 120 prplmesh-100-0831
-check stress stress 100 120 prplmesh-100-0831
-test "$(prplmesh_thin_release_name)" = prplmesh-0831-thin
+check 20 small 20 40 prplmesh-20-0902
+check small small 20 40 prplmesh-20-0902
+check 50 medium 50 72 prplmesh-50-0902
+check medium medium 50 72 prplmesh-50-0902
+check 100 stress 100 120 prplmesh-100-0902
+check stress stress 100 120 prplmesh-100-0902
+test "$(prplmesh_thin_release_name)" = prplmesh-0902-thin
 test "$(PRPLMESH_RELEASE_ID=0901 prplmesh_profile_release_name 20)" = \
     prplmesh-20-0901
 test "$(PRPLMESH_RELEASE_ID=0901 prplmesh_thin_release_name)" = \
@@ -111,6 +111,7 @@ grep -Fq 'PRPLMESH_THIN_CONFIRM' "$ROOT/deploy/lxd-vm/package-thin.sh"
 grep -Fq 'initial_nested_instances:0' "$ROOT/deploy/lxd-vm/package-thin.sh"
 grep -Fq 'LAB_RUNTIME_BASE_COMMIT' "$ROOT/deploy/lxd-vm/package-thin.sh"
 grep -Fq 'bundle create "$SOURCE_BUNDLE" HEAD' "$ROOT/deploy/lxd-vm/package-thin.sh"
+grep -Fq 'RELEASE-NOTES.md' "$ROOT/deploy/lxd-vm/package-thin.sh"
 grep -Fq 'thin_firstboot_status=PASS' "$ROOT/deploy/guest/prepare-thin-firstboot.sh"
 grep -Fxq 'TimeoutStartSec=60min' "$ROOT/deploy/guest/prplmesh-lab.service"
 grep -Fq 'PRPLMESH_PRESERVE_IMAGE_ALIAS' "$ROOT/deploy/lxd-vm/package-cleanup.sh"
@@ -119,6 +120,7 @@ grep -Fq 'systemctl is-active --quiet prplmesh-controller-ui.service' \
 grep -Fq 'PRPL_UI_READY_ATTEMPTS:-30' "$ROOT/controller-ui/install.sh"
 grep -Fq 'curl -sS --max-time 2' "$ROOT/controller-ui/install.sh"
 grep -Fq 'build-wmediumd.sh --offline' "$ROOT/deploy/lxd-vm/package-thin.sh"
+grep -Fq 'thin-profile-selection.required' "$ROOT/deploy/lxd-vm/package-thin.sh"
 grep -Fq 'cp -a /opt/prplmesh-lab/build "$next/build"' \
     "$ROOT/deploy/lxd-vm/package-thin.sh"
 grep -Fq 'cp -a /opt/prplmesh-lab/artifacts/. "$next/artifacts/"' \

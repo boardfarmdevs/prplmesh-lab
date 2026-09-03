@@ -25,6 +25,9 @@ PATCHES=(
     0015-wmediumd-resolve-learned-vif-control-identities.patch
     0016-wmediumd-index-hot-path-lookups.patch
     0017-wmediumd-return-tx-frequency.patch
+    0018-wmediumd-expose-authoritative-association-ownership.patch
+    0019-wmediumd-resolve-association-vifs.patch
+    0020-wmediumd-page-configured-link-dumps.patch
 )
 
 case "${1:-}" in

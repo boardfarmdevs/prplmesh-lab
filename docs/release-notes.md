@@ -25,3 +25,16 @@ Release identifiers describe tested lab delivery checkpoints, not upstream prplM
   while retaining them in raw inventory and telemetry.
 - Added explicit release identifiers to portable metadata and instance names so
   one universal 0901 archive still selects 20, 50, or 100 clients at import.
+
+## 0902
+
+- Validated the universal appliance at 50-client scale across star, branch,
+  chain, steering, RCPI, optimizer, agent recovery, churn, data-plane and
+  process-footprint gates.
+- Made live tests profile-aware for generated medium inventory, optimizer
+  candidate deadlines, topology-specific deepest paths and controller aging.
+- Added explicit colored action, wait and result messages to observer-facing
+  demonstrations and acceptance scripts while preserving machine-readable
+  stdout.
+- Included the current Console ownership fix so 50-client observer snapshots
+  remain bounded and healthy.
