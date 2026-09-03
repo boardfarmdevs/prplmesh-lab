@@ -197,10 +197,16 @@ done
 # is replaced.  Discover the address actually selected by the running guest,
 # then pin that address in the managed-network reservation before creating the
 # host proxy devices.
-runtime_guest_ip=$(lxc exec "$NAME" -- ip -4 -o route get 1.1.1.1 | \
-    awk '{for (i=1; i<=NF; i++) if ($i == "src") {print $(i+1); exit}}')
+runtime_guest_ip=
+for unused in $(seq 1 120); do
+    runtime_guest_ip=$(lxc exec "$NAME" -- ip -4 -o route get 1.1.1.1 \
+        2>/dev/null | awk \
+        '{for (i=1; i<=NF; i++) if ($i == "src") {print $(i+1); exit}}') || true
+    [ -z "$runtime_guest_ip" ] || break
+    sleep 1
+done
 [ -n "$runtime_guest_ip" ] || {
-    echo "$NAME did not report a routed IPv4 address" >&2
+    echo "$NAME did not report a routed IPv4 address within 120 seconds" >&2
     exit 1
 }
 if [ "$runtime_guest_ip" != "$guest_ip" ]; then

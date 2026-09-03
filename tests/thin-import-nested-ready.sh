@@ -39,6 +39,12 @@ case "${1:-} ${2:-}" in
                 exit 0
                 ;;
             'ip -4 -o')
+                count=0
+                [ ! -r "$root/address-count" ] || count=$(cat "$root/address-count")
+                count=$((count + 1))
+                printf '%s\n' "$count" > "$root/address-count"
+                ready_after=${FAKE_ADDRESS_READY_AFTER:-1}
+                [ "$count" -ge "$ready_after" ] || exit 2
                 printf '1.1.1.1 via 10.99.0.1 dev enp5s0 src 10.99.0.42 uid 0\n'
                 exit 0
                 ;;
@@ -87,12 +93,14 @@ run_import()
         PRPLMESH_NESTED_LXD_READY_ATTEMPTS="$1" \
         PRPLMESH_NESTED_LXD_READY_INTERVAL=0 \
         FAKE_NESTED_READY_AFTER="$2" \
+        FAKE_ADDRESS_READY_AFTER=3 \
         "$work/release/import.sh" --profile 20 \
         "$work/release/appliance.tar.zst"
 }
 
 : > "$work/actions"
 run_import 5 3 > "$work/delayed.out" 2> "$work/delayed.err"
+test "$(cat "$work/address-count")" = 3
 test "$(cat "$work/query-count")" = 3
 test -e "$work/profile-lock"
 test -e "$work/proxy-added"
@@ -120,7 +128,8 @@ test "$import_line" -lt "$query_line"
 test "$query_line" -lt "$select_line"
 test "$select_line" -lt "$proxy_line"
 
-rm -f "$work/query-count" "$work/profile-lock" "$work/proxy-added"
+rm -f "$work/address-count" "$work/query-count" "$work/profile-lock" \
+    "$work/proxy-added"
 : > "$work/actions"
 if run_import 2 0 > "$work/timeout.out" 2> "$work/timeout.err"; then
     echo 'unready nested LXD was accepted' >&2
