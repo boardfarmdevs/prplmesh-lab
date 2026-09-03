@@ -62,3 +62,4 @@ if [ "$medium_backend" = userspace ] &&
 fi
 
 status_pass "prplMesh expanded acceptance suite passed."
+echo "PASS: prplMesh expanded acceptance suite"

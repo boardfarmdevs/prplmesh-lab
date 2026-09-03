@@ -77,3 +77,4 @@ if [ "$agents" -gt 0 ]; then
 fi
 
 status_pass "$clients/$clients clients reach the controller over the mesh data plane."
+echo "PASS: $clients/$clients clients reach the controller over the mesh data plane"

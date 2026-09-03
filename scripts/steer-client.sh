@@ -122,6 +122,7 @@ for attempt in $(seq 1 45); do
     if [ "$physical" = "$target" ] && [ "$modeled" = "$target" ]; then
         announce_steering completed
         status_pass "$client_name converged physically and in NBAPI on $target_name."
+        echo "PASS: $client_name converged physically and in NBAPI on $target_name"
         exit 0
     fi
     sleep 1

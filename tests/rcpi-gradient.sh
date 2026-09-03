@@ -112,6 +112,7 @@ status_action "Reducing default SNR from 40 to 25 dB; expected RCPI becomes 88."
 start_medium "$temporary" /tmp/prpl-wmediumd-gradient.log
 wait_signal 88
 status_pass "All $clients client metrics followed SNR 40 -> 25 (RCPI 118 -> 88)."
+echo "PASS: all $clients client metrics followed SNR 40 -> 25 (RCPI 118 -> 88)"
 
 status_action "Restoring the original medium; expected RCPI returns to 118."
 start_medium "$baseline" /tmp/prpl-wmediumd.log
@@ -119,3 +120,4 @@ wait_signal 118
 trap - EXIT
 rm -f "$temporary"
 status_pass "All $clients client metrics returned to baseline without a container restart."
+echo "PASS: all $clients client metrics returned to baseline without container restart"

@@ -29,3 +29,4 @@ status_wait_seconds 45 "allowing associations and RCPI telemetry to converge"
     --agents "$agents" --clients "$clients" --topology chain --require-metrics
 
 status_pass "Star, branch and chain topology reconstruction passed."
+echo "PASS: star, branch and chain topology reconstruction"

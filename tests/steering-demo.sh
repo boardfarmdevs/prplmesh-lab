@@ -64,7 +64,6 @@ done
 
 if [ "$failures" -eq 0 ]; then
     status_pass "Steering demo complete: $moves successful moves."
-else
-    echo "Steering demo complete: $moves successful moves, $failures failures" >&2
 fi
+echo "Steering demo complete: $moves successful moves, $failures failures"
 [ "$failures" -eq 0 ]

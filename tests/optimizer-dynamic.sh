@@ -191,6 +191,7 @@ fi
 summary=$(tail -1 "$scenario_log")
 jq -e '.outcome == "passed" and .restored == true' "$summary/summary.json" >/dev/null
 status_pass "prplMesh dynamic $MODE used NBAPI candidate metrics and restored the scenario."
+echo "PASS: prplMesh dynamic $MODE used NBAPI candidate metrics; scenario restored"
 echo "journal: $journal"
 echo "scenario: $summary"
 echo "optimizer output: $optimizer_log"

@@ -22,3 +22,4 @@ for client in "${clients[@]}"; do
 done
 
 status_pass "${#clients[@]} clients x ${#targets[@]} targets passed the steering matrix."
+echo "PASS: ${#clients[@]} clients x ${#targets[@]} targets two-SSID tri-band steering matrix"

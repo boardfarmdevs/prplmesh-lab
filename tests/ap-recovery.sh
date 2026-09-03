@@ -70,3 +70,4 @@ agent_stopped=0
 "$ROOT/scripts/steer-client.sh" "$client" "agent-$leaf"
 
 status_pass "$node aged out, $client moved from $before to $after, and the agent rejoined with stable identity."
+echo "PASS: $node aged out, $client moved from $before to $after, and the agent rejoined with stable identity"

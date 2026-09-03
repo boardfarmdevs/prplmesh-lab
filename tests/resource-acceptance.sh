@@ -68,3 +68,4 @@ case "$medium_backend" in
     *) echo "PRPL_MEDIUM_BACKEND must be userspace or kernel" >&2; exit 2 ;;
 esac
 status_pass "Process cardinality, background-service exclusion and runtime footprint passed."
+echo "PASS: process cardinality, background-service exclusion and runtime footprint"

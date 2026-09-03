@@ -57,3 +57,4 @@ after_hash=$(inventory_hash)
 }
 
 status_pass "$iterations leaf restart/steering cycles passed; inventory and $medium_backend medium identity are unchanged."
+echo "PASS: $iterations leaf restart/steering cycles; inventory and $medium_backend medium identity unchanged"
