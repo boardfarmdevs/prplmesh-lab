@@ -2,6 +2,8 @@
 set -euo pipefail
 
 ROOT=$(cd "$(dirname "$0")/.." && pwd)
+# shellcheck source=../scripts/lib/observer-status.sh
+source "$ROOT/scripts/lib/observer-status.sh"
 agents=${PRPL_AGENT_COUNT:-4}
 clients=${PRPL_CLIENT_COUNT:-20}
 topology=${PRPL_TOPOLOGY:-chain}
@@ -13,6 +15,8 @@ expected_patchset=$(
     cd "$ROOT"
     sha256sum patches/prplmesh/*.patch | sha256sum | awk '{print $1}'
 )
+status_section "prplMesh expanded acceptance"
+status_action "Verifying runtime provenance on the controller and $agents agent(s)."
 for node in prpl-controller $(seq -f 'prpl-agent-%02g' 1 "$agents"); do
     provenance=$(
         lxc exec "$node" -- cat \
@@ -24,7 +28,9 @@ for node in prpl-controller $(seq -f 'prpl-agent-%02g' 1 "$agents"); do
         exit 1
     fi
 done
+status_pass "Every mesh node uses the expected patch set."
 
+status_action "Starting the topology adapter and validating $topology with $clients clients."
 "$ROOT/scripts/topology-adapter.sh" start >/dev/null
 for attempt in $(seq 1 12); do
     if "$ROOT/tests/topology-acceptance.py" \
@@ -33,15 +39,19 @@ for attempt in $(seq 1 12); do
         cat "$topology_output"
         break
     fi
-    [ "$attempt" -lt 12 ] && sleep 5
+    [ "$attempt" -lt 12 ] && status_wait_seconds 5 "topology and metrics are still converging (attempt $attempt/12)"
 done
 if [ "$attempt" -eq 12 ] && ! grep -q '^PASS ' "$topology_output"; then
     cat "$topology_output" >&2
     exit 1
 fi
+status_pass "Topology and metrics satisfy the selected profile."
+status_action "Running representative two-SSID, tri-band BTM steering."
 PRPL_AGENT_COUNT=$agents "$ROOT/scripts/test-steering.sh"
+status_action "Checking every client data path through the active backhaul topology."
 PRPL_AGENT_COUNT=$agents PRPL_CLIENT_COUNT=$clients \
     "$ROOT/tests/data-plane.sh"
+status_action "Checking process cardinality and runtime footprint."
 PRPL_AGENT_COUNT=$agents PRPL_CLIENT_COUNT=$clients \
     "$ROOT/tests/resource-acceptance.sh"
 
@@ -51,4 +61,4 @@ if [ "$medium_backend" = userspace ] &&
     exit 1
 fi
 
-echo "PASS: prplMesh expanded acceptance suite"
+status_pass "prplMesh expanded acceptance suite passed."

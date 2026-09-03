@@ -2,6 +2,8 @@
 set -euo pipefail
 
 ROOT=$(cd "$(dirname "$0")/.." && pwd)
+# shellcheck source=../scripts/lib/observer-status.sh
+source "$ROOT/scripts/lib/observer-status.sh"
 MODE=${1:-recommend}
 CLIENT=${2:-prpl-client-07}
 TARGET=${3:-prpl-agent-02}
@@ -30,6 +32,8 @@ cleanup()
 trap cleanup EXIT
 
 cd "$ROOT/wmediumd/configurator"
+status_section "Closed-loop prplMesh optimizer: $MODE"
+status_action "Discovering the complete radio inventory and current associations."
 python3 -m wmdcfg.cli inventory -o "$inventory"
 discovered_clients=$(jq '[.radios[] | select(.kind == "station")] | length' "$inventory")
 expected_clients=${PRPL_CLIENT_COUNT:-}
@@ -49,6 +53,12 @@ esac
     echo "optimizer inventory client cardinality $discovered_clients does not match required profile count $expected_clients" >&2
     exit 1
 }
+
+# prplMesh serializes the active unassociated-STA measurement sweep across
+# radios.  Keep a small-lab floor while allowing the bounded transaction time
+# to grow with the selected appliance profile.
+candidate_timeout=$((expected_clients * 6))
+[ "$candidate_timeout" -ge 90 ] || candidate_timeout=90
 
 if ! binding_output=$(python3 - "$inventory" "$CLIENT" "$TARGET" <<'PY'
 import json
@@ -111,6 +121,7 @@ target=${binding[1]}
 target_bssid=${binding[2]}
 client_sta=${binding[3]}
 
+status_action "Scaling and compiling the crossover scenario for the $expected_clients-client profile."
 python3 "$ROOT/tests/optimizer-profile-scenario.py" \
     --clients "$expected_clients" \
     scenarios/optimizer-five-ap-crossover.wmd "$profile_scenario"
@@ -125,11 +136,12 @@ python3 -m wmdcfg.cli compile "$profile_scenario" \
     --bind "alternate_3=${binding[6]}" \
     -o "$plan"
 
-echo "optimizer stimulus: $CLIENT $source -> $target ($target_bssid)"
+status_action "Starting the wmediumd crossover: $CLIENT $source -> $target ($target_bssid)."
+status_note "The source weakens, the target strengthens, and the original matrix is restored at completion."
 python3 -m wmdcfg.cli run --backend "$MEDIUM_BACKEND" "$plan" \
     >"$scenario_log" 2>&1 &
 scenario_pid=$!
-sleep 2
+status_wait_seconds 2 "allowing the scenario control stream to become active"
 
 cd "$ROOT/optimizer"
 args=(
@@ -137,15 +149,23 @@ args=(
     --candidate-provider controller --allow-simulated-candidates
     --policy configs/threshold-policy.yaml --journal "$journal"
     --expected-clients "$expected_clients"
+    --candidate-timeout "$candidate_timeout"
     --count 30 --interval 1
 )
 if [ "$MODE" = act ]; then
     args+=(--yes-act --max-actions 1)
 fi
+status_wait "Collecting serialized NBAPI candidate metrics (timeout ${candidate_timeout}s) and evaluating policy gates."
+if [ "$MODE" = act ]; then
+    status_note "Action mode may send one BTM request and then verifies the resulting association."
+else
+    status_note "Recommend mode records the decision but does not move the station."
+fi
 if ! python3 -m optimizer.cli "${args[@]}" >"$optimizer_log"; then
     tail -n 40 "$optimizer_log" >&2
     exit 1
 fi
+status_action "Waiting for the medium scenario to finish and restore its baseline."
 wait "$scenario_pid"
 scenario_pid=
 
@@ -170,7 +190,7 @@ fi
 
 summary=$(tail -1 "$scenario_log")
 jq -e '.outcome == "passed" and .restored == true' "$summary/summary.json" >/dev/null
-echo "PASS: prplMesh dynamic $MODE used NBAPI candidate metrics; scenario restored"
+status_pass "prplMesh dynamic $MODE used NBAPI candidate metrics and restored the scenario."
 echo "journal: $journal"
 echo "scenario: $summary"
 echo "optimizer output: $optimizer_log"

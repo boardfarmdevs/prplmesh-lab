@@ -5,6 +5,7 @@ import pytest
 
 from optimizer.candidates import CandidateMetricsError
 from optimizer.model import CandidateObservation, ClientObservation
+from optimizer.cli import parser
 from optimizer.prplmesh import PrplMeshCandidateProvider, PrplMeshObserver, _first_json
 
 
@@ -163,3 +164,21 @@ def test_first_json_accepts_ubus_prefix_noise_and_rejects_non_objects():
     assert _first_json('  {"answer": 42}\nwarning') == {"answer": 42}
     with pytest.raises(CandidateMetricsError):
         _first_json("[]")
+
+
+def test_live_candidate_timeout_is_operator_configurable():
+    args = parser().parse_args([
+        "recommend", "--journal", "/tmp/journal.jsonl",
+        "--policy", "configs/threshold-policy.yaml",
+        "--candidate-timeout", "300",
+    ])
+    assert args.candidate_timeout == 300
+
+
+def test_live_candidate_timeout_must_be_positive():
+    with pytest.raises(SystemExit):
+        parser().parse_args([
+            "recommend", "--journal", "/tmp/journal.jsonl",
+            "--policy", "configs/threshold-policy.yaml",
+            "--candidate-timeout", "0",
+        ])

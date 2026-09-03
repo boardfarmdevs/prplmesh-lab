@@ -108,6 +108,8 @@ AL-MAC and BSSID identities plus fixed process counts.
 - `docs/controller-ui.md` — host UI adapter, API and multi-network model.
 - `docs/software-architecture.md` — prplMesh processes, IEEE 1905 and APIs.
 - `docs/optimizer-configurator.md` — closed-loop operation and extension guide.
+- `docs/demonstrations.md` — appliance entry, live demonstrations, recovery,
+  and evidence rules.
 - `docs/validation.md` — accepted results and remaining gaps.
 - `docs/wmediumd-performance.md` — CPU, affinity and overload measurements.
 - `docs/from-scratch.md` — complete host-to-accepted-lab build procedure.

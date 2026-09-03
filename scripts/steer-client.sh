@@ -1,6 +1,9 @@
 #!/bin/bash
 set -euo pipefail
 
+ROOT=$(cd "$(dirname "$0")/.." && pwd)
+# shellcheck source=lib/observer-status.sh
+source "$ROOT/scripts/lib/observer-status.sh"
 CONTROLLER=prpl-controller
 client_name=${1:?client: sta-NN, iot-NN or STA MAC}
 target_name=${2:?target: controller, agent-N, extender-N or BSSID}
@@ -100,22 +103,25 @@ if [ "$source" != "$target" ]; then
     request=$(printf \
         '{"DisassociationImminent":false,"DisassociationTimer":0,"BSSTerminationDuration":0,"ValidityInterval":10,"SteeringTimer":50,"TargetBSS":"%s"}' \
         "$target")
-    echo "$client_name ($mac): $source -> $target ($target_name)"
+    status_section "prplMesh steering: $client_name to $target_name"
+    status_note "Station $mac currently uses $source; target BSSID is $target."
     announce_steering planned
-    sleep "$preview_seconds"
+    status_wait_seconds "$preview_seconds" "highlighting $client_name in the topology before it moves"
     announce_steering moving
+    status_action "Sending the NBAPI BTM request for $mac to $target."
     lxc exec "$CONTROLLER" -- ubus call "${object}.MultiAPSTA" \
         BTMRequest "$request" >/dev/null
 else
-    echo "$client_name ($mac) is already on $target_name ($target)"
+    status_pass "$client_name is already on $target_name ($target)."
 fi
 
+status_wait "Waiting up to 45s for physical association and NBAPI ownership to agree."
 for attempt in $(seq 1 45); do
     physical=$(physical_bssid || true)
     modeled=$(model_bssid || true)
     if [ "$physical" = "$target" ] && [ "$modeled" = "$target" ]; then
         announce_steering completed
-        echo "PASS: $client_name converged physically and in NBAPI on $target_name"
+        status_pass "$client_name converged physically and in NBAPI on $target_name."
         exit 0
     fi
     sleep 1

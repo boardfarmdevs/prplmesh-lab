@@ -1,19 +1,19 @@
 # prplMesh lab deployment
 
-The 0831 release supports the same accepted controller, four-Agent and
-20-client profile in two execution models. The EasyMesh processes always run
-in LXD containers; the only choice is whether those containers run directly
-on the host or inside a portable LXD virtual machine.
+The current release supports one controller, four Agents, and immutable 20-,
+50-, or 100-client profiles in two execution models. The EasyMesh processes
+always run in LXD containers; the only choice is whether those containers run
+directly on the host or inside a portable LXD virtual machine.
 
 | Model | Artifact or input | Normal entry point | Use when |
 |---|---|---|---|
 | Bare metal | source release plus runtime archives | `scripts/install-from-artifacts.sh` | Linux 7 is already installed on a dedicated host |
 | LXD VM | portable LXD backup | `deploy/lxd-vm/import.sh` | the outer host already uses LXD |
 
-Both require x86-64 hardware virtualization. Bare metal and the guest
-images use Ubuntu 24.04 and Linux 7.0. The VM profiles allocate 6 vCPUs, 8 GiB
-RAM and an 80 GiB sparse disk. Four vCPUs work for functional use but make
-cold onboarding and optimizer candidate collection materially slower.
+Both require x86-64 hardware virtualization. Bare metal and the guest images
+use Ubuntu 24.04 and Linux 7.0. Portable profiles allocate 6/8/12 vCPUs and
+8/12/20 GiB RAM for 20/50/100 clients respectively. All use a 160 GiB sparse
+disk; sparse capacity is not download size or immediate physical allocation.
 
 The appliance guest owns its complete repository at `/opt/prplmesh-lab` and
 starts `prplmesh-lab.service` at boot. That service reconstructs the radio

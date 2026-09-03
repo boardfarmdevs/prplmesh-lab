@@ -43,6 +43,49 @@ outer host, gated mesh startup took 424.51 seconds and client admission took
 34.03 seconds. This deliberately contended run proves artifact correctness; it
 does not replace the isolated timings above.
 
+## 50-client appliance validation
+
+The universal thin appliance was imported on rev120 with the 50-client profile
+and default userspace wmediumd. Its 55 nested containers comprise one
+controller, four agents, 25 private clients and 25 IoT clients. The accepted
+band distribution was 10 clients on 2.4 GHz, 26 on 5 GHz and 14 on 6 GHz.
+
+The following gates passed on the same imported instance:
+
+| Gate | 50-client result |
+|---|---|
+| Topology | Star, branch and four-hop chain passed physical and NBAPI parent checks |
+| Model and metrics | 5 devices, 15 radios, 45 BSSs, 50 unique owners and 50/50 RCPI values |
+| Steering demo | 30/30 moves across both SSIDs, all three bands and all five mesh targets |
+| Global RF step | 50/50 clients followed RCPI 118 → 88 → 118 without a container restart |
+| Optimizer | Both recommend and act selected the designated crossover BSSID from NBAPI candidate metrics and restored the medium |
+| Agent recovery | Leaf aged out, its client moved, and the same agent identity rejoined |
+| Churn | One complete leaf restart/steering cycle preserved inventory hash and wmediumd PID |
+| Data plane | 50/50 clients reached the controller; chain and star samples each lost 0/10 packets |
+| Processes | Eight expected mesh processes per controller/agent; no duplicate runtime daemons |
+
+After the outer LXD archive import, which took about nine minutes, first-boot
+provisioning and acceptance took 1,538 seconds. Its logged subphases were 722
+seconds nested provisioning, 451 seconds mesh readiness, 82 seconds client
+admission and 279 seconds final acceptance. A subsequent complete runtime
+restart took 513 seconds including teardown; its reconstructed start was 480
+seconds (426 seconds mesh, 49 seconds clients, and two seconds each for Console
+and topology adapter).
+
+After final star reconstruction, measured RSS was 121,208 KiB for the
+controller, 85,484–88,472 KiB per external agent, and 5,672 KiB for wmediumd.
+The representative star path had 0% loss and 17.478 ms average RTT. These are
+RSS values and therefore include shared mappings.
+
+The scale run exposed and fixed four harness defects rather than stack
+failures: the RCPI scenario selected an obsolete fixed inventory; optimizer
+candidate collection retained a 20-client timeout; agent aging had only a
+30-second test deadline despite a measured 36.7-second transition; and the
+data-plane helper assumed agent 4 always owned a client in star mode. The
+tests now derive profile cardinality and medium configuration from the
+immutable appliance environment, scale the bounded candidate deadline, use a
+60-second aging gate, and select a populated deepest agent for each topology.
+
 ## Repeatable gates
 
 The normal gate is:

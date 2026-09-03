@@ -1,5 +1,45 @@
 # prplMesh lab acceptance tests
 
+## Appliance command context
+
+The portable deployment is an outer LXD VM containing nested prplMesh and
+client containers. Enter the selected VM as root from its outer host, then load
+the immutable profile before running tests:
+
+```sh
+VM=prplmesh-50-0901
+lxc exec "$VM" -- bash
+
+cd /opt/prplmesh-lab
+set -a
+. /etc/default/prplmesh-lab
+set +a
+export PRPL_AGENT_COUNT="$ACTIVE_AGENT_COUNT"
+export PRPL_CLIENT_COUNT="$ACTIVE_CLIENT_COUNT"
+export PRPL_TOPOLOGY="$DEFAULT_TOPOLOGY"
+```
+
+The first two commands run on the outer host. Commands after the blank line run
+inside the VM. Root is needed for the snap-packaged nested LXD client. Never
+run an acceptance test against the outer host's LXD inventory by mistake.
+
+The audience-facing sequence and lifecycle commands are collected in
+[`docs/demonstrations.md`](../docs/demonstrations.md).
+
+## Observer-facing status
+
+Demo and live-acceptance scripts announce each operation and wait explicitly:
+
+- bright cyan `==>` messages identify a change or request being made;
+- bright yellow `...` messages state which convergence gate is pending and
+  how long it may take;
+- bright green `OK:` messages identify an achieved result;
+- blue section and note messages provide scenario context.
+
+These messages use stderr so machine-readable stdout remains stable. ANSI
+colors appear only on an interactive terminal; set `NO_COLOR=1` to show the
+same progress in plain text.
+
 The tests compare three independent views instead of accepting a Web UI alone:
 
 1. the physical `wpa_supplicant` association in every client and backhaul STA;
@@ -15,7 +55,8 @@ Run the complete currently active profile from the radio-lab VM:
 
 ```sh
 cd /path/to/prplmesh-lab
-PRPL_AGENT_COUNT=4 PRPL_CLIENT_COUNT=20 PRPL_TOPOLOGY=chain \
+PRPL_AGENT_COUNT="$ACTIVE_AGENT_COUNT" \
+PRPL_CLIENT_COUNT="$ACTIVE_CLIENT_COUNT" PRPL_TOPOLOGY=chain \
   tests/run-acceptance.sh
 ```
 
@@ -23,7 +64,8 @@ The same suite accepts the experimental kernel medium when selected
 explicitly:
 
 ```sh
-PRPL_MEDIUM_BACKEND=kernel PRPL_AGENT_COUNT=4 PRPL_CLIENT_COUNT=20 \
+PRPL_MEDIUM_BACKEND=kernel PRPL_AGENT_COUNT="$ACTIVE_AGENT_COUNT" \
+  PRPL_CLIENT_COUNT="$ACTIVE_CLIENT_COUNT" \
   PRPL_TOPOLOGY=star tests/run-acceptance.sh
 ```
 
@@ -124,5 +166,6 @@ changing topology does not allocate new hwsim radios.
 
 `topology-modes.sh` is the longer reconstruction test. It cold-starts all four
 wireless agents in star, branch and chain layouts, validates each physical
-backhaul against NBAPI, then restores the 20-client chain and waits for all
-metrics. It intentionally stops and reconstructs the active lab.
+backhaul against NBAPI, then restores the complete selected client profile in
+a chain and waits for all metrics. It intentionally stops and reconstructs the
+active lab.

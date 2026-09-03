@@ -2,6 +2,8 @@
 set -euo pipefail
 
 ROOT=$(cd "$(dirname "$0")/.." && pwd)
+# shellcheck source=../scripts/lib/observer-status.sh
+source "$ROOT/scripts/lib/observer-status.sh"
 iterations=${PRPL_CHURN_ITERATIONS:-3}
 agents=${PRPL_AGENT_COUNT:-4}
 clients=${PRPL_CLIENT_COUNT:-20}
@@ -25,10 +27,14 @@ case "$medium_backend" in
 esac
 kill -0 "$medium_pid"
 
+status_section "Bounded lifecycle churn"
+status_note "Running $iterations leaf restart/steering cycle(s) without replacing the $medium_backend medium."
 for iteration in $(seq 1 "$iterations"); do
-    echo "=== churn iteration $iteration/$iterations ==="
+    status_action "Iteration $iteration/$iterations: move iot-06 to the controller."
     "$ROOT/scripts/steer-client.sh" iot-06 controller
+    status_action "Restarting leaf agent-$agents with its permanent radio identity."
     PRPL_TOPOLOGY=$topology "$ROOT/scripts/radio-lab.sh" restart-agent "$agents"
+    status_action "Moving iot-06 back to the recovered leaf and checking topology/resources."
     "$ROOT/scripts/steer-client.sh" iot-06 "agent-$agents"
     "$ROOT/tests/topology-acceptance.py" \
         --agents "$agents" --clients "$clients" --topology "$topology"
@@ -41,6 +47,7 @@ for iteration in $(seq 1 "$iterations"); do
         [ "$(cat /sys/module/mac80211_hwsim/parameters/kernel_medium)" = Y ]
     fi
     kill -0 "$medium_pid"
+    status_pass "Iteration $iteration preserved topology, processes and medium identity."
 done
 
 after_hash=$(inventory_hash)
@@ -49,4 +56,4 @@ after_hash=$(inventory_hash)
     exit 1
 }
 
-echo "PASS: $iterations leaf restart/steering cycles; inventory and $medium_backend medium identity unchanged"
+status_pass "$iterations leaf restart/steering cycles passed; inventory and $medium_backend medium identity are unchanged."

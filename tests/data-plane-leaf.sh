@@ -24,7 +24,12 @@ case "${1:-}" in
         printf 'rtt min/avg/max/mdev = 1.0/2.0/3.0/0.1 ms\n'
         ;;
     wpa_cli)
-        if [ "${FAKE_NO_LEAF:-0}" = 1 ]; then
+        if [ "${FAKE_STAR_FALLBACK:-0}" = 1 ]; then
+            case "$ordinal" in
+                1) bssid=02:00:00:00:04:00 ;;
+                *) bssid=02:00:00:00:02:00 ;;
+            esac
+        elif [ "${FAKE_NO_LEAF:-0}" = 1 ]; then
             bssid=02:00:00:00:02:00
         else
             case "$ordinal" in
@@ -60,7 +65,14 @@ if env PATH="$work:$PATH" FAKE_ACTIONS="$work/actions" FAKE_NO_LEAF=1 \
     echo 'missing deepest-agent association was accepted' >&2
     exit 1
 fi
-grep -Fq 'no client is associated with a BSSID on deepest agent-4' \
+grep -Fq 'no client is associated with a BSSID on a deepest chain agent' \
     "$work/fail.err"
 
-echo 'PASS: data-plane acceptance uses an existing deepest-agent client'
+: > "$work/actions"
+env PATH="$work:$PATH" FAKE_ACTIONS="$work/actions" FAKE_STAR_FALLBACK=1 \
+    PRPL_CLIENT_COUNT=3 PRPL_AGENT_COUNT=4 PRPL_TOPOLOGY=star \
+    "$ROOT/tests/data-plane.sh" >"$work/star.out"
+grep -Fq 'deepest data path: prpl-client-01 via agent-1 (02:00:00:00:04:00)' \
+    "$work/star.out"
+
+echo 'PASS: data-plane acceptance selects a populated deepest-topology agent'

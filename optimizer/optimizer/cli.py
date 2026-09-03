@@ -58,6 +58,13 @@ def _positive_int(value: str) -> int:
     return parsed
 
 
+def _positive_float(value: str) -> float:
+    parsed = float(value)
+    if parsed <= 0:
+        raise argparse.ArgumentTypeError("value must be greater than zero")
+    return parsed
+
+
 def _live_policy(path: str, expected_clients: int | None) -> ThresholdPolicy:
     config = load_policy(path)
     if expected_clients is not None:
@@ -77,6 +84,7 @@ def _live(args, mode: str) -> int:
         candidate_provider = (
             PrplMeshCandidateProvider(
                 allow_simulated=args.allow_simulated_candidates,
+                timeout_seconds=args.candidate_timeout,
             )
             if args.backend == "prplmesh"
             else ControllerCandidateProvider(
@@ -238,6 +246,15 @@ def parser() -> argparse.ArgumentParser:
             default="off",
         )
         command.add_argument("--allow-simulated-candidates", action="store_true")
+        command.add_argument(
+            "--candidate-timeout",
+            type=_positive_float,
+            default=30,
+            help=(
+                "maximum seconds to wait for one complete candidate-metric "
+                "transaction (default: 30)"
+            ),
+        )
         command.add_argument(
             "--observation-error-policy",
             choices=("stop", "continue"),

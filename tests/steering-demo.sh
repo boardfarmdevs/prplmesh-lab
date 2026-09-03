@@ -2,6 +2,8 @@
 set -u -o pipefail
 
 ROOT=$(cd "$(dirname "$0")/.." && pwd)
+# shellcheck source=../scripts/lib/observer-status.sh
+source "$ROOT/scripts/lib/observer-status.sh"
 agents=${PRPL_AGENT_COUNT:-4}
 cycles=${PRPL_DEMO_CYCLES:-1}
 delay=${PRPL_DEMO_DELAY:-8}
@@ -38,14 +40,16 @@ targets=()
 for ordinal in $(seq 1 "$agents"); do targets+=("agent-$ordinal"); done
 targets+=(controller)
 
-echo "Steering demo: ${#clients[@]} clients, ${#targets[@]} targets, $cycles cycle(s), ${delay}s pause"
-host_ip=$(hostname -I | awk '{print $1}')
-echo "Web UI: http://${host_ip}:8091/"
+status_section "Live steering demonstration"
+status_note "${#clients[@]} clients, ${#targets[@]} targets, $cycles cycle(s), ${delay}s pause."
+ui_url=${PRPL_CONTROLLER_UI_URL:-http://127.0.0.1:8091/}
+status_note "Controller UI inside the lab VM: $ui_url"
+status_note "Portable appliance users browse to the outer-host proxy configured at import."
 failures=0
 moves=0
 for cycle in $(seq 1 "$cycles"); do
     for target in "${targets[@]}"; do
-        echo "--- cycle $cycle/$cycles: moving clients to $target ---"
+        status_action "Cycle $cycle/$cycles: moving the client set to $target."
         for client in "${clients[@]}"; do
             if "$ROOT/scripts/steer-client.sh" "$client" "$target"; then
                 moves=$((moves + 1))
@@ -53,10 +57,14 @@ for cycle in $(seq 1 "$cycles"); do
                 failures=$((failures + 1))
                 echo "WARN: $client failed to converge on $target; continuing demo" >&2
             fi
-            sleep "$delay"
+            status_wait_seconds "$delay" "keeping the completed move visible before the next client"
         done
     done
 done
 
-echo "Steering demo complete: $moves successful moves, $failures failures"
+if [ "$failures" -eq 0 ]; then
+    status_pass "Steering demo complete: $moves successful moves."
+else
+    echo "Steering demo complete: $moves successful moves, $failures failures" >&2
+fi
 [ "$failures" -eq 0 ]

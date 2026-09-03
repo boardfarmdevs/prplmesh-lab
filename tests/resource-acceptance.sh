@@ -2,6 +2,8 @@
 set -euo pipefail
 
 ROOT=$(cd "$(dirname "$0")/.." && pwd)
+# shellcheck source=../scripts/lib/observer-status.sh
+source "$ROOT/scripts/lib/observer-status.sh"
 agents=${PRPL_AGENT_COUNT:-4}
 clients=${PRPL_CLIENT_COUNT:-20}
 medium_backend=${PRPL_MEDIUM_BACKEND:-userspace}
@@ -16,6 +18,8 @@ check_count()
     }
 }
 
+status_section "Runtime footprint and process cardinality"
+status_action "Measuring mesh RSS and checking exact daemon counts on every node."
 printf '%-18s %10s %10s\n' NODE RSS_KB PROCESSES
 for node in prpl-controller $(printf 'prpl-agent-%02d ' $(seq 1 "$agents")); do
     rss=$(lxc exec "$node" -- sh -lc \
@@ -63,4 +67,4 @@ case "$medium_backend" in
         ;;
     *) echo "PRPL_MEDIUM_BACKEND must be userspace or kernel" >&2; exit 2 ;;
 esac
-echo "PASS: process cardinality, background-service exclusion and runtime footprint"
+status_pass "Process cardinality, background-service exclusion and runtime footprint passed."
