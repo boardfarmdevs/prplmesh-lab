@@ -143,16 +143,13 @@ if [ -n "$STORAGE" ]; then
     }
     import_args+=(--storage "$STORAGE")
 fi
-# A portable backup retains its builder's NIC reservation and proxy targets.
-# Override them in the import transaction because LXD validates every archived
-# device before the instance exists and before config-device set can run.
+# The portable package deliberately omits host-specific proxy devices.  Only
+# override the archived NIC in the import transaction; naming a device that is
+# absent from the backup makes LXD reject the import.  Fresh proxy devices are
+# added below after the instance has a host-local address.
 import_args+=(
     --device "eth0,network=$NETWORK"
     --device "eth0,ipv4.address=$guest_ip"
-    --device "wmediumd-console,listen=tcp:$HOST_IP:$CONSOLE_PORT"
-    --device "wmediumd-console,connect=tcp:$guest_ip:8090"
-    --device "controller-ui,listen=tcp:$HOST_IP:$UI_PORT"
-    --device "controller-ui,connect=tcp:$guest_ip:8091"
 )
 
 lxc import "$BACKUP" "$NAME" "${import_args[@]}"

@@ -103,10 +103,12 @@ import_line=$(grep -nF \
     "$work/actions" | cut -d: -f1)
 grep -F 'eth0,network=lxdbr0' "$work/actions" | grep -F \
     'eth0,ipv4.address=10.99.0.250' >/dev/null
-grep -F 'wmediumd-console,connect=tcp:10.99.0.250:8090' \
-    "$work/actions" >/dev/null
-grep -F 'controller-ui,connect=tcp:10.99.0.250:8091' \
-    "$work/actions" >/dev/null
+! sed -n "${import_line}p" "$work/actions" | grep -Eq \
+    'wmediumd-console|controller-ui|topology-ui'
+grep -F 'config device add prplmesh-20-0902 wmediumd-console proxy' \
+    "$work/actions" | grep -F 'connect=tcp:10.99.0.250:8090' >/dev/null
+grep -F 'config device add prplmesh-20-0902 controller-ui proxy' \
+    "$work/actions" | grep -F 'connect=tcp:10.99.0.250:8091' >/dev/null
 test "$import_line" -lt "$query_line"
 test "$query_line" -lt "$select_line"
 test "$select_line" -lt "$proxy_line"
