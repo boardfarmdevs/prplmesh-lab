@@ -4,7 +4,7 @@ from datetime import datetime, timezone
 import json
 import subprocess
 import time
-from typing import Any, Iterable
+from typing import Any, Callable, Iterable
 from urllib.request import urlopen
 
 from .candidates import CandidateMetricsError
@@ -192,10 +192,12 @@ class PrplMeshCandidateProvider:
         controller: str = "prpl-controller",
         allow_simulated: bool = False,
         timeout_seconds: float = 30,
+        client_selector: Callable[[ClientObservation, str], bool] | None = None,
     ) -> None:
         self.controller = controller
         self.allow_simulated = allow_simulated
         self.timeout_seconds = timeout_seconds
+        self.client_selector = client_selector
         self.registered: set[tuple[str, str]] = set()
         self.object_cache: dict[tuple[str, str], str] = {}
         self.last_raw: list[dict[str, Any]] = []
@@ -273,7 +275,6 @@ class PrplMeshCandidateProvider:
         bsses: list[dict[str, Any]],
         observed_at: str,
     ) -> Iterable[CandidateObservation]:
-        del observed_at
         if not self.allow_simulated:
             raise CandidateMetricsError(
                 "prplMesh candidate provider is hwsim/wmediumd-backed; "
@@ -288,6 +289,10 @@ class PrplMeshCandidateProvider:
             client = clients_by_mac.get(candidate.sta_mac)
             bss = bss_by_id.get(candidate.bssid)
             if client is None or bss is None or candidate.band != client.band:
+                continue
+            if self.client_selector is not None and not self.client_selector(
+                client, observed_at
+            ):
                 continue
             key = (bss["device_id"], bss["radio_id"])
             radio = radio_objects.get(key)

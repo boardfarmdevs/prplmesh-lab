@@ -4,16 +4,24 @@ set -euo pipefail
 ROOT=${PRPLMESH_ROOT:-/opt/prplmesh-lab}
 ACTION=${1:-status}
 LOCK=/run/lock/prplmesh-lab.lock
+STATE_DIR=${PRPLMESH_STATE_DIR:-/var/lib/prplmesh-lab}
+TIMING_STARTED_MS=$(date +%s%3N)
+TIMING_STARTED_UTC=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+TIMING_WORK=
+TIMING_WRITTEN=0
 if [ -r /etc/default/prplmesh-lab ]; then
     set -a
     # shellcheck disable=SC1091
     source /etc/default/prplmesh-lab
     set +a
 fi
+AGENT_COUNT=${PRPL_AGENT_COUNT:-${ACTIVE_AGENT_COUNT:-4}}
+CLIENT_COUNT=${PRPL_CLIENT_COUNT:-${ACTIVE_CLIENT_COUNT:-20}}
+TOPOLOGY=${PRPL_TOPOLOGY:-${DEFAULT_TOPOLOGY:-star}}
 PROFILE=(
-    PRPL_AGENT_COUNT="${PRPL_AGENT_COUNT:-${ACTIVE_AGENT_COUNT:-4}}"
-    PRPL_CLIENT_COUNT="${PRPL_CLIENT_COUNT:-${ACTIVE_CLIENT_COUNT:-20}}"
-    PRPL_TOPOLOGY="${PRPL_TOPOLOGY:-${DEFAULT_TOPOLOGY:-star}}"
+    PRPL_AGENT_COUNT="$AGENT_COUNT"
+    PRPL_CLIENT_COUNT="$CLIENT_COUNT"
+    PRPL_TOPOLOGY="$TOPOLOGY"
 )
 THIN_MARKER=${PRPLMESH_THIN_MARKER:-/var/lib/prplmesh-lab/thin-pending.env}
 
@@ -21,9 +29,55 @@ phase()
 {
     local name=$1
     shift
-    local started=$SECONDS
-    "$@"
-    echo "prplMesh lifecycle phase: $name $((SECONDS - started))s"
+    local started_ms finished_ms elapsed_ms status
+    started_ms=$(date +%s%3N)
+    status=0
+    "$@" || status=$?
+    finished_ms=$(date +%s%3N)
+    elapsed_ms=$((finished_ms - started_ms))
+    [ -z "$TIMING_WORK" ] || printf '%s\t%s\n' "$name" "$elapsed_ms" >> "$TIMING_WORK"
+    echo "prplMesh lifecycle phase: $name ${elapsed_ms}ms"
+    return "$status"
+}
+
+write_lifecycle_timing()
+{
+    local result=$1 finished_ms elapsed_ms output temporary
+    [ -n "$TIMING_WORK" ] || return 0
+    finished_ms=$(date +%s%3N)
+    elapsed_ms=$((finished_ms - TIMING_STARTED_MS))
+    install -d -m 0755 "$STATE_DIR"
+    output=$STATE_DIR/last-$ACTION-timing.json
+    temporary=$output.tmp.$$
+    jq -Rn \
+        --arg action "$ACTION" \
+        --arg result "$result" \
+        --arg started_at_utc "$TIMING_STARTED_UTC" \
+        --arg topology "$TOPOLOGY" \
+        --argjson containers "$((1 + AGENT_COUNT + CLIENT_COUNT))" \
+        --argjson mesh_nodes "$((1 + AGENT_COUNT))" \
+        --argjson clients "$CLIENT_COUNT" \
+        --argjson total_ms "$elapsed_ms" '
+        [inputs | split("\t") | {phase: .[0], elapsed_ms: (.[1] | tonumber)}] as $phases
+        | {
+            schema_version: 1,
+            stack: "prplmesh",
+            action: $action,
+            result: $result,
+            started_at_utc: $started_at_utc,
+            medium_backend: "userspace",
+            start_mode: "staged",
+            topology: $topology,
+            containers: $containers,
+            mesh_nodes: $mesh_nodes,
+            clients: $clients,
+            elapsed_ms: $total_ms,
+            phases: $phases
+          }
+    ' < "$TIMING_WORK" > "$temporary"
+    mv -f "$temporary" "$output"
+    TIMING_WRITTEN=1
+    echo "prplMesh lifecycle timing: action=$ACTION containers=$((1 + AGENT_COUNT + CLIENT_COUNT)) elapsed_ms=$elapsed_ms output=$output"
 }
 
 wait_for_lxd()
@@ -107,9 +161,27 @@ flock -w 5 9 || {
 }
 
 case "$ACTION" in
-    start) start_lab ;;
-    stop) stop_lab ;;
-    restart) stop_lab; start_lab ;;
+    start|stop|restart)
+        TIMING_WORK=$(mktemp /run/prplmesh-lifecycle-timing.XXXXXX)
+        finish_timing()
+        {
+            local status=$?
+            if [ "$TIMING_WRITTEN" -eq 0 ]; then
+                write_lifecycle_timing FAIL >/dev/null 2>&1 || true
+            fi
+            rm -f -- "$TIMING_WORK"
+            exit "$status"
+        }
+        trap finish_timing EXIT
+        case "$ACTION" in
+            start) start_lab ;;
+            stop) stop_lab ;;
+            restart) stop_lab; start_lab ;;
+        esac
+        write_lifecycle_timing PASS
+        trap - EXIT
+        rm -f -- "$TIMING_WORK"
+        ;;
     status) status_lab ;;
     *) echo "usage: $0 {start|stop|restart|status}" >&2; exit 2 ;;
 esac

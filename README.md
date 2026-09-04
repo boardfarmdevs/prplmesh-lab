@@ -59,6 +59,14 @@ Named steering uses the same client and agent labels as the Web view:
 ```sh
 scripts/steer-client.sh sta-02 agent-3
 scripts/steer-client.sh iot-04 controller
+
+# One move per currently connected client, or an exact attempt count.
+scripts/steer-soak.sh
+scripts/steer-soak.sh 50
+
+# Concurrent moves, explicitly selected or topology-derived.
+scripts/steer-batch.sh sta-01 agent-1 sta-02 agent-2 iot-03 controller
+scripts/steer-batch.sh --count 5
 ```
 
 Longer tests intentionally change active topology or medium state:
@@ -101,6 +109,7 @@ AL-MAC and BSSID identities plus fixed process counts.
   bounded actuation.
 - `wmediumd/configurator/` — scenario language, world compiler and atomic
   dynamic-medium runner.
+- `demo/` — live/replay room conductor, manifest, bindings and tests.
 - `topology-adapter/` — internal read-only NBAPI normalization API; no public UI.
 - `controller-ui/` — host Go port of the RDK EM CLI topology application.
 - `wmediumd/observer/` — exact shared RDK wmediumd Console implementation.
@@ -110,6 +119,10 @@ AL-MAC and BSSID identities plus fixed process counts.
 - `docs/optimizer-configurator.md` — closed-loop operation and extension guide.
 - `docs/demonstrations.md` — appliance entry, live demonstrations, recovery,
   and evidence rules.
+- `docs/live-room-demo/` — room-demo operator manual, architecture and viewer
+  reference.
+- `docs/experiments.md` — experiment selection, commands, mechanisms and
+  profile-specific readiness.
 - `docs/validation.md` — accepted results and remaining gaps.
 - `docs/wmediumd-performance.md` — CPU, affinity and overload measurements.
 - `docs/from-scratch.md` — complete host-to-accepted-lab build procedure.

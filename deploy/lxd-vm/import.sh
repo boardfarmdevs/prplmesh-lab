@@ -41,7 +41,7 @@ while [ "$#" -gt 0 ]; do
 done
 
 PROFILE_SELECTABLE=${LAB_PROFILE_SELECTABLE:-false}
-RELEASE_ID=${LAB_RELEASE_ID:-0902}
+RELEASE_ID=${LAB_RELEASE_ID:-0904}
 case "$RELEASE_ID" in
     [0-9][0-9][0-9][0-9]) ;;
     *) echo "invalid LAB_RELEASE_ID: $RELEASE_ID" >&2; exit 2 ;;
@@ -88,6 +88,7 @@ HOST_IP=${PRPLMESH_UI_HOST_IP:-$(ip -4 route get 1.1.1.1 2>/dev/null | \
 HOST_IP=${HOST_IP:-127.0.0.1}
 CONSOLE_PORT=${PRPLMESH_WMEDIUMD_CONSOLE_HOST_PORT:-8090}
 UI_PORT=${PRPLMESH_UI_HOST_PORT:-8091}
+ROOM_PORT=${PRPLMESH_ROOM_DEMO_HOST_PORT:-${LAB_ROOM_DEMO_HOST_PORT:-18891}}
 STORAGE=${PRPLMESH_LXD_STORAGE:-}
 NESTED_READY_ATTEMPTS=${PRPLMESH_NESTED_LXD_READY_ATTEMPTS:-120}
 NESTED_READY_INTERVAL=${PRPLMESH_NESTED_LXD_READY_INTERVAL:-1}
@@ -117,34 +118,6 @@ if lxc info "$NAME" >/dev/null 2>&1; then
     echo "stop and delete it explicitly before importing a replacement" >&2
     exit 1
 fi
-import_args=()
-if [ -n "$STORAGE" ]; then
-    lxc storage show "$STORAGE" >/dev/null 2>&1 || {
-        echo "LXD storage pool does not exist: $STORAGE" >&2
-        exit 1
-    }
-    import_args+=(--storage "$STORAGE")
-fi
-
-lxc import "$BACKUP" "$NAME" "${import_args[@]}"
-instance_uuid=$(cat /proc/sys/kernel/random/uuid)
-vsock_id=$(od -An -N4 -tu4 /dev/urandom | tr -d ' ')
-lxc config unset "$NAME" volatile.eth0.hwaddr
-lxc config set "$NAME" volatile.uuid "$instance_uuid"
-lxc config set "$NAME" volatile.uuid.generation "$instance_uuid"
-lxc config set "$NAME" volatile.cloud-init.instance-id "$instance_uuid"
-lxc config set "$NAME" volatile.vsock_id "$vsock_id"
-lxc config set "$NAME" limits.cpu "${PRPLMESH_VM_CPUS:-$SELECTED_CPUS}"
-lxc config set "$NAME" limits.memory "${PRPLMESH_VM_MEMORY:-$SELECTED_MEMORY}"
-lxc config set "$NAME" boot.autostart true
-if lxc config device show "$NAME" | grep -q '^canonical-source:'; then
-    lxc config device remove "$NAME" canonical-source
-fi
-for device in topology-ui wmediumd-console controller-ui; do
-    if lxc config device show "$NAME" | grep -q "^${device}:"; then
-        lxc config device remove "$NAME" "$device"
-    fi
-done
 lxc_cidr=$(lxc network get "$NETWORK" ipv4.address)
 used=$(lxc network list-leases "$NETWORK" --format csv \
     | awk -F, '$3 ~ /^[0-9]+\./ {print $3}' | paste -sd, -)
@@ -163,6 +136,47 @@ else:
     raise SystemExit(f"no free appliance address found near the end of {network}")
 PY
 )
+import_args=()
+if [ -n "$STORAGE" ]; then
+    lxc storage show "$STORAGE" >/dev/null 2>&1 || {
+        echo "LXD storage pool does not exist: $STORAGE" >&2
+        exit 1
+    }
+    import_args+=(--storage "$STORAGE")
+fi
+# The portable package deliberately omits host-specific proxy devices.  Only
+# override the archived NIC in the import transaction; naming a device that is
+# absent from the backup makes LXD reject the import.  Fresh proxy devices are
+# added below after the instance has a host-local address.
+import_args+=(
+    --device "eth0,network=$NETWORK"
+    --device "eth0,ipv4.address=$guest_ip"
+)
+
+lxc import "$BACKUP" "$NAME" "${import_args[@]}"
+instance_uuid=$(cat /proc/sys/kernel/random/uuid)
+vsock_id=$(od -An -N4 -tu4 /dev/urandom | tr -d ' ')
+lxc config unset "$NAME" volatile.eth0.hwaddr
+lxc config set "$NAME" volatile.uuid "$instance_uuid"
+lxc config set "$NAME" volatile.uuid.generation "$instance_uuid"
+lxc config set "$NAME" volatile.cloud-init.instance-id "$instance_uuid"
+lxc config set "$NAME" volatile.vsock_id "$vsock_id"
+lxc config set "$NAME" limits.cpu "${PRPLMESH_VM_CPUS:-$SELECTED_CPUS}"
+lxc config set "$NAME" limits.memory "${PRPLMESH_VM_MEMORY:-$SELECTED_MEMORY}"
+lxc config set "$NAME" boot.autostart true
+if lxc config set "$NAME" boot.mode uefi-nosecureboot 2>/dev/null; then
+    lxc config unset "$NAME" security.secureboot 2>/dev/null || true
+else
+    lxc config set "$NAME" security.secureboot false
+fi
+if lxc config device show "$NAME" | grep -q '^canonical-source:'; then
+    lxc config device remove "$NAME" canonical-source
+fi
+for device in topology-ui wmediumd-console controller-ui room-demo-viewer; do
+    if lxc config device show "$NAME" | grep -q "^${device}:"; then
+        lxc config device remove "$NAME" "$device"
+    fi
+done
 lxc config device set "$NAME" eth0 network "$NETWORK"
 lxc config device set "$NAME" eth0 ipv4.address "$guest_ip"
 lxc start "$NAME"
@@ -179,6 +193,28 @@ done
     echo "$NAME did not expose its LXD VM agent within 120 seconds" >&2
     exit 1
 }
+
+# LXD may assign a different address after the imported volatile NIC identity
+# is replaced.  Discover the address actually selected by the running guest,
+# then pin that address in the managed-network reservation before creating the
+# host proxy devices.
+runtime_guest_ip=
+for unused in $(seq 1 120); do
+    runtime_guest_ip=$(lxc exec "$NAME" -- ip -4 -o route get 1.1.1.1 \
+        2>/dev/null | awk \
+        '{for (i=1; i<=NF; i++) if ($i == "src") {print $(i+1); exit}}') || true
+    [ -z "$runtime_guest_ip" ] || break
+    sleep 1
+done
+[ -n "$runtime_guest_ip" ] || {
+    echo "$NAME did not report a routed IPv4 address within 120 seconds" >&2
+    exit 1
+}
+if [ "$runtime_guest_ip" != "$guest_ip" ]; then
+    echo "guest address changed after NIC regeneration: $guest_ip -> $runtime_guest_ip"
+    guest_ip=$runtime_guest_ip
+    lxc config device set "$NAME" eth0 ipv4.address "$guest_ip"
+fi
 
 if [ "$PROFILE_SELECTABLE" = true ]; then
     nested_ready=false
@@ -206,6 +242,8 @@ lxc config device add "$NAME" wmediumd-console proxy nat=true \
     listen="tcp:${HOST_IP}:${CONSOLE_PORT}" connect="tcp:${guest_ip}:8090"
 lxc config device add "$NAME" controller-ui proxy nat=true \
     listen="tcp:${HOST_IP}:${UI_PORT}" connect="tcp:${guest_ip}:8091"
+lxc config device add "$NAME" room-demo-viewer proxy nat=true \
+    listen="tcp:${HOST_IP}:${ROOM_PORT}" connect="tcp:${guest_ip}:8891"
 
 if [ "$PROFILE_SELECTABLE" = true ]; then
     lxc exec "$NAME" -- systemctl reset-failed prplmesh-lab.service
@@ -216,4 +254,5 @@ echo "LXD VM started: $NAME"
 echo "profile:          $SELECTED_CLIENTS clients ($SELECTED_PROFILE), $SELECTED_RADIOS radios"
 echo "wmediumd Console: http://${HOST_IP}:${CONSOLE_PORT}/"
 echo "Controller UI:    http://${HOST_IP}:${UI_PORT}/"
+echo "Room demo:       http://${HOST_IP}:${ROOM_PORT}/viewer/?mode=live"
 echo "monitor: lxc exec $NAME -- journalctl -fu prplmesh-lab.service"

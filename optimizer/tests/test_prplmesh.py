@@ -160,6 +160,45 @@ def test_candidate_provider_registers_updates_and_returns_standard_metric():
     assert any(method == "UpdateUnassociatedStationsStats" for _, method, _ in provider.calls)
 
 
+def test_candidate_provider_can_limit_measurement_to_selected_client():
+    provider = _Provider()
+    sta_mac = "02:00:00:10:01:00"
+    provider.client_selector = lambda client, _observed_at: client.sta_mac != sta_mac
+    client = ClientObservation(
+        sta_mac=sta_mac,
+        connected_device_id="02:00:00:27:01:01",
+        connected_device_name="controller",
+        connected_bssid="02:00:00:00:01:00",
+        rcpi=88,
+        association_uptime_seconds=42,
+        metric_observed_at=STAMP,
+        measurement_source="prplmesh_associated_sta_link_metrics",
+        band="5",
+        ssid="private_ssid",
+        cohort="private",
+    )
+    candidate = CandidateObservation(
+        sta_mac=sta_mac,
+        bssid="02:00:00:00:04:00",
+        device_id="02:00:00:27:02:01",
+        device_name="agent-1",
+        rcpi=None,
+        metric_observed_at=None,
+        measurement_source="prplmesh_bss_inventory_only",
+        band="5",
+    )
+    bss = {
+        "bssid": candidate.bssid,
+        "device_id": candidate.device_id,
+        "radio_id": "02:00:00:00:04:00",
+        "channel": 36,
+        "opclass": 115,
+    }
+
+    assert list(provider((client,), (candidate,), [bss], STAMP)) == []
+    assert not any(method == "AddUnassociatedStation" for _, method, _ in provider.calls)
+
+
 def test_first_json_accepts_ubus_prefix_noise_and_rejects_non_objects():
     assert _first_json('  {"answer": 42}\nwarning') == {"answer": 42}
     with pytest.raises(CandidateMetricsError):

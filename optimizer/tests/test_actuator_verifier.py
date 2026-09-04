@@ -31,6 +31,14 @@ def test_actuator_validates_and_executes_exactly_one_narrow_command():
     assert len(calls) == 1
 
 
+def test_actuator_can_select_request_only_script_path():
+    actuator = SteerActuator("/opt/steer-client.sh", request_only=True)
+
+    assert actuator.build_command(STA, TARGET) == (
+        "/opt/steer-client.sh", "--request-only", STA, TARGET
+    )
+
+
 def test_actuator_refuses_changed_source():
     with pytest.raises(ValueError, match="source changed"):
         SteerActuator("/repo/gen/steer.sh").execute(actionable(), snapshot(1, source=TARGET))

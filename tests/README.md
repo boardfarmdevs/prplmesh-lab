@@ -7,7 +7,7 @@ client containers. Enter the selected VM as root from its outer host, then load
 the immutable profile before running tests:
 
 ```sh
-VM=prplmesh-50-0902
+VM=prplmesh-50-0904
 lxc exec "$VM" -- bash
 
 cd /opt/prplmesh-lab
@@ -104,6 +104,41 @@ tests/steering-demo.sh
 tests/steering-demo.sh --cycles 2 --delay 5
 ```
 
+`scripts/steer-soak.sh` snapshots the currently connected client roster and,
+with no argument, considers each client exactly once. An explicit positive
+count cycles fairly through that roster. Before every attempt it refreshes the
+topology, resolves the client's current device, SSID and band, and selects a
+different device with exactly one matching fronthaul BSS:
+
+```sh
+scripts/steer-soak.sh
+scripts/steer-soak.sh 100
+```
+
+The script passes the exact STA MAC and live target BSSID to
+`scripts/steer-client.sh`; every issued move must agree physically and in the
+NBAPI ownership model. It supports private and IoT clients on all three bands.
+Failures remain counted and visible while later attempts continue. A final
+nonzero status indicates at least one failure, and a timestamped CSV is stored
+under `artifacts/`.
+
+`scripts/steer-batch.sh` moves distinct clients concurrently:
+
+```sh
+scripts/steer-batch.sh sta-01 agent-1 sta-02 agent-2 iot-03 controller
+scripts/steer-batch.sh --count 5
+```
+
+The explicit form accepts the same client and target labels as
+`steer-client.sh`. The automatic form selects distinct connected clients and
+different live devices carrying the same SSID on the same band. Each worker
+uses an exact STA MAC and target BSSID, submits its own per-STA NBAPI BTM
+request, and requires both physical association and NBAPI ownership to
+converge. Up to eight operations run together by default; set
+`PRPL_STEER_BATCH_PARALLEL` to a smaller bounded value when deliberately
+measuring controller load. Results are written to a timestamped CSV under
+`artifacts/`.
+
 `data-plane.sh` checks the deterministic `192.168.77.0/24` lab data network
 from every active WLAN client. It then discovers a client already associated
 with the deepest active agent and sends a longer ping through that exact BSSID
@@ -170,3 +205,21 @@ wireless agents in star, branch and chain layouts, validates each physical
 backhaul against NBAPI, then restores the complete selected client profile in
 a chain and waits for all metrics. It intentionally stops and reconstructs the
 active lab.
+
+## Comparable performance snapshot
+
+The lifecycle service writes `/var/lib/prplmesh-lab/last-start-timing.json`
+and `last-stop-timing.json`. Each record uses the same phase/timing structure
+as the RDK appliance. Capture a PSS-based ready-state sample as root inside the
+outer VM:
+
+```sh
+sudo tests/lab-performance-snapshot.py \
+  --stack prplmesh --profile 20 --label ready \
+  --output /var/tmp/prplmesh-ready.json
+```
+
+The collector is identical in both repositories. It records outer-VM memory
+and load, nested LXD cardinality, normalized thin first-boot start/finish time,
+cumulative lifecycle milestones, relevant process details, and PSS/RSS,
+private memory, swap, threads and file-descriptor totals by functional group.

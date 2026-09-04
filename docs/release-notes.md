@@ -38,3 +38,29 @@ Release identifiers describe tested lab delivery checkpoints, not upstream prplM
   stdout.
 - Included the current Console ownership fix so 50-client observer snapshots
   remain bounded and healthy.
+
+## 0903
+
+- Consolidated the current delivery into one universal thin LXD appliance
+  supporting immutable 20-, 50-, or 100-client selection at import.
+- Added `steer-soak.sh`, which resolves the live NBAPI topology before every
+  move and runs either one pass over the initial roster or a bounded number of
+  sequential BTM steering attempts.
+- Added `steer-batch.sh` for bounded concurrent NBAPI steering with exact
+  station/BSSID resolution and independent physical plus controller-model
+  verification for every requested move.
+- Added a prplMesh experiment catalog and scenario guidance aligned with the
+  RDK lab, while marking implementation-specific readiness and command paths.
+- Retained userspace wmediumd as the release default and kept the Controller UI
+  and shared wmediumd Console behavior aligned with the RDK appliance.
+
+## 0904
+
+- Added the complete live room demonstration with the same viewer, event and
+  evidence contract as RDK, adapted to prplMesh NBAPI telemetry, candidate
+  measurements, BTM actuation and controller-facing station identities.
+- Added the four-minute Private-Laptop Golden World, bounded stimulus,
+  recommendation and act modes, exact RF restoration, offline replay, tests,
+  and complete operator/design/viewer documentation.
+- Added the room-demo proxy to portable imports at outer port 18891 to guest
+  port 8891 and advanced thin archive, instance and metadata defaults to 0904.
