@@ -104,6 +104,24 @@ tests/steering-demo.sh
 tests/steering-demo.sh --cycles 2 --delay 5
 ```
 
+`scripts/steer-soak.sh` snapshots the currently connected client roster and,
+with no argument, considers each client exactly once. An explicit positive
+count cycles fairly through that roster. Before every attempt it refreshes the
+topology, resolves the client's current device, SSID and band, and selects a
+different device with exactly one matching fronthaul BSS:
+
+```sh
+scripts/steer-soak.sh
+scripts/steer-soak.sh 100
+```
+
+The script passes the exact STA MAC and live target BSSID to
+`scripts/steer-client.sh`; every issued move must agree physically and in the
+NBAPI ownership model. It supports private and IoT clients on all three bands.
+Failures remain counted and visible while later attempts continue. A final
+nonzero status indicates at least one failure, and a timestamped CSV is stored
+under `artifacts/`.
+
 `data-plane.sh` checks the deterministic `192.168.77.0/24` lab data network
 from every active WLAN client. It then discovers a client already associated
 with the deepest active agent and sends a longer ping through that exact BSSID

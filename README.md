@@ -59,6 +59,10 @@ Named steering uses the same client and agent labels as the Web view:
 ```sh
 scripts/steer-client.sh sta-02 agent-3
 scripts/steer-client.sh iot-04 controller
+
+# One move per currently connected client, or an exact attempt count.
+scripts/steer-soak.sh
+scripts/steer-soak.sh 50
 ```
 
 Longer tests intentionally change active topology or medium state:
