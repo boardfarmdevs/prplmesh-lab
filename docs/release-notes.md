@@ -53,3 +53,14 @@ Release identifiers describe tested lab delivery checkpoints, not upstream prplM
   RDK lab, while marking implementation-specific readiness and command paths.
 - Retained userspace wmediumd as the release default and kept the Controller UI
   and shared wmediumd Console behavior aligned with the RDK appliance.
+
+## 0904
+
+- Added the complete live room demonstration with the same viewer, event and
+  evidence contract as RDK, adapted to prplMesh NBAPI telemetry, candidate
+  measurements, BTM actuation and controller-facing station identities.
+- Added the four-minute Private-Laptop Golden World, bounded stimulus,
+  recommendation and act modes, exact RF restoration, offline replay, tests,
+  and complete operator/design/viewer documentation.
+- Added the room-demo proxy to portable imports at outer port 18891 to guest
+  port 8891 and advanced thin archive, instance and metadata defaults to 0904.

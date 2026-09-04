@@ -41,7 +41,7 @@ while [ "$#" -gt 0 ]; do
 done
 
 PROFILE_SELECTABLE=${LAB_PROFILE_SELECTABLE:-false}
-RELEASE_ID=${LAB_RELEASE_ID:-0903}
+RELEASE_ID=${LAB_RELEASE_ID:-0904}
 case "$RELEASE_ID" in
     [0-9][0-9][0-9][0-9]) ;;
     *) echo "invalid LAB_RELEASE_ID: $RELEASE_ID" >&2; exit 2 ;;
@@ -88,6 +88,7 @@ HOST_IP=${PRPLMESH_UI_HOST_IP:-$(ip -4 route get 1.1.1.1 2>/dev/null | \
 HOST_IP=${HOST_IP:-127.0.0.1}
 CONSOLE_PORT=${PRPLMESH_WMEDIUMD_CONSOLE_HOST_PORT:-8090}
 UI_PORT=${PRPLMESH_UI_HOST_PORT:-8091}
+ROOM_PORT=${PRPLMESH_ROOM_DEMO_HOST_PORT:-${LAB_ROOM_DEMO_HOST_PORT:-18891}}
 STORAGE=${PRPLMESH_LXD_STORAGE:-}
 NESTED_READY_ATTEMPTS=${PRPLMESH_NESTED_LXD_READY_ATTEMPTS:-120}
 NESTED_READY_INTERVAL=${PRPLMESH_NESTED_LXD_READY_INTERVAL:-1}
@@ -171,7 +172,7 @@ fi
 if lxc config device show "$NAME" | grep -q '^canonical-source:'; then
     lxc config device remove "$NAME" canonical-source
 fi
-for device in topology-ui wmediumd-console controller-ui; do
+for device in topology-ui wmediumd-console controller-ui room-demo-viewer; do
     if lxc config device show "$NAME" | grep -q "^${device}:"; then
         lxc config device remove "$NAME" "$device"
     fi
@@ -241,6 +242,8 @@ lxc config device add "$NAME" wmediumd-console proxy nat=true \
     listen="tcp:${HOST_IP}:${CONSOLE_PORT}" connect="tcp:${guest_ip}:8090"
 lxc config device add "$NAME" controller-ui proxy nat=true \
     listen="tcp:${HOST_IP}:${UI_PORT}" connect="tcp:${guest_ip}:8091"
+lxc config device add "$NAME" room-demo-viewer proxy nat=true \
+    listen="tcp:${HOST_IP}:${ROOM_PORT}" connect="tcp:${guest_ip}:8891"
 
 if [ "$PROFILE_SELECTABLE" = true ]; then
     lxc exec "$NAME" -- systemctl reset-failed prplmesh-lab.service
@@ -251,4 +254,5 @@ echo "LXD VM started: $NAME"
 echo "profile:          $SELECTED_CLIENTS clients ($SELECTED_PROFILE), $SELECTED_RADIOS radios"
 echo "wmediumd Console: http://${HOST_IP}:${CONSOLE_PORT}/"
 echo "Controller UI:    http://${HOST_IP}:${UI_PORT}/"
+echo "Room demo:       http://${HOST_IP}:${ROOM_PORT}/viewer/?mode=live"
 echo "monitor: lxc exec $NAME -- journalctl -fu prplmesh-lab.service"

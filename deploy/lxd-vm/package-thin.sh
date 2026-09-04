@@ -4,7 +4,7 @@ set -euo pipefail
 ROOT=$(cd "$(dirname "$0")/../.." && pwd)
 # shellcheck source=profile.sh
 source "$ROOT/deploy/lxd-vm/profile.sh"
-RELEASE_ID=${PRPLMESH_RELEASE_ID:-0903}
+RELEASE_ID=${PRPLMESH_RELEASE_ID:-0904}
 case "$RELEASE_ID" in
     [0-9][0-9][0-9][0-9]) ;;
     *) echo "invalid PRPLMESH_RELEASE_ID: $RELEASE_ID" >&2; exit 2 ;;
@@ -235,7 +235,7 @@ printf 'archive_bytes=%s\n' "$(stat -c %s "$OUTPUT")" >> "$TRIM_REPORT"
 install -m 0755 "$ROOT/deploy/lxd-vm/import.sh" "$BUNDLE/import.sh"
 install -m 0755 "$ROOT/deploy/lxd-vm/install-host.sh" "$BUNDLE/install-host.sh"
 install -m 0755 "$ROOT/deploy/lxd-vm/package-release.sh" "$BUNDLE/package-release.sh"
-sed "s/0903/${RELEASE_ID}/g" "$ROOT/deploy/lxd-vm/README.md" \
+sed "s/0904/${RELEASE_ID}/g" "$ROOT/deploy/lxd-vm/README.md" \
     > "$BUNDLE/README.md"
 chmod 0644 "$BUNDLE/README.md"
 install -m 0644 "$ROOT/docs/release-notes.md" "$BUNDLE/RELEASE-NOTES.md"
@@ -251,6 +251,7 @@ LAB_SOURCE_COMMIT=$(git -C "$ROOT" rev-parse HEAD)
 LAB_RUNTIME_BASE_COMMIT=$RUNTIME_BASE_COMMIT
 LAB_TRIMMED=true
 LAB_FIRST_BOOT_PROVISION=true
+LAB_ROOM_DEMO_HOST_PORT=18891
 EOF
 jq -n \
     --arg stack prplmesh --arg flavor thin --arg release_id "$RELEASE_ID" \
@@ -266,7 +267,7 @@ jq -n \
       profiles:{"20":{name:"small",instance:("prplmesh-20-"+$release_id),clients:20,hwsim_radios:40,cpus:6,memory:"8GiB"},
                 "50":{name:"medium",instance:("prplmesh-50-"+$release_id),clients:50,hwsim_radios:72,cpus:8,memory:"12GiB"},
                 "100":{name:"stress",instance:("prplmesh-100-"+$release_id),clients:100,hwsim_radios:120,cpus:12,memory:"20GiB"}},
-      defaults:{disk:$disk},
+      defaults:{disk:$disk,wmediumd_console_host_port:8090,controller_ui_host_port:8091,room_demo_host_port:18891},
       build:{storage_pool:$build_storage_pool},
       trim:{applied:true,report:"trim-report.txt"},
       first_boot:{provision:true,offline:true,initial_nested_instances:0},

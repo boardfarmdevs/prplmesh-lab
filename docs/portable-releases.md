@@ -1,6 +1,6 @@
 # Portable prplMesh appliance
 
-`prplmesh-0903-thin.tar` is the current portable prplMesh download. One archive
+`prplmesh-0904-thin.tar` is the current portable prplMesh download. One archive
 supports 20, 50, and 100 clients; there are no profile-specific release files.
 
 The archive contains an installed Ubuntu 24.04/Linux 7 LXD VM, the exact
@@ -13,9 +13,9 @@ runtime-base identity.
 ## Install from an empty directory
 
 ```sh
-sha256sum -c prplmesh-0903-thin.tar.sha256
-tar -xf prplmesh-0903-thin.tar
-cd prplmesh-0903-thin
+sha256sum -c prplmesh-0904-thin.tar.sha256
+tar -xf prplmesh-0904-thin.tar
+cd prplmesh-0904-thin
 sha256sum -c SHA256SUMS
 sudo ./install-host.sh
 newgrp lxd
@@ -45,19 +45,20 @@ PRPLMESH_UI_HOST_IP=192.168.2.140 \
   ./import.sh --profile 50
 ```
 
-Default host ports are `8090` for the wmediumd Console and `8091` for the
-Controller UI. The NBAPI adapter stays on guest loopback. The included README
-documents instance-name and port overrides.
+Default host ports are `8090` for the wmediumd Console, `8091` for the
+Controller UI, and `18891` for the operator-started room demo. The NBAPI
+adapter stays on guest loopback. The included README documents instance-name
+and port overrides.
 
 ## Monitor and operate
 
 Replace `20` with the selected profile:
 
 ```sh
-lxc exec prplmesh-20-0903 -- journalctl -fu prplmesh-lab.service
-lxc exec prplmesh-20-0903 -- prplmesh-lab-start status
-lxc stop prplmesh-20-0903
-lxc start prplmesh-20-0903
+lxc exec prplmesh-20-0904 -- journalctl -fu prplmesh-lab.service
+lxc exec prplmesh-20-0904 -- prplmesh-lab-start status
+lxc stop prplmesh-20-0904
+lxc start prplmesh-20-0904
 ```
 
 Imported appliances default to `boot.autostart=true`.
