@@ -22,13 +22,13 @@ check()
         -eq "$radios"
 }
 
-check 20 small 20 40 prplmesh-20-0902
-check small small 20 40 prplmesh-20-0902
-check 50 medium 50 72 prplmesh-50-0902
-check medium medium 50 72 prplmesh-50-0902
-check 100 stress 100 120 prplmesh-100-0902
-check stress stress 100 120 prplmesh-100-0902
-test "$(prplmesh_thin_release_name)" = prplmesh-0902-thin
+check 20 small 20 40 prplmesh-20-0903
+check small small 20 40 prplmesh-20-0903
+check 50 medium 50 72 prplmesh-50-0903
+check medium medium 50 72 prplmesh-50-0903
+check 100 stress 100 120 prplmesh-100-0903
+check stress stress 100 120 prplmesh-100-0903
+test "$(prplmesh_thin_release_name)" = prplmesh-0903-thin
 test "$(PRPLMESH_RELEASE_ID=0901 prplmesh_profile_release_name 20)" = \
     prplmesh-20-0901
 test "$(PRPLMESH_RELEASE_ID=0901 prplmesh_thin_release_name)" = \

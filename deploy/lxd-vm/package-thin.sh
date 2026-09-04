@@ -4,7 +4,7 @@ set -euo pipefail
 ROOT=$(cd "$(dirname "$0")/../.." && pwd)
 # shellcheck source=profile.sh
 source "$ROOT/deploy/lxd-vm/profile.sh"
-RELEASE_ID=${PRPLMESH_RELEASE_ID:-0902}
+RELEASE_ID=${PRPLMESH_RELEASE_ID:-0903}
 case "$RELEASE_ID" in
     [0-9][0-9][0-9][0-9]) ;;
     *) echo "invalid PRPLMESH_RELEASE_ID: $RELEASE_ID" >&2; exit 2 ;;
@@ -235,7 +235,7 @@ printf 'archive_bytes=%s\n' "$(stat -c %s "$OUTPUT")" >> "$TRIM_REPORT"
 install -m 0755 "$ROOT/deploy/lxd-vm/import.sh" "$BUNDLE/import.sh"
 install -m 0755 "$ROOT/deploy/lxd-vm/install-host.sh" "$BUNDLE/install-host.sh"
 install -m 0755 "$ROOT/deploy/lxd-vm/package-release.sh" "$BUNDLE/package-release.sh"
-sed "s/0902/${RELEASE_ID}/g" "$ROOT/deploy/lxd-vm/README.md" \
+sed "s/0903/${RELEASE_ID}/g" "$ROOT/deploy/lxd-vm/README.md" \
     > "$BUNDLE/README.md"
 chmod 0644 "$BUNDLE/README.md"
 install -m 0644 "$ROOT/docs/release-notes.md" "$BUNDLE/RELEASE-NOTES.md"

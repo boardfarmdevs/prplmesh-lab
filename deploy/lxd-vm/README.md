@@ -5,13 +5,13 @@ nested containers, hwsim/wmediumd, prplMesh services, and UIs within one VM.
 
 ## Use the universal appliance
 
-Start with `prplmesh-0902-thin.tar` and its adjacent checksum in an empty
+Start with `prplmesh-0903-thin.tar` and its adjacent checksum in an empty
 directory:
 
 ```sh
-sha256sum -c prplmesh-0902-thin.tar.sha256
-tar -xf prplmesh-0902-thin.tar
-cd prplmesh-0902-thin
+sha256sum -c prplmesh-0903-thin.tar.sha256
+tar -xf prplmesh-0903-thin.tar
+cd prplmesh-0903-thin
 sha256sum -c SHA256SUMS
 sudo ./install-host.sh
 newgrp lxd
@@ -61,9 +61,9 @@ image. It does not clone repositories or download runtime artifacts. Monitor
 it with the selected instance name:
 
 ```sh
-lxc console prplmesh-20-0902 --show-log
-lxc exec prplmesh-20-0902 -- journalctl -fu prplmesh-lab.service
-lxc exec prplmesh-20-0902 -- prplmesh-lab-start status
+lxc console prplmesh-20-0903 --show-log
+lxc exec prplmesh-20-0903 -- journalctl -fu prplmesh-lab.service
+lxc exec prplmesh-20-0903 -- prplmesh-lab-start status
 ```
 
 When ready, the wmediumd Console is on host port `8090` and the Controller UI
@@ -71,16 +71,16 @@ is on `8091`. The NBAPI adapter is internal on guest loopback port `8092`.
 Normal lifecycle is:
 
 ```sh
-lxc stop prplmesh-20-0902
-lxc start prplmesh-20-0902
-lxc config set prplmesh-20-0902 boot.autostart false  # optional
+lxc stop prplmesh-20-0903
+lxc start prplmesh-20-0903
+lxc config set prplmesh-20-0903 boot.autostart false  # optional
 ```
 
 Imported appliances default to `boot.autostart=true`. Deleting the VM is
 destructive and must be explicit:
 
 ```sh
-lxc delete prplmesh-20-0902
+lxc delete prplmesh-20-0903
 ```
 
 ## Release engineering
@@ -105,13 +105,13 @@ PRPLMESH_RUNTIME_BASE_COMMIT=READY-COMMIT \
 PRPLMESH_LAB_PROFILE=20 \
 PRPLMESH_VM_NAME=READY-VM \
 PRPLMESH_THIN_CONFIRM=READY-VM \
-  deploy/lxd-vm/package-thin.sh release/0902
-PRPLMESH_RELEASE_ID=0902 \
-  deploy/lxd-vm/package-release.sh release/0902/prplmesh-0902-thin
+  deploy/lxd-vm/package-thin.sh release/0903
+PRPLMESH_RELEASE_ID=0903 \
+  deploy/lxd-vm/package-release.sh release/0903/prplmesh-0903-thin
 ```
 
 Thin conversion removes provisioned nested instances from the source VM,
 retains the verified local runtime image and exact source, and exports a
-stopped instance-only backup. It emits `prplmesh-0902-thin.tar`, its adjacent
+stopped instance-only backup. It emits `prplmesh-0903-thin.tar`, its adjacent
 `.sha256`, schema-2 `release.json`, inner `SHA256SUMS`, and this README.
 The bundle also includes `RELEASE-NOTES.md` for the delivered checkpoint.
