@@ -10,6 +10,8 @@ presentation. Start here:
   implementation decisions.
 - [Viewer reference](viewer.md) — stimulus-only viewer controls and visual
   conventions.
+- [Interactive room plan](interactive-room-plan.md) — staged development for
+  scripted, live drag-driven and hybrid demonstrations.
 
 The normal entry point is `demo/room-demo`. The prplMesh Network Topology view
 remains the authority for the controller's current association model, while
