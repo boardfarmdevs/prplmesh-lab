@@ -339,7 +339,8 @@ def compile_world(layout: dict[str, Any], mobility: dict[str, Any]) -> dict[str,
         "generations": generations,
     }
     result["golden_sha256"] = _hash(result)
-    return result
+    # Match the canonical JSON number shape used by jq and checked-in worlds.
+    return _normalize_numbers(result)
 
 
 def verify_world_plan(plan: dict[str, Any]) -> None:

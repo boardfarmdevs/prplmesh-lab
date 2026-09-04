@@ -109,6 +109,7 @@ AL-MAC and BSSID identities plus fixed process counts.
   bounded actuation.
 - `wmediumd/configurator/` — scenario language, world compiler and atomic
   dynamic-medium runner.
+- `demo/` — live/replay room conductor, manifest, bindings and tests.
 - `topology-adapter/` — internal read-only NBAPI normalization API; no public UI.
 - `controller-ui/` — host Go port of the RDK EM CLI topology application.
 - `wmediumd/observer/` — exact shared RDK wmediumd Console implementation.
@@ -118,6 +119,8 @@ AL-MAC and BSSID identities plus fixed process counts.
 - `docs/optimizer-configurator.md` — closed-loop operation and extension guide.
 - `docs/demonstrations.md` — appliance entry, live demonstrations, recovery,
   and evidence rules.
+- `docs/live-room-demo/` — room-demo operator manual, architecture and viewer
+  reference.
 - `docs/experiments.md` — experiment selection, commands, mechanisms and
   profile-specific readiness.
 - `docs/validation.md` — accepted results and remaining gaps.

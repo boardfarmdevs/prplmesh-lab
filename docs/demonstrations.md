@@ -26,7 +26,7 @@ actual profile and release in its name:
 
 ```sh
 lxc list
-VM=prplmesh-50-0902
+VM=prplmesh-50-0904
 lxc exec "$VM" -- bash
 ```
 
@@ -49,10 +49,15 @@ The standard outer-host proxy ports are:
 ```text
 wmediumd Console:   http://OUTER_HOST:8090/
 EasyMesh Controller UI: http://OUTER_HOST:8091/
+Live room demo:     http://OUTER_HOST:18891/viewer/?mode=live
 ```
 
 If an importer override was used, run `lxc config device show "$VM"` on the
 outer host to find the effective listen addresses.
+
+The room proxy is present after import but remains inert until the operator
+starts `demo/room-demo` inside the VM. See the
+[complete room-demo manual](live-room-demo/manual.md).
 
 ## Preflight and final gate
 

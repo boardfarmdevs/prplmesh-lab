@@ -9,8 +9,8 @@ steer_timeout_seconds: 10
 post_steer_cooldown_seconds: 30
 failure_backoff_seconds: 60
 maximum_failure_backoff_seconds: 600
-# The 20-client live lab currently needs roughly 30-40 seconds to collect the
-# complete standards-facing candidate snapshot through serialized libemcli.
+# The prplMesh hwsim provider may need tens of seconds for NBAPI registration,
+# statistics update, and complete UnassociatedSTA collection.
 reject_stale_metrics_after_seconds: 60
 band_upgrade_enabled: false
 minimum_band_upgrade_target_rcpi: 120

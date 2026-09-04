@@ -64,7 +64,7 @@ Enter the selected VM from the outer host:
 
 ```sh
 lxc list
-VM=prplmesh-20-0902
+VM=prplmesh-20-0904
 lxc exec "$VM" -- bash
 ```
 

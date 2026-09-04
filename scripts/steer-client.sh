@@ -5,6 +5,11 @@ ROOT=$(cd "$(dirname "$0")/.." && pwd)
 # shellcheck source=lib/observer-status.sh
 source "$ROOT/scripts/lib/observer-status.sh"
 CONTROLLER=prpl-controller
+request_only=0
+if [[ ${1:-} == --request-only ]]; then
+    request_only=1
+    shift
+fi
 client_name=${1:?client: sta-NN, iot-NN or STA MAC}
 target_name=${2:?target: controller, agent-N, extender-N or BSSID}
 steering_ui=${PRPL_STEERING_UI:-http://127.0.0.1:8091/api/v1/steering-event}
@@ -111,6 +116,11 @@ if [ "$source" != "$target" ]; then
     status_action "Sending the NBAPI BTM request for $mac to $target."
     lxc exec "$CONTROLLER" -- ubus call "${object}.MultiAPSTA" \
         BTMRequest "$request" >/dev/null
+    if ((request_only)); then
+        status_pass "The prplMesh NBAPI accepted the BTM request; verification is delegated to the caller."
+        echo "PASS: BTM request submitted for $client_name to $target"
+        exit 0
+    fi
 else
     status_pass "$client_name is already on $target_name ($target)."
 fi
