@@ -285,7 +285,7 @@ def parser() -> argparse.ArgumentParser:
                              help="demo contract JSON (default: private client room walk)")
         command.add_argument("--world", type=Path, help="override the manifest Golden World")
         command.add_argument("--bindings", type=Path, help="override manifest role bindings")
-        command.add_argument("--socket", default="/run/wmediumd-control.sock",
+        command.add_argument("--socket", default="/run/prpl-wmediumd/control.sock",
                              help="wmediumd control socket")
     run = commands.choices["run"]
     run.add_argument("--mode", choices=("stimulus", "recommend", "act"), default="recommend",
