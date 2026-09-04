@@ -44,4 +44,31 @@ const branchPositions = controller.topologyLandscapeLayout(nodes, branch, 1600, 
 assert.notDeepEqual(branchPositions.get('controller'), { x: 0, y: 0 },
   'a multihop branch was incorrectly classified as a star');
 
-console.log('PASS: star and branch topologies use the same space-efficient Controller-first hierarchy');
+assert.equal(controller.topologySignalLevel({ available: true, rssi: -41 }), 10);
+assert.equal(controller.topologySignalLevel({ available: true, rssi: -50 }), 9);
+assert.equal(controller.topologySignalLevel({ available: true, rssi: -56 }), 7);
+assert.equal(controller.topologySignalLevel({ available: true, rssi: -63 }), 6);
+assert.equal(controller.topologySignalLevel({ available: true, rssi: -72 }), 4);
+assert.equal(controller.topologySignalLevel({ available: true, rssi: -82 }), 2);
+assert.equal(controller.topologySignalLevel({ available: true, rssi: -90 }), 1);
+assert.equal(controller.topologySignalLevel({ available: false, rssi: null }), 0);
+
+const meterRight = controller.topologySignalMeterGeometry({
+  from: { x: 0, y: 20 }, to: { x: 10, y: 20 }, iconSize: 30
+}, 9);
+const meterLeft = controller.topologySignalMeterGeometry({
+  from: { x: 20, y: 20 }, to: { x: 10, y: 20 }, iconSize: 30
+}, 9);
+assert.equal(meterRight.side, 1,
+  'signal meter was not placed away from a left-side RF line');
+assert.equal(meterLeft.side, -1,
+  'signal meter was not placed away from a right-side RF line');
+assert.ok(meterRight.x > 25 && meterLeft.x + meterLeft.width < -5,
+  'signal meter overlaps the client icon');
+const meterBottom = controller.topologySignalMeterGeometry({
+  from: { x: 0, y: 20 }, to: { x: 10, y: 20 }, iconSize: 30
+}, 0);
+assert.ok(Math.abs((meterBottom.y + meterBottom.height) - 35) < 0.001,
+  'signal meter does not span the complete client icon height');
+
+console.log('PASS: topology layout and ten-segment client signal meters are deterministic');
