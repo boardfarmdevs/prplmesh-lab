@@ -63,6 +63,10 @@ scripts/steer-client.sh iot-04 controller
 # One move per currently connected client, or an exact attempt count.
 scripts/steer-soak.sh
 scripts/steer-soak.sh 50
+
+# Concurrent moves, explicitly selected or topology-derived.
+scripts/steer-batch.sh sta-01 agent-1 sta-02 agent-2 iot-03 controller
+scripts/steer-batch.sh --count 5
 ```
 
 Longer tests intentionally change active topology or medium state:
