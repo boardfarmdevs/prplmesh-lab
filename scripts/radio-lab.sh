@@ -293,7 +293,7 @@ stop_medium()
 
 start_userspace_medium()
 {
-    local command expected_patchset hash pid provenance
+    local attempt command expected_patchset hash pid provenance
 
     expected_patchset=$(
         cd "$ROOT"
@@ -336,19 +336,27 @@ start_userspace_medium()
     else
         "${command[@]}" > "$WMEDIUMD_LOG" 2>&1 9>&- &
     fi
-    echo $! > "$WMEDIUMD_PIDFILE"
-    sleep 1
-    if ! kill -0 "$(cat "$WMEDIUMD_PIDFILE")" 2>/dev/null; then
-        tail -30 "$WMEDIUMD_LOG" >&2 || true
-        return 1
-    fi
-    for socket in "$WMEDIUMD_CONTROL" "$WMEDIUMD_METRICS" "$WMEDIUMD_OBSERVER"; do
-        [ -S "$socket" ] || {
-            echo "wmediumd socket did not appear: $socket" >&2
+    pid=$!
+    echo "$pid" > "$WMEDIUMD_PIDFILE"
+    for attempt in $(seq 1 100); do
+        if ! kill -0 "$pid" 2>/dev/null; then
+            tail -30 "$WMEDIUMD_LOG" >&2 || true
             stop_medium
             return 1
-        }
+        fi
+        if [ -S "$WMEDIUMD_CONTROL" ] && [ -S "$WMEDIUMD_METRICS" ] &&
+           [ -S "$WMEDIUMD_OBSERVER" ]; then
+            break
+        fi
+        sleep 0.1
     done
+    if [ ! -S "$WMEDIUMD_CONTROL" ] || [ ! -S "$WMEDIUMD_METRICS" ] ||
+       [ ! -S "$WMEDIUMD_OBSERVER" ]; then
+        echo "wmediumd sockets did not become ready within 10 seconds" >&2
+        tail -30 "$WMEDIUMD_LOG" >&2 || true
+        stop_medium
+        return 1
+    fi
     install -m 0644 "$WMEDIUMD_CONFIG" "$WMEDIUMD_CONFIG_SNAPSHOT"
     pid=$(cat "$WMEDIUMD_PIDFILE")
     hash=$(sha256sum "$ROOT/build/bin/wmediumd" | awk '{print $1}')

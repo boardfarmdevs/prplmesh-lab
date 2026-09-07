@@ -55,6 +55,7 @@ for unused in $(seq 1 120); do
     sleep 2
 done
 guest_commit=$(lxc exec "$NAME" -- git -C /opt/prplmesh-lab rev-parse HEAD)
+lxc exec "$NAME" -- test ! -d /opt/easymesh-observability || { echo 'Remove monitoring credentials/data before exporting; see observability/README.md' >&2; exit 1; }
 [ "$guest_commit" = "$(git -C "$ROOT" rev-parse HEAD)" ] || {
     echo "guest source $guest_commit does not match release source" >&2
     exit 1
@@ -84,6 +85,7 @@ trap restart EXIT
 lxc export "$NAME" "$OUTPUT" --instance-only --compression zstd </dev/null
 printf 'archive_bytes=%s\n' "$(stat -c %s "$OUTPUT")" >> "$TRIM_REPORT"
 install -m 0755 "$ROOT/deploy/lxd-vm/import.sh" "$BUNDLE/import.sh"
+cp -a "$ROOT/deploy/lxd-vm/observability" "$BUNDLE/observability"
 install -m 0755 "$ROOT/deploy/lxd-vm/install-host.sh" "$BUNDLE/install-host.sh"
 install -m 0755 "$ROOT/deploy/lxd-vm/package-release.sh" "$BUNDLE/package-release.sh"
 install -m 0644 "$ROOT/deploy/lxd-vm/README.md" "$BUNDLE/README.md"
@@ -121,5 +123,6 @@ jq -n \
     sha256sum "$(basename "$OUTPUT")" import.sh install-host.sh \
         package-release.sh README.md release.env release.json trim-report.txt \
         > SHA256SUMS
+    find observability -type f -print0 | sort -z | xargs -0 sha256sum >> SHA256SUMS
 )
 echo "$BUNDLE"

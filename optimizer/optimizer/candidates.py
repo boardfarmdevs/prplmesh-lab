@@ -42,6 +42,10 @@ class CandidateMetricsError(RuntimeError):
     """The controller could not produce a trustworthy candidate snapshot."""
 
 
+class CandidateMetricsUnavailable(CandidateMetricsError):
+    """A temporary collection failure prevented a fresh candidate snapshot."""
+
+
 def operating_class(band: str | int, channel: int) -> int:
     """Return the 20 MHz global operating class used by the lab radio."""
     normalized = normalize_band(band)

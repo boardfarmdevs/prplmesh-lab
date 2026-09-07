@@ -176,7 +176,7 @@ build_vm()
                 ;;
         esac
     fi
-    lxc config set "$NAME" boot.autostart true
+    lxc config set "$NAME" boot.autostart false
     lxd_set_device_property "$NAME" root size "$DISK"
     guest_ip=$(select_guest_ipv4)
     lxd_set_device_property "$NAME" eth0 network "$NETWORK"

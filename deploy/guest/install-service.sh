@@ -22,9 +22,12 @@ install -m 0755 "$TARGET/deploy/guest/prplmesh-lab-start" \
     /usr/local/sbin/prplmesh-lab-start
 install -m 0644 "$TARGET/deploy/guest/prplmesh-lab.service" \
     /etc/systemd/system/prplmesh-lab.service
+install -m 0644 "$TARGET/deploy/guest/prplmesh-room-demo.service" \
+    /etc/systemd/system/prplmesh-room-demo.service
 
 PRPL_UI_USER=root "$TARGET/controller-ui/install.sh"
 "$TARGET/wmediumd/observer/install-prplmesh.sh"
 systemctl daemon-reload
 systemctl enable prplmesh-lab.service
+systemctl enable prplmesh-room-demo.service
 echo 'Installed prplmesh-lab.service; it will start automatically on the next boot.'

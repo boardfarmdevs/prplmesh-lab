@@ -6,6 +6,11 @@ the RDK-B EasyMesh source tree, images, containers, medium, or runtime.
 
 ## Accepted profile
 
+The 0906 refresh adds a locally served interactive room on rev120, using
+prplMesh NBAPI metrics and BTM steering. See [0906 deployment and operation](reference/release-0906.md)
+for thin import, URLs, credentials, fixed-pool world switching and recovery.
+Outer VM autostart is disabled; manually starting the VM starts its lab services.
+
 The current scale profile contains:
 
 - one controller with a colocated agent;

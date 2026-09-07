@@ -7,7 +7,7 @@ import time
 from typing import Any, Callable, Iterable
 from urllib.request import urlopen
 
-from .candidates import CandidateMetricsError
+from .candidates import CandidateMetricsError, CandidateMetricsUnavailable
 from .model import (
     CandidateObservation,
     ClientObservation,
@@ -16,6 +16,7 @@ from .model import (
     format_time,
     normalize_band,
     normalize_mac,
+    parse_time,
     sorted_candidates,
     sorted_clients,
 )
@@ -66,21 +67,36 @@ class PrplMeshObserver:
         *,
         fetcher=None,
         candidate_provider=None,
+        current_link_fallback=None,
         trust_api_metric_timestamp: bool = True,
         clock=None,
     ) -> None:
         self.base_url = base_url.rstrip("/")
         self.fetcher = fetcher or _fetch
         self.candidate_provider = candidate_provider
+        self.current_link_fallback = current_link_fallback
         self.trust_api_metric_timestamp = trust_api_metric_timestamp
         self.clock = clock or (lambda: datetime.now(timezone.utc))
         self.sequence = 0
         self.last_raw: dict[str, Any] | None = None
 
     def observe(self) -> Snapshot:
-        topology = self.fetcher(f"{self.base_url}/api/topology")
+        for attempt in range(3):
+            try:
+                topology = self.fetcher(f"{self.base_url}/api/topology")
+            except OSError as error:
+                raise CandidateMetricsUnavailable("prplMesh topology collection failed") from error
+            devices, bsses, raw_clients = _flatten(topology)
+            identities = [normalize_mac(client["id"]) for client in raw_clients]
+            if len(identities) == len(set(identities)):
+                break
+            if attempt < 2:
+                time.sleep(0.5)
+        else:
+            raise CandidateMetricsUnavailable(
+                "prplMesh topology changed during collection: duplicate client ownership"
+            )
         sampled_at = topology.get("generated_at") or format_time(self.clock())
-        devices, bsses, raw_clients = _flatten(topology)
         clients: list[ClientObservation] = []
         for item in raw_clients:
             rcpi_value = int(item.get("signal_raw") or 0)
@@ -108,7 +124,12 @@ class PrplMeshObserver:
                     ),
                 )
             )
-        normalized_clients = sorted_clients(clients)
+        normalized_clients = sorted_clients(
+            self.current_link_fallback(client)
+            if self.current_link_fallback is not None
+            and (client.rcpi is None or client.metric_observed_at is None) else client
+            for client in clients
+        )
         candidates: list[CandidateObservation] = []
         for client in normalized_clients:
             for bss in bsses:
@@ -133,7 +154,7 @@ class PrplMeshObserver:
                     normalized_clients,
                     sorted_candidates(candidates),
                     bsses,
-                    sampled_at,
+                    format_time(self.clock()) if self.current_link_fallback else sampled_at,
                 )
             )
             measured_keys = {(item.sta_mac, item.bssid) for item in measured}
@@ -201,6 +222,7 @@ class PrplMeshCandidateProvider:
         self.registered: set[tuple[str, str]] = set()
         self.object_cache: dict[tuple[str, str], str] = {}
         self.last_raw: list[dict[str, Any]] = []
+        self.last_selected_sta_macs: set[str] = set()
 
     def _call(self, obj: str, method: str, payload: dict[str, Any]) -> dict[str, Any]:
         try:
@@ -215,7 +237,7 @@ class PrplMeshCandidateProvider:
                 timeout=12,
             )
         except (subprocess.CalledProcessError, subprocess.TimeoutExpired) as error:
-            raise CandidateMetricsError(
+            raise CandidateMetricsUnavailable(
                 f"prplMesh NBAPI call failed: {obj} {method}"
             ) from error
         return _first_json(completed.stdout)
@@ -302,6 +324,9 @@ class PrplMeshCandidateProvider:
             radio_metadata[radio] = bss
 
         self.last_raw = []
+        self.last_selected_sta_macs = {sta_mac for _, sta_mac in targets}
+        if not targets:
+            return []
         for radio, sta_mac in sorted(targets):
             if (radio, sta_mac) in self.registered:
                 continue
@@ -319,6 +344,11 @@ class PrplMeshCandidateProvider:
             )
             self.registered.add((radio, sta_mac))
 
+        baseline = {
+            (radio, sta_mac): value
+            for radio in sorted({radio for radio, _ in targets})
+            for sta_mac, value in self._radio_metrics(radio).items()
+        }
         response = self._call(self.NETWORK, "UpdateUnassociatedStationsStats", {})
         self.last_raw.append({"operation": "update", "response": response})
         deadline = time.monotonic() + self.timeout_seconds
@@ -328,13 +358,15 @@ class PrplMeshCandidateProvider:
             metrics.clear()
             for radio in sorted({radio for radio, _ in expected}):
                 for sta_mac, value in self._radio_metrics(radio).items():
-                    metrics[(radio, sta_mac)] = value
+                    key = (radio, sta_mac)
+                    if key not in baseline or parse_time(value[1]) > parse_time(baseline[key][1]):
+                        metrics[key] = value
             if expected.issubset(metrics):
                 break
             time.sleep(0.5)
         missing = sorted(expected - set(metrics))
         if missing:
-            raise CandidateMetricsError(
+            raise CandidateMetricsUnavailable(
                 f"prplMesh candidate metrics incomplete after {self.timeout_seconds}s: {missing}"
             )
 

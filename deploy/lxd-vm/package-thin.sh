@@ -87,6 +87,7 @@ for unused in $(seq 1 120); do
     sleep 2
 done
 guest_commit=$(lxc exec "$NAME" -- git -C /opt/prplmesh-lab rev-parse HEAD)
+lxc exec "$NAME" -- test ! -d /opt/easymesh-observability || { echo 'Remove monitoring credentials/data before exporting; see observability/README.md' >&2; exit 1; }
 prplmesh_thin_guest_source_allowed "$guest_commit" \
     "$RUNTIME_BASE_COMMIT" "$SOURCE_COMMIT" || {
     echo "guest source $guest_commit matches neither accepted runtime base $RUNTIME_BASE_COMMIT nor retry source $SOURCE_COMMIT" >&2
@@ -233,6 +234,7 @@ lxc config set "$NAME" boot.mode uefi-nosecureboot 2>/dev/null || \
     lxc config set "$NAME" security.secureboot false
 printf 'archive_bytes=%s\n' "$(stat -c %s "$OUTPUT")" >> "$TRIM_REPORT"
 install -m 0755 "$ROOT/deploy/lxd-vm/import.sh" "$BUNDLE/import.sh"
+cp -a "$ROOT/deploy/lxd-vm/observability" "$BUNDLE/observability"
 install -m 0755 "$ROOT/deploy/lxd-vm/install-host.sh" "$BUNDLE/install-host.sh"
 install -m 0755 "$ROOT/deploy/lxd-vm/package-release.sh" "$BUNDLE/package-release.sh"
 sed "s/0904/${RELEASE_ID}/g" "$ROOT/deploy/lxd-vm/README.md" \
@@ -277,5 +279,6 @@ jq -n \
     sha256sum "$(basename "$OUTPUT")" import.sh install-host.sh \
         package-release.sh README.md RELEASE-NOTES.md release.env release.json trim-report.txt \
         > SHA256SUMS
+    find observability -type f -print0 | sort -z | xargs -0 sha256sum >> SHA256SUMS
 )
 echo "$BUNDLE"

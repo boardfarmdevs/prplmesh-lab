@@ -146,4 +146,19 @@ test ! -e "$work/proxy-added"
 ! grep -Fq 'select-thin-profile.sh' "$work/actions"
 ! grep -Fq 'config device add' "$work/actions"
 
-echo 'PASS: thin import waits for nested LXD before profile publication'
+mkdir -p "$work/release/observability"
+cat > "$work/release/observability/enable.sh" <<'SH'
+#!/usr/bin/env bash
+printf 'monitoring-enabled %s\n' "$*" >> "${FAKE_LXC_ROOT:?}/actions"
+SH
+: > "$work/actions"
+env PATH="$work/bin:$PATH" FAKE_LXC_ROOT="$work" \
+    PRPLMESH_UI_HOST_IP=127.0.0.1 PRPLMESH_NESTED_LXD_READY_INTERVAL=0 \
+    FAKE_NESTED_READY_AFTER=1 FAKE_ADDRESS_READY_AFTER=1 \
+    "$work/release/import.sh" --profile 20 --monitoring \
+    "$work/release/appliance.tar.zst" > "$work/monitoring.out"
+monitoring_line=$(grep -nF 'monitoring-enabled prplmesh-20-0904 127.0.0.1' "$work/actions" | cut -d: -f1)
+start_line=$(grep -nF 'exec prplmesh-20-0904 -- systemctl --no-block start prplmesh-lab.service' "$work/actions" | cut -d: -f1)
+test "$monitoring_line" -lt "$start_line"
+
+echo 'PASS: thin import waits for nested LXD and enables optional monitoring before lab startup'

@@ -1,5 +1,31 @@
 # prplMesh lab acceptance tests
 
+## Interactive 0906 room
+
+With the default 20-client room service already running, inside the appliance:
+
+```sh
+cd /opt/prplmesh-lab
+python3 tests/room-world-switch-smoke.py --yes-act --timeout 900 --output /root/room-worlds.json
+```
+
+This opt-in test changes live RF, tests several room sizes and client absence/
+return, requires measured fleet convergence, checks unchanged container/native
+process identities, and restores the default world in `finally`. Do not run
+another scenario or RF writer concurrently. Use `--all-worlds` for the entire
+compatible catalog. Preserve the output even when a gate fails.
+
+Local deterministic gates (no lab required):
+
+```sh
+python3 -m unittest discover -s tests -p test_wmediumd_startup.py
+PYTHONPATH=demo:wmediumd/configurator:optimizer python3 -m unittest discover -s demo/tests
+PYTHONPATH=optimizer:wmediumd/configurator python3 -m pytest optimizer/tests wmediumd/configurator/tests
+node tests/viewer-play-drag-test.js
+node tests/viewer-world-loading-test.js
+node tests/signal-meter-test.js
+```
+
 ## Appliance command context
 
 The portable deployment is an outer LXD VM containing nested prplMesh and
