@@ -9,16 +9,18 @@ fi
 usage()
 {
     if [ "${LAB_PROFILE_SELECTABLE:-false}" = true ]; then
-        echo "usage: $0 --profile 20|50|100 [PRPLMESH-LXD-BACKUP.tar.zst]" >&2
+        echo "usage: $0 --profile 20|50|100 [--monitoring] [PRPLMESH-LXD-BACKUP.tar.zst]" >&2
     else
-        echo "usage: $0 [PRPLMESH-LXD-BACKUP.tar.zst]" >&2
+        echo "usage: $0 [--monitoring] [PRPLMESH-LXD-BACKUP.tar.zst]" >&2
     fi
 }
 
+MONITORING=false
 SELECTED_CLIENTS=
 BACKUP=
 while [ "$#" -gt 0 ]; do
     case "$1" in
+        --monitoring) MONITORING=true; shift ;;
         --profile)
             [ "$#" -ge 2 ] || { usage; exit 2; }
             SELECTED_CLIENTS=$2
@@ -82,6 +84,9 @@ if [ -z "$BACKUP" ]; then
     BACKUP=${candidates[0]}
 fi
 NAME=${PRPLMESH_VM_NAME:-$DEFAULT_NAME}
+if [ "$MONITORING" = true ]; then
+    test -f "$SCRIPT_DIR/observability/enable.sh" || { echo 'Monitoring bundle is missing' >&2; exit 1; }
+fi
 NETWORK=${PRPLMESH_LXD_NETWORK:-lxdbr0}
 HOST_IP=${PRPLMESH_UI_HOST_IP:-$(ip -4 route get 1.1.1.1 2>/dev/null | \
     awk '{for (i=1; i<=NF; i++) if ($i == "src") {print $(i+1); exit}}')}
@@ -163,7 +168,7 @@ lxc config set "$NAME" volatile.cloud-init.instance-id "$instance_uuid"
 lxc config set "$NAME" volatile.vsock_id "$vsock_id"
 lxc config set "$NAME" limits.cpu "${PRPLMESH_VM_CPUS:-$SELECTED_CPUS}"
 lxc config set "$NAME" limits.memory "${PRPLMESH_VM_MEMORY:-$SELECTED_MEMORY}"
-lxc config set "$NAME" boot.autostart true
+lxc config set "$NAME" boot.autostart false
 if lxc config set "$NAME" boot.mode uefi-nosecureboot 2>/dev/null; then
     lxc config unset "$NAME" security.secureboot 2>/dev/null || true
 else
@@ -245,9 +250,14 @@ lxc config device add "$NAME" controller-ui proxy nat=true \
 lxc config device add "$NAME" room-demo-viewer proxy nat=true \
     listen="tcp:${HOST_IP}:${ROOM_PORT}" connect="tcp:${guest_ip}:8891"
 
+if [ "$MONITORING" = true ]; then
+    bash "$SCRIPT_DIR/observability/enable.sh" "$NAME" "$HOST_IP"
+fi
+
 if [ "$PROFILE_SELECTABLE" = true ]; then
     lxc exec "$NAME" -- systemctl reset-failed prplmesh-lab.service
     lxc exec "$NAME" -- systemctl --no-block start prplmesh-lab.service
+    lxc exec "$NAME" -- systemctl --no-block start prplmesh-room-demo.service
 fi
 
 echo "LXD VM started: $NAME"

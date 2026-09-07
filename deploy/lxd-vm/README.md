@@ -69,17 +69,23 @@ lxc exec prplmesh-20-0904 -- prplmesh-lab-start status
 
 When ready, the wmediumd Console is on host port `8090`, the Controller UI is
 on `8091`, and the room-demo proxy is on `18891`. The room server is
-operator-started with `demo/room-demo`; the NBAPI adapter is internal on guest
-loopback port `8092`.
+started by `prplmesh-room-demo.service` for the 20-client profile; stop that
+service before starting a manual `demo/room-demo` session. The NBAPI adapter
+is internal on guest loopback port `8092`. Open
+`http://HOST_IP:18891/viewer/?mode=interactive` for the live room and its
+built-in manual. The release's `INTERACTIVE-0906.md` covers credentials,
+automatic world loading, fixed-pool presence and RF recovery.
 Normal lifecycle is:
 
 ```sh
 lxc stop prplmesh-20-0904
 lxc start prplmesh-20-0904
-lxc config set prplmesh-20-0904 boot.autostart false  # optional
+lxc config get prplmesh-20-0904 boot.autostart
 ```
 
-Imported appliances default to `boot.autostart=true`. Deleting the VM is
+Imported appliances default to `boot.autostart=false`. Manually starting the
+VM starts its nested lab and, for the 20-client profile, its interactive room.
+The VM does not start automatically when the outer host reboots. Deleting it is
 destructive and must be explicit:
 
 ```sh
@@ -118,3 +124,16 @@ retains the verified local runtime image and exact source, and exports a
 stopped instance-only backup. It emits `prplmesh-0904-thin.tar`, its adjacent
 `.sha256`, schema-2 `release.json`, inner `SHA256SUMS`, and this README.
 The bundle also includes `RELEASE-NOTES.md` for the delivered checkpoint.
+## Optional container management and metrics
+
+Newly packaged releases accept `bash import.sh --profile 20 --monitoring`.
+For an existing running VM, execute
+`bash observability/enable.sh VM HOST_IPV4 LABEL` on its physical LXD host.
+This installs the full bundled inner LXD UI and a provisioned Grafana container
+dashboard on HTTPS ports 18892 and 18893. Authentication is required, Prometheus
+stays private, and VM autostart is unchanged. Omit the flag for the original
+offline/no-monitoring import. Existing immutable release archives are unchanged.
+See [first login and resource limits](observability/README.md) and the
+[detailed reference](../../reference/lxd-ui-and-monitoring.md).
+This source support is shared with RDK; runtime deployment/testing for this
+change is RDK on rev140 only, not the prplMesh lab on rev120.

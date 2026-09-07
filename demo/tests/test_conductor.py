@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import tempfile
 import unittest
+from unittest.mock import patch
 from pathlib import Path
 import sys
 
@@ -16,6 +17,19 @@ from room_demo.events import EventStore
 
 
 class ConductorProjectionTests(unittest.TestCase):
+    def test_health_uses_prplmesh_nodes_not_rdk_database_counts(self):
+        conductor, store = self._conductor()
+        conductor.manifest["health"] = {"interval_seconds": 1,
+            "expected_mesh_devices": 5, "expected_clients": 20}
+        for clients, expected in ((20, True), (19, False)):
+            with patch.object(conductor, "_wait_for_run", return_value=True), \
+                 patch.object(conductor, "_active", return_value=True), \
+                 patch.object(conductor, "_sleep", return_value=True), \
+                 patch("room_demo.conductor.mesh_health", return_value={
+                     "api_active": clients, "topology_nodes": 5, "complete_nodes": 5}):
+                conductor._health_worker()
+            self.assertEqual(store.current()["health"]["healthy"], expected)
+
     def test_unexpected_worker_failure_is_retained_as_fatal(self):
         conductor, store = self._conductor()
 

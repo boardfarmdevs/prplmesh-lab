@@ -8,7 +8,7 @@
   "hero": {
     "role": "sta_mobile_01",
     "container": "prpl-client-03",
-    "friendly_name": "Private-Laptop",
+    "friendly_name": "sta-02",
     "expected_ssid": "private_ssid",
     "expected_band": "5"
   },

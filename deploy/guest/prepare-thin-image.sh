@@ -16,6 +16,7 @@ agents=${PROVISIONED_AGENT_COUNT:?}
 clients=${PROVISIONED_CLIENT_COUNT:?}
 expected=$((1 + agents + clients))
 
+systemctl stop prplmesh-room-demo.service
 systemctl stop prplmesh-lab.service
 expected_instances=(prpl-controller)
 for ordinal in $(seq 1 "$agents"); do

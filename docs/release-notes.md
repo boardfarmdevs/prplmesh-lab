@@ -2,6 +2,17 @@
 
 Release identifiers describe tested lab delivery checkpoints, not upstream prplMesh versions.
 
+## 0906
+
+- Adds the interactive room control plane, automatic fixed-pool world loading,
+  Play-and-drag operation, presence isolation/rejoin and a built-in manual.
+- Uses native prplMesh NBAPI telemetry, BSSID-bound parent projection and BTM
+  steering; cached candidate samples cannot satisfy a new measurement request.
+- Adds a persistent room service for the 20-client profile and disables outer
+  VM autostart in both builder and importer.
+- Reuses the accepted native runtime and records the exact refreshed source
+  snapshot separately from its Git base. See [operations](../reference/release-0906.md).
+
 ## 0824
 
 - No independent prplMesh appliance was delivered; this checkpoint established the virtual-radio lab requirements later reused by the prplMesh implementation.

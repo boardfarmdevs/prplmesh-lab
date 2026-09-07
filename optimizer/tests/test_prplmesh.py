@@ -3,7 +3,7 @@ from datetime import datetime, timezone
 
 import pytest
 
-from optimizer.candidates import CandidateMetricsError
+from optimizer.candidates import CandidateMetricsError, CandidateMetricsUnavailable
 from optimizer.model import CandidateObservation, ClientObservation
 from optimizer.cli import parser
 from optimizer.prplmesh import PrplMeshCandidateProvider, PrplMeshObserver, _first_json
@@ -93,6 +93,34 @@ def test_observer_does_not_replace_missing_metric_time_with_http_sample_time():
     assert observer.observe().clients[0].metric_observed_at is None
 
 
+def test_observer_retries_non_atomic_roaming_snapshot(monkeypatch):
+    duplicate = _topology()
+    duplicate["devices"][1]["radios"][0]["bsses"][0]["clients"] = copy.deepcopy(
+        duplicate["devices"][0]["radios"][0]["bsses"][0]["clients"])
+    snapshots = iter([duplicate, _topology()])
+    monkeypatch.setattr("optimizer.prplmesh.time.sleep", lambda seconds: None)
+    observer = PrplMeshObserver(fetcher=lambda url: next(snapshots), clock=lambda: NOW)
+    assert observer.observe().health.clients == 1
+
+
+def test_ambiguous_ownership_and_transport_failure_are_unavailable(monkeypatch):
+    duplicate = _topology()
+    duplicate["devices"][1]["radios"][0]["bsses"][0]["clients"] = copy.deepcopy(
+        duplicate["devices"][0]["radios"][0]["bsses"][0]["clients"])
+    monkeypatch.setattr("optimizer.prplmesh.time.sleep", lambda seconds: None)
+    observer = PrplMeshObserver(fetcher=lambda url: duplicate, clock=lambda: NOW)
+    with pytest.raises(CandidateMetricsUnavailable, match="duplicate client ownership"):
+        observer.observe()
+    assert observer.last_raw is None
+
+    def unavailable(url):
+        raise OSError("temporary adapter interruption")
+
+    observer = PrplMeshObserver(fetcher=unavailable, clock=lambda: NOW)
+    with pytest.raises(CandidateMetricsUnavailable, match="collection failed"):
+        observer.observe()
+
+
 def test_candidate_provider_requires_explicit_simulated_metric_authority():
     provider = PrplMeshCandidateProvider()
     with pytest.raises(CandidateMetricsError, match="allow-simulated-candidates"):
@@ -116,7 +144,9 @@ class _Provider(PrplMeshCandidateProvider):
 
     def _radio_metrics(self, radio):
         assert radio.endswith("Radio.2")
-        return {"02:00:00:10:01:00": (122, STAMP)}
+        updates = sum(method == "UpdateUnassociatedStationsStats" for _, method, _ in self.calls)
+        timestamp = STAMP if updates else METRIC_STAMP
+        return {"02:00:00:10:01:00": (122, timestamp)}
 
 
 def test_candidate_provider_registers_updates_and_returns_standard_metric():
@@ -197,6 +227,28 @@ def test_candidate_provider_can_limit_measurement_to_selected_client():
 
     assert list(provider((client,), (candidate,), [bss], STAMP)) == []
     assert not any(method == "AddUnassociatedStation" for _, method, _ in provider.calls)
+
+
+def test_candidate_provider_rejects_cached_metrics_after_update():
+    provider = _Provider()
+    provider._radio_metrics = lambda radio: {"02:00:00:10:01:00": (122, METRIC_STAMP)}
+    observer = PrplMeshObserver(fetcher=lambda url: _topology(),
+                                candidate_provider=provider, clock=lambda: NOW)
+    with pytest.raises(CandidateMetricsError, match="incomplete"):
+        observer.observe()
+
+
+def test_missing_serving_metric_uses_only_explicit_fallback():
+    from dataclasses import replace
+
+    topology = _topology()
+    topology["devices"][0]["radios"][0]["bsses"][0]["clients"][0]["signal_raw"] = None
+    observer = PrplMeshObserver(fetcher=lambda url: topology, clock=lambda: NOW,
+        current_link_fallback=lambda client: replace(client, rcpi=90,
+            metric_observed_at=STAMP, measurement_source="test_kernel_sample"))
+    sample = observer.observe().clients[0]
+    assert sample.rcpi == 90
+    assert sample.measurement_source == "test_kernel_sample"
 
 
 def test_first_json_accepts_ubus_prefix_noise_and_rejects_non_objects():
