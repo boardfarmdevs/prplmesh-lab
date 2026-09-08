@@ -4,6 +4,10 @@ destination=/opt/easymesh-observability
 test "$EUID" = 0 || { echo 'Run as root inside the appliance VM' >&2; exit 1; }
 test -f "$destination/.managed-by-easymesh"
 test -f "$destination/state/previous-lxd.json"
+if [ -f "$destination/state/outer-metrics.json" ]; then
+    echo 'Run observability/disable-outer-metrics.sh VM on the outer host first to revoke outer metrics trust.' >&2
+    exit 1
+fi
 docker compose --project-directory "$destination" down
 if [ -s "$destination/state/metrics-fingerprint" ]; then
     fingerprint=$(cat "$destination/state/metrics-fingerprint")

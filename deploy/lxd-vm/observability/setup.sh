@@ -74,7 +74,11 @@ install -d -m 0755 "$destination/grafana/provisioning/datasources" \
 install -m 0644 "$source_dir/grafana/provisioning/datasources/prometheus.yml" "$destination/grafana/provisioning/datasources/"
 install -m 0644 "$source_dir/grafana/provisioning/dashboards/lxd.yml" "$destination/grafana/provisioning/dashboards/"
 install -m 0644 "$source_dir/grafana/dashboards/lxd-containers.json" "$destination/grafana/dashboards/"
-sed "s/@LAB_LABEL@/$label/g" "$source_dir/prometheus.yml" > "$destination/prometheus.yml"
+python3 "$source_dir/outer-metrics.py" render "$source_dir/prometheus.yml" "$destination/prometheus.yml" \
+    --label "$label" --settings "$destination/state/outer-metrics.json"
+if [ -f "$destination/state/outer-metrics.json" ]; then
+    install -m 0644 "$source_dir/grafana/dashboards/lxd-outer-vms.json" "$destination/grafana/dashboards/"
+fi
 chmod 0644 "$destination/prometheus.yml"
 if [ ! -e "$destination/.env" ]; then
     install -m 0600 "$source_dir/.env.example" "$destination/.env"
