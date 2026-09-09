@@ -41,8 +41,10 @@ case "$ACTION" in
             exit 0
         fi
         lxc exec "$CONTROLLER" -- systemctl stop "$UNIT" 2>/dev/null || true
+        lxc exec "$CONTROLLER" -- systemctl reset-failed "$UNIT" 2>/dev/null || true
         lxc exec "$CONTROLLER" -- systemd-run --unit "${UNIT%.service}" \
             --property Restart=on-failure \
+            --property TimeoutStopSec=10 \
             /usr/bin/python3 /mnt/project/topology-adapter/server.py \
             --listen 0.0.0.0 --port "$PORT" >/dev/null
         for unused in $(seq 1 50); do
