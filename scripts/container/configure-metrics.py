@@ -21,7 +21,7 @@ def policy(interval=1):
     if isinstance(interval, bool) or not isinstance(interval, int) or not 1 <= interval <= 60:
         raise ValueError("metrics interval must be an integer from 1 to 60 seconds")
     return {
-        "LinkMetricsRequestIntervalSec": interval,
+        "LinkMetricsRequestIntervalSec": 0,
         "StatisticsPollingRateSec": interval,
         "AssocSTALinkMetricsInclusionPolicy": True,
         "AssocSTATrafficStatsInclusionPolicy": True,

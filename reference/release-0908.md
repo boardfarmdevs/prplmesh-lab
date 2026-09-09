@@ -117,11 +117,22 @@ Regression coverage checks concurrent merging and propagates a failed device
 read as unavailable rather than a deceptively empty topology.
 
 Failed transient adapter units are reset before recreation and have bounded
-shutdown. Native controller link-metric and statistics polling are configured
-to one second at lab startup, with associated-link and traffic reporting included and
-NBAPI readback verified. `PRPL_METRICS_INTERVAL_SEC` may select 1–60 seconds
-for less demanding deployments. This replaces the old 60-second request
-interval; it does not synthesize fresh metrics or promise one-second roaming.
+shutdown. Native statistics polling is configured to one second at lab startup,
+with associated-link and traffic reporting included and NBAPI readback verified.
+`PRPL_METRICS_INTERVAL_SEC` may select 1–60 seconds for less demanding deployments.
+The separate `LinkMetricsRequestIntervalSec` timer is disabled: in this retained
+runtime it also broadcasts empty unassociated-STA queries, clearing the candidate
+collector's in-flight registrations. The external room collector owns explicit
+NBAPI candidate requests instead. Periodic 1905 neighbor-link statistics from
+that timer are consequently disabled; topology parent observation and native
+AP/STA reporting remain active. No synthetic freshness or one-second roaming
+guarantee is implied.
+
+In the live diagnostic import, disabling the competing timer eliminated the
+unavailable cohorts and produced a complete converged snapshot within thirty
+seconds: twenty clients checked, eighty fresh candidate comparisons, and no
+client with a stronger eligible AP. This is a bounded default-room observation,
+not an all-room soak or a native autonomous-optimizer benchmark.
 The room is also wanted by the lab service so an explicit lab start brings
 its viewer up after native readiness.
 
