@@ -3,6 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="room-viewer-mode" content="no-connect">
 <title>wmediumd world viewer</title>
 <style>
   :root {
@@ -11,7 +12,7 @@
     --muted: #7a726a;
     --rule: #d9d2c5;
     --gateway: #c0392b;
-    --extender: #1f5f8b;
+    --extender: #d65f27;
     --mobile: #7a4b9c;
     --static: #3b3b3b;
     --panel-w: 380px;
@@ -87,17 +88,33 @@
   .hero-line { color: #087ea4; font-weight: 600; }
   .policy-reason { overflow-wrap: anywhere; font-size: 12px; }
   .phase { display: inline-block; border-radius: 999px; padding: 2px 7px; background: #e9e4d8; font-size: 11px; font-weight: 700; }
-  .phase.steering, .phase.pending { color: #5b3b00; background: #ffd86b; }
-  .phase.cooldown, .phase.verified { color: #fff; background: #176b48; }
+  .phase.steering, .phase.pending, .phase.waiting { color: #5b3b00; background: #ffd86b; }
+  .phase.cooldown, .phase.verified, .phase.healthy { color: #fff; background: #176b48; }
   .phase.failed { color: #fff; background: var(--gateway); }
-  #eventRibbon { max-height: 126px; overflow: hidden; font-size: 11px; }
-  .event-row { display: grid; grid-template-columns: 45px 1fr; gap: 7px; padding: 3px 0; border-top: 1px solid #eee8dc; }
+  .phase.unknown { color: #40464d; background: #d8dde2; }
+  .live-scroll { overflow-y:auto; overflow-x:hidden; overflow-wrap:anywhere; scrollbar-gutter:stable; overflow-anchor:none; }
+  #optimizerStatus { height:12rem; margin-bottom:8px; padding:8px; border-left:4px solid #e0a421; background:#fff7df; }
+  #optimizerStatus p { margin:4px 0; }
+  #optimizerStatus .sub { margin:4px 0; }
+  #optimizerActivity { margin:8px 0; font-size:11px; color:var(--muted); }
+  #optimizerActivityDetails { height:6rem; margin-top:6px; font-size:12px; }
+  #optimizerMetrics { height:26rem; }
+  #optimizerMetrics .metric-grid { grid-template-columns:minmax(0, 1fr) minmax(0, 1fr); }
+  .live-scroll:focus-visible { outline:2px solid var(--extender); outline-offset:2px; }
+  #optimizerClients { margin-top:8px; font-size:11px; }
+  #optimizerClientRows { height:18rem; margin-top:6px; }
+  #optimizerClients table { width:100%; border-collapse:collapse; }
+  #optimizerClients td { padding:5px 2px; border-top:1px solid #e5ded2; vertical-align:top; overflow-wrap:anywhere; }
+  #optimizerClients tr.selected { background:#fff0ca; }
+  #eventRibbon { height:126px; font-size:11px; }
+  .event-row { display: grid; grid-template-columns: 78px 1fr; gap: 7px; padding: 3px 0; border-top: 1px solid #eee8dc; }
   .event-row:first-child { border-top: 0; }
-  .event-time { color: var(--muted); font-variant-numeric: tabular-nums; }
+  .event-time { color: var(--muted); font-variant-numeric: tabular-nums; white-space: nowrap; }
   .line-key { display:inline-block; width:24px; height:0; vertical-align:4px; margin-right:5px; border-top:3px solid #05a9cf; }
   .line-key.dashed { border-top:2px dashed #777; }
   .line-key.target { border-color:#f0ad00; }
-  .line-key.backhaul { border-color:#2468a8; border-top-width:4px; }
+  .line-key.backhaul { border-color:var(--gateway); border-top-width:4px; }
+  .line-key.backhaul.extender { border-color:var(--extender); }
   .interaction-card { border-color: #b9a4ca; background: #fbf8ff; }
   .preview-badge { display: inline-block; padding: 2px 7px; border-radius: 999px; background: #6f3e8e; color: #fff; font-size: 10px; font-weight: 750; letter-spacing: .05em; }
   .preview-badge.live-rf { background: #176b48; }
@@ -110,16 +127,23 @@
   .speed-row { display: grid; grid-template-columns: 1fr 108px; gap: 8px; align-items: center; margin-top: 8px; }
   .speed-row select { width: 100%; }
   main { position: relative; overflow: hidden; }
+  main:fullscreen { width: 100vw; height: 100dvh; background: var(--paper); }
+  #sceneToolbar { position: absolute; top: 10px; left: 12px; z-index: 25; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; max-width: calc(100% - 300px); }
+  #fullscreenStatus { font-size: 12px; background: var(--paper); }
+  .fullscreen-only { display: none; }
+  main:fullscreen .fullscreen-only { display: inline-block; }
+  #fullscreenTime { padding: 5px 9px; background: #faf8f3; border-radius: 4px; font-variant-numeric: tabular-nums; }
   canvas { display: block; }
   #hint { position: absolute; right: 12px; bottom: 10px; font-size: 11px; color: var(--muted); }
   #err { position: absolute; left: 50%; top: 40%; transform: translate(-50%,-50%); max-width: 480px; background: #fff; border: 1px solid var(--rule); padding: 16px 20px; display: none; }
   #spatialHud {
-    position: absolute; display: none; pointer-events: none; z-index: 20;
+    position: fixed; display: none; pointer-events: auto; z-index: 20;
     top: 14px; right: 14px; left: auto; width: 264px;
     max-width: calc(100% - 28px); max-height: calc(100% - 48px);
     overflow-y: auto; padding: 8px 10px; border-radius: 7px;
     color: #fff; background: rgba(38, 31, 43, .92); box-shadow: 0 4px 18px rgba(0,0,0,.22);
     font-size: 11px; line-height: 1.35;
+    cursor: default; touch-action: none; user-select: none;
   }
   #spatialHud .hud-title { display: flex; justify-content: space-between; gap: 8px; font-size: 12px; font-weight: 700; }
   #spatialHud .hud-grid { display: grid; grid-template-columns: 1fr auto; gap: 1px 8px; margin-top: 5px; }
@@ -133,10 +157,9 @@
   #roleMenu strong { display: block; padding: 4px 7px 5px; font-size: 12px; }
   #roleMenu button { display: block; width: 100%; border: 0; text-align: left; padding: 5px 7px; }
   #roleMenu button:hover { background: #eee7f3; }
-  main canvas { cursor: grab; touch-action: none; }
-  main.dragging canvas { cursor: grabbing; }
-  main.awaiting-destination canvas { cursor: copy; }
+  main canvas { cursor: default; touch-action: none; }
   @media (max-width: 760px) {
+    #sceneToolbar { max-width: calc(100% - 24px); }
     body { grid-template-columns: 1fr; grid-template-rows: auto 1fr; }
     aside { border-right: 0; border-bottom: 1px solid var(--rule); max-height: 45vh; }
   }
@@ -148,14 +171,15 @@
   <a class="manual-link" id="openManual" href="manual.html" aria-haspopup="dialog">Manual &amp; Help</a>
   <div class="sub" id="worldmeta">Loading…</div>
   <div id="liveStatus" role="status" aria-live="polite"></div>
+  <div id="profilingAuthority" class="hint" role="status"></div>
   <div class="sub" id="liveRun"></div>
 
   <div class="live-only">
     <div class="card" id="storyCard"><h2>Scenario</h2><div id="storyText">Waiting for the conductor…</div></div>
     <div class="card" id="labCard"><h2>Whole lab</h2><div id="labMetrics" class="metric-grid"><span>Status</span><b>waiting</b></div></div>
-    <div class="card" id="heroCard"><h2>Traffic probe</h2><div id="heroMetrics">Waiting for controller telemetry…</div></div>
-    <div class="card" id="optimizerCard"><h2>External optimizer</h2><div id="optimizerMetrics">No evaluation yet.</div></div>
-    <div class="card"><h2>Recent events</h2><div id="eventRibbon"></div></div>
+    <div class="card" id="heroCard"><h2>Traffic probe · cyan ring</h2><div id="heroMetrics">Waiting for controller telemetry…</div><div class="sub">Ctrl-click any client</div></div>
+    <div class="card" id="optimizerCard"><h2>External optimizer</h2><div id="optimizerStatus" class="live-scroll" tabindex="0" role="status" aria-label="Optimizer result" aria-live="polite">Waiting for live status…</div><details id="optimizerActivity"><summary>Background measurement details</summary><div id="optimizerActivityDetails" class="live-scroll" tabindex="0" role="region" aria-label="Background measurement activity">Waiting for measurements…</div></details><div id="optimizerMetrics" class="live-scroll" tabindex="0" role="region" aria-label="Optimizer metrics">No evaluation yet.</div><details id="optimizerClients"><summary>Per-client decisions</summary><div id="optimizerClientRows" class="live-scroll" tabindex="0" role="region" aria-label="Per-client decisions"></div></details></div>
+    <div class="card"><h2>Recent events</h2><div id="eventRibbon" class="live-scroll" tabindex="0" role="region" aria-label="Recent events"></div></div>
   </div>
 
   <label class="field" for="world">World</label>
@@ -183,6 +207,8 @@
     </span>
   </div>
 
+  <div id="playbackCheckpoint" class="sub" role="status" hidden></div>
+
   <label class="field">Band for link colours</label>
   <span class="seg" id="band" role="group" aria-label="band">
     <button data-band="2.4">2.4 GHz</button>
@@ -191,10 +217,9 @@
   </span>
 
   <div style="margin-top:12px">
-    <label class="check"><input type="checkbox" id="showLinks" checked> Strongest simulated link per station</label>
+    <label class="check"><input type="checkbox" id="showLinks" checked> Strongest simulated links (stations + extenders)</label>
     <label class="check"><input type="checkbox" id="showBackhaul" checked> Actual mesh backhaul</label>
     <label class="check"><input type="checkbox" id="showTrails" checked> Mobile trails up to now</label>
-    <label class="check"><input type="checkbox" id="showSta" checked> Station names</label>
   </div>
 
   <div class="card interaction-card" id="interactionCard">
@@ -233,22 +258,33 @@
     <span style="background:var(--extender);margin-left:10px"></span>extender
     <span style="background:var(--mobile);margin-left:10px"></span>mobile station
     <span style="background:var(--static);margin-left:10px"></span>static station<br>
+    Cyan ring: traffic probe. Yellow ring: optimizer focus.<br>
     Signal bars: red → yellow → green, bottom to top; unlit bars grey.<br>
     Modeled links: red weak → yellow fair → green strong. Absent roles are hollow.<br>
     <span class="line-key dashed"></span>scenario-best
     <span class="line-key"></span>actual association
     <span class="line-key target"></span>optimizer target
-    <span class="line-key backhaul"></span>actual backhaul<br>
+    <span class="line-key backhaul"></span>Agent-1 backhaul
+    <span class="line-key backhaul extender"></span>extender backhaul (floor)<br>
+    Thin red/orange floor dashes: strongest simulated mesh peer, not a steering target.<br>
     Labels: <b>gw</b> gateway, <b>e1</b> extender_1, <b>m01</b> sta_mobile_01, <b>s01</b> sta_static_01.
   </div>
 </aside>
-<main>
+<main id="roomView">
+  <div id="sceneToolbar">
+    <button type="button" id="roomFullscreen" aria-pressed="false">Full screen</button>
+    <button type="button" id="fullscreenPlay" class="fullscreen-only">Play</button>
+    <span id="fullscreenTime" class="fullscreen-only"></span>
+    <span id="fullscreenAuthority" class="fullscreen-only"></span>
+    <span id="fullscreenStatus" role="status" aria-live="polite"></span>
+  </div>
   <div id="hint">drag devices to move · drag empty space to orbit · Shift-drag to pan · scroll to zoom · Space plays</div>
-  <div id="spatialHud"></div>
+  <div id="spatialHud" tabindex="0" role="region" aria-label="Device properties. Drag to reposition; arrow keys move; Home resets." title="Drag to reposition · double-click the heading to reset"></div>
   <div id="roleMenu">
     <strong id="roleMenuTitle">Client</strong>
     <button data-role-action="move">Move to destination…</button>
     <button data-role-action="presence">Disappear</button>
+    <button data-role-action="probe">Use as traffic probe</button>
     <button data-role-action="reset">Reset role</button>
   </div>
   <div id="err"></div>
@@ -262,6 +298,7 @@
   <iframe id="manualFrame" title="Searchable room viewer manual"></iframe>
 </dialog>
 <script src="manual-dialog.js"></script>
+<script src="fullscreen-control.js?v=fullscreen-1"></script>
 <script src="vendor/three.min.js"></script>
 <script src="interaction-model.js"></script>
 <script src="signal-meter.js?v=signal-meter-1"></script>
@@ -275,11 +312,13 @@
     'home-a-border-hover', 'home-a-fast-transit', 'home-a-disappear-reappear',
     'home-a-extender-loss-recovery', 'home-a-flash-crowd', 'home-a-asymmetric-link',
     'home-a-band-walk-small', 'home-a-private-client-room-walk',
+    'home-a-one-client-handover', 'large-room-perimeter-counter-roam',
+    'large-room-extender-evacuation',
   ];
   const GOLDEN_DIR = '../golden/';
   const AP_H = 2.2, STA_H = 0.9, WALL_H = 2.6;
   const COL = {
-    gateway: 0xc0392b, extender: 0x1f5f8b, mobile: 0x7a4b9c, static: 0x3b3b3b,
+    gateway: 0xc0392b, extender: 0xd65f27, mobile: 0x7a4b9c, static: 0x3b3b3b,
     floor: 0xe9e4d8, grid: 0xd0c9ba, wall: 0xb8ad9a, absent: 0xc9c9c9,
   };
 
@@ -300,7 +339,8 @@
   let band = '5';
   let selected = null;       // role name
   let world3d = null;        // three objects for the current world
-  const requestedMode = new URLSearchParams(location.search).get('mode');
+  const requestedMode = new URLSearchParams(location.search).get('mode') ||
+    document.querySelector('meta[name="room-viewer-mode"]')?.content || 'no-connect';
   const noConnectMode = requestedMode === 'no-connect';
   const interactiveLiveMode = requestedMode === 'interactive';
   const liveMode = requestedMode === 'live' || interactiveLiveMode;
@@ -308,6 +348,8 @@
   let liveSource = null;
   let liveTerminal = false;
   let networkState = null, optimizerState = null, trafficState = null;
+  let profilingState = null;
+  let trafficProbeState = null, liveClock = null;
   let healthState = null, actionState = null, verificationState = null;
   let storyState = 'Waiting for the conductor…';
   let recentEvents = [], replayEvents = [], replayIndex = 0, replayAppliedTime = -1;
@@ -335,16 +377,17 @@
     positionTimer: null,
     lastPositionSentAt: 0,
     recording: {active: false, export_ready: false},
-    operatorToken: new URLSearchParams(location.hash.slice(1)).get('operator'),
   };
-  if (interaction.operatorToken) {
+  if (new URLSearchParams(location.hash.slice(1)).has('operator')) {
     history.replaceState(null, '', location.pathname + location.search);
   }
   if (liveMode || replayMode) document.body.classList.add('live-presentation');
 
   // ---- scene ---------------------------------------------------------------
   const main = $('main');
-  const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+  makeDraggablePropertiesPanel($('#spatialHud'));
+  const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true, stencil: true });
+  let sceneRenderDirty = true;
   renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
   main.appendChild(renderer.domElement);
   const scene = new THREE.Scene();
@@ -361,6 +404,7 @@
       target.y + r * Math.cos(phi),
       target.z + r * Math.sin(phi) * Math.cos(theta));
     camera.lookAt(target);
+    sceneRenderDirty = true;
   }
   (function bindOrbit() {
     let drag = null;
@@ -368,6 +412,16 @@
     el.addEventListener('pointerdown', (e) => {
       hideRoleMenu();
       if (e.button !== 0) return;
+      if (e.ctrlKey || e.metaKey) {
+        const role = pickedRole(e);
+        if (role && canSelectTrafficProbe(role)) {
+          selected = role;
+          interaction.hudRole = role;
+          selectTrafficProbe(role);
+          update();
+        }
+        return;
+      }
       if (!e.shiftKey) {
         if (interaction.awaitingDestination) {
           const point = floorPoint(e);
@@ -463,8 +517,21 @@
     const w = main.clientWidth, h = main.clientHeight;
     renderer.setSize(w, h, false);
     camera.aspect = w / h; camera.updateProjectionMatrix();
+    sceneRenderDirty = true;
   }
   window.addEventListener('resize', resize);
+  EasyMeshFullscreen.attach({target: main, button: $('#roomFullscreen'),
+    status: $('#fullscreenStatus'), onChange: resize});
+  new ResizeObserver(resize).observe(main);
+  function syncFullscreenPlayback() {
+    $('#fullscreenPlay').textContent = $('#play').textContent;
+    $('#fullscreenPlay').disabled = $('#play').disabled;
+  }
+  $('#fullscreenPlay').addEventListener('click', () => $('#play').click());
+  new MutationObserver(syncFullscreenPlayback).observe($('#play'), {
+    attributes: true, attributeFilter: ['disabled'], childList: true, subtree: true,
+  });
+  syncFullscreenPlayback();
 
   // ---- helpers -------------------------------------------------------------
   const P = (x, y, z) => new THREE.Vector3(x, z, -y);   // plan (x, y) + height -> scene
@@ -558,9 +625,6 @@
     const request = Object.assign({cache: 'no-store'}, options);
     request.headers = Object.assign(
       {'Content-Type': 'application/json'}, options.headers || {});
-    if (request.method && request.method !== 'GET' && interaction.operatorToken) {
-      request.headers.Authorization = 'Bearer ' + interaction.operatorToken;
-    }
     const response = await fetch(url, request);
     const body = await response.json().catch(() => ({}));
     if (!response.ok) {
@@ -572,6 +636,7 @@
     return body;
   }
   function applyInteractionSnapshot(snapshot) {
+    interaction.backhaulPolicy = snapshot.backhaul_policy;
     interaction.apiEnabled = !!snapshot.enabled;
     interaction.presenceRoles = (snapshot.presence_roles || []).slice();
     interaction.movableRoles = (snapshot.movable_roles || []).slice();
@@ -582,7 +647,8 @@
       setWorldControlsBusy(applyingWorld);
       if (!applyingWorld && !worldSwitchError) {
         $('#worldSwitchStatus').textContent = 'Fixed pool: ' + snapshot.pool_clients +
-          ' clients; target ' + snapshot.expected_online_clients + ' online. Startup mesh backhaul is protected.';
+          ' clients; target ' + snapshot.expected_online_clients + ' online. ' +
+          (snapshot.backhaul_policy === 'adaptive-rdk' ? 'Mesh RF and parent selection follow the room.' : 'Startup mesh backhaul is protected.');
       }
     }
     if (!Object.keys(interaction.initialRoles).length) {
@@ -610,7 +676,7 @@
     badge.classList.toggle('live-rf', interaction.apiEnabled);
     badge.classList.toggle('observer', !interaction.apiEnabled);
     $('#interactionHelp').textContent = interaction.apiEnabled
-      ? 'Drag devices to change live RF; navigation and clicks do not change the lab. Operator authorization is requested when needed.'
+      ? 'Drag devices to change live RF; navigation and clicks do not change the lab. Control is shared through an exclusive lease; no operator token is needed.'
       : 'Another browser may observe accepted movements, but live control is unavailable.';
   }
   async function refreshInteractionSnapshot() {
@@ -622,14 +688,6 @@
   async function acquireInteractionLease() {
     if (!interactiveLiveMode || !interaction.apiEnabled) return true;
     if (interaction.leaseToken) return true;
-    if (!interaction.operatorToken) {
-      const supplied = window.prompt('Operator capability');
-      if (!supplied) {
-        interactionMessage('operator capability is required for live control', true);
-        return false;
-      }
-      interaction.operatorToken = supplied.trim();
-    }
     const owner = interaction.leaseOwner ||
       ('browser-' + Math.random().toString(36).slice(2, 10));
     try {
@@ -761,9 +819,25 @@
       (item) => effectivePresent(item.role, g));
   }
   function predictedMeshFor(role, point, g, positions = null) {
+    const present = Object.fromEntries(Object.keys(world.roles || {}).map(
+      peer => [peer, meshPresent(peer, g)]));
     return interactionModel.predictMeshLinks(
-      world, g, role, point, band, positions).filter(
-      (item) => effectivePresent(item.role, g));
+      world, {...g, present}, role, point, band, positions);
+  }
+  function meshPresent(role, g) {
+    const mesh = networkState && networkState.mesh;
+    return mesh && mesh.available
+      ? (mesh.nodes || []).some(node => node.role === role)
+      : effectivePresent(role, g);
+  }
+  function bestMeshServing(g, positions) {
+    const best = {};
+    for (const role of Object.keys(world.roles || {})) {
+      if (role === 'gateway' || !isAp(role) || !meshPresent(role, g) || !positions[role]) continue;
+      const strongest = predictedMeshFor(role, positions[role], g, positions)[0];
+      if (strongest) best[role] = strongest;
+    }
+    return best;
   }
   // Strongest present AP->station link on the band, per station (downlink).
   function bestServing(g, positions = null) {
@@ -863,7 +937,8 @@
     if (liveMode || replayMode) {
       if (!observed) return 0;
       const measuredAt = Date.parse(observed.metric_observed_at || '');
-      const referenceTime = replayMode ? Date.parse(networkState.observed_at || '') : Date.now();
+      const referenceTime = replayMode ? Date.parse(networkState.observed_at || '')
+        : liveClock ? liveClock.serverMs + Math.max(0, performance.now() - liveClock.receivedMs) : NaN;
       if (!Number.isFinite(measuredAt) || !Number.isFinite(referenceTime) ||
           referenceTime - measuredAt > 20000 || measuredAt - referenceTime > 5000) return 0;
       return signalMeter.rssiLevel(observed.rssi_dbm);
@@ -876,6 +951,15 @@
       node.gauge.bars[index].material.opacity = 1;
     }
     node.gauge.group.userData.signalLevel = level;
+  }
+  function extenderSignal(edge) {
+    if (!edge || !edge.signal || edge.signal.status !== 'fresh') return null;
+    return {rssi_dbm: edge.signal.rssi_dbm, metric_observed_at: edge.signal.observed_at};
+  }
+  function extenderRfLabel(edge) {
+    const value = edge && edge.applied_rf;
+    return value && value.source === 'wmediumd_verified_applied_rf' && Number.isFinite(value.snr_db)
+      ? 'RF ' + value.snr_db + ' dB' : 'RF —';
   }
   // Text lying flat on the floor, aligned with a wall, on the side away from its normal.
   function makeFloorText(text, x0, y0, x1, y1, height) {
@@ -927,7 +1011,10 @@
       const [x0, y0] = w.start, [x1, y1] = w.end;
       const len = Math.hypot(x1 - x0, y1 - y0);
       const m = new THREE.Mesh(new THREE.BoxGeometry(len, WALL_H, 0.12),
-        new THREE.MeshLambertMaterial({ color: COL.wall, transparent: true, opacity: 0.55 }));
+        new THREE.MeshLambertMaterial({ color: COL.wall, transparent: true, opacity: 0.55,
+          stencilWrite: true, stencilRef: 1, stencilFunc: THREE.AlwaysStencilFunc,
+          stencilZPass: THREE.ReplaceStencilOp }));
+      m.renderOrder = 1;
       m.position.copy(P((x0 + x1) / 2, (y0 + y1) / 2, WALL_H / 2));
       m.rotation.y = -Math.atan2(y1 - y0, x1 - x0);
       m.userData.wall = w;
@@ -939,6 +1026,7 @@
     // nodes
     const nodes = {};
     const pickables = [];
+    const markerScale = Math.max(1, Math.min(2, Math.max(size.width, size.height) / 20));
     for (const role of Object.keys(world.roles)) {
       const kind = kindOf(role), ap = isAp(role);
       const color = COL[kind];
@@ -954,15 +1042,31 @@
       head.userData.role = role; grp.add(head); pickables.push(head);
       const ring = new THREE.Mesh(new THREE.RingGeometry(0.5, 0.62, 32), new THREE.MeshBasicMaterial({ color, side: THREE.DoubleSide }));
       ring.rotation.x = -Math.PI / 2; ring.position.y = 0.005; ring.visible = false; grp.add(ring);
+      const probeRing = new THREE.Mesh(new THREE.RingGeometry(0.67, 0.79, 32),
+        new THREE.MeshBasicMaterial({color: 0x00bfd8, side: THREE.DoubleSide}));
+      probeRing.rotation.x = -Math.PI / 2;
+      probeRing.position.y = 0.008;
+      probeRing.visible = false;
+      probeRing.userData.trafficProbe = role;
+      grp.add(probeRing);
       const tag = makeSprite(shortRole(role), '#' + new THREE.Color(color).getHexString(), ap ? 0.5 : 0.36);
       tag.position.y = ap ? h + 0.95 : h + 0.42;   // sits directly on the head
       tag.userData.sta = !ap;
       grp.add(tag);
       let gauge = null, ghost = null;
-      if (!ap) {
+      if (role !== 'gateway') {
         gauge = makeSignalGauge();
-        gauge.group.position.x = 0.36;
+        gauge.group.position.x = ap ? 0.65 : 0.36;
+        gauge.group.position.y = ap ? h - 0.45 : 0;
+        gauge.group.userData.signalRole = role;
+        if (ap) {
+          gauge.label = makeSprite('RF —', '#80401f', 0.26);
+          gauge.label.position.y = -0.13;
+          gauge.group.add(gauge.label);
+        }
         grp.add(gauge.group);
+      }
+      if (!ap) {
         ghost = new THREE.Group();
         const ghostBody = new THREE.Mesh(
           new THREE.SphereGeometry(0.30, 16, 12),
@@ -1011,8 +1115,10 @@
         ghost.visible = false;
         root.add(ghost);
       }
+      grp.scale.setScalar(markerScale);
+      if (ghost) ghost.scale.setScalar(markerScale);
       root.add(grp);
-      nodes[role] = { grp, post, head, ring, tag, gauge, ghost, color, ap, h };
+      nodes[role] = { grp, post, head, ring, probeRing, tag, gauge, ghost, color, ap, h };
     }
 
     // link and trail buffers (rebuilt each frame)
@@ -1028,10 +1134,8 @@
       new THREE.BufferGeometry(),
       new THREE.LineDashedMaterial({ color: 0xf0ad00, dashSize: 0.48, gapSize: 0.18, transparent: true, opacity: 0.95 })
     );
-    const backhaul = new THREE.LineSegments(
-      new THREE.BufferGeometry(),
-      new THREE.LineBasicMaterial({ color: 0x2468a8, transparent: true, opacity: 0.88 })
-    );
+    const {backhaul, backhaulOccluded} = makeBackhaulMeshes();
+    const {backhaul: simulatedBackhaul, backhaulOccluded: simulatedBackhaulOccluded} = makeBackhaulMeshes('simulated-backhaul');
     const trails = new THREE.LineSegments(new THREE.BufferGeometry(), new THREE.LineBasicMaterial({ color: COL.mobile, transparent: true, opacity: 0.45 }));
     const preview = new THREE.LineSegments(
       new THREE.BufferGeometry(),
@@ -1048,20 +1152,39 @@
     destination.position.y = 0.025;
     destination.visible = false;
     destination.renderOrder = 9;
-    root.add(links, actual, target, backhaul, trails, preview, movePath, destination);
+    root.add(links, actual, target, backhaul, backhaulOccluded, simulatedBackhaul, simulatedBackhaulOccluded, trails, preview, movePath, destination);
 
     scene.add(root);
-    world3d = { root, nodes, pickables, walls, links, actual, target, backhaul, trails, preview, movePath, destination, W, H };
+    world3d = { root, nodes, pickables, walls, links, actual, target, backhaul, backhaulOccluded, simulatedBackhaul, simulatedBackhaulOccluded, trails, preview, movePath, destination, W, H };
     orbit.target.set(W / 2, 0, -H / 2); orbit.r = Math.max(W, H) * 1.5; placeCamera();
   }
 
   // ---- per-frame update ----------------------------------------------------
+  function updateSegmentAttribute(geometry, name, values) {
+    const attribute = geometry.getAttribute(name);
+    if (!attribute || attribute.array.length !== values.length) {
+      geometry.setAttribute(name, new THREE.Float32BufferAttribute(values, 3));
+      return true;
+    }
+    let changed = false;
+    for (let index = 0; index < values.length; index++) {
+      const value = Math.fround(values[index]);
+      if (attribute.array[index] !== value) {
+        attribute.array[index] = value;
+        changed = true;
+      }
+    }
+    if (changed) attribute.needsUpdate = true;
+    return changed;
+  }
   function setSegments(obj, pts, cols) {
     const g = obj.geometry;
-    g.setAttribute('position', new THREE.Float32BufferAttribute(pts, 3));
-    if (cols) g.setAttribute('color', new THREE.Float32BufferAttribute(cols, 3));
-    g.computeBoundingSphere();
-    if (obj.computeLineDistances) obj.computeLineDistances();
+    const moved = updateSegmentAttribute(g, 'position', pts);
+    if (cols) updateSegmentAttribute(g, 'color', cols);
+    if (moved) {
+      g.computeBoundingSphere();
+      if (obj.computeLineDistances) obj.computeLineDistances();
+    }
   }
   function deviceRole(name) {
     const value = String(name || '').toLowerCase();
@@ -1069,7 +1192,72 @@
     const match = value.match(/^extender-(\d+)$/);
     return match ? 'extender_' + match[1] : null;
   }
-  function heroRole() { return networkState && networkState.hero && networkState.hero.role; }
+  function makeBackhaulMeshes(name = 'backhaul') {
+    const backhaul = new THREE.Mesh(new THREE.BufferGeometry(), new THREE.MeshBasicMaterial({
+      vertexColors: true, side: THREE.DoubleSide, transparent: true, opacity: 0.88, depthWrite: false,
+    }));
+    backhaul.name = name + '-floor-links';
+    backhaul.renderOrder = 2;
+    const backhaulOccluded = new THREE.Mesh(new THREE.BufferGeometry(), new THREE.MeshBasicMaterial({
+      vertexColors: true, side: THREE.DoubleSide, transparent: true, opacity: 0.88, depthWrite: false,
+      depthFunc: THREE.GreaterDepth, stencilWrite: true, stencilRef: 1, stencilFunc: THREE.EqualStencilFunc,
+    }));
+    backhaulOccluded.name = name + '-through-walls';
+    backhaulOccluded.renderOrder = 3;
+    return {backhaul, backhaulOccluded};
+  }
+  function backhaulOccludedColors(colors) {
+    return colors.map(component => component * 0.7 + 0.3);
+  }
+  function appendBackhaulRibbon(points, colors, start, end, parentRole, {width = 0.09, offset = 0} = {}) {
+    const deltaX = end[0] - start[0], deltaZ = start[1] - end[1];
+    const length = Math.hypot(deltaX, deltaZ);
+    if (!Number.isFinite(length) || length < 0.0001) return;
+    const offsetX = -deltaZ / length * width / 2, offsetZ = deltaX / length * width / 2;
+    const centerX = -deltaZ / length * offset, centerZ = deltaX / length * offset;
+    const corners = [
+      [start[0] + centerX + offsetX, 0.035, -start[1] + centerZ + offsetZ],
+      [start[0] + centerX - offsetX, 0.035, -start[1] + centerZ - offsetZ],
+      [end[0] + centerX + offsetX, 0.035, -end[1] + centerZ + offsetZ],
+      [end[0] + centerX - offsetX, 0.035, -end[1] + centerZ - offsetZ],
+    ];
+    const color = new THREE.Color(parentRole === 'gateway' ? COL.gateway : COL.extender);
+    for (const index of [0, 1, 2, 2, 1, 3]) {
+      points.push(...corners[index]);
+      colors.push(color.r, color.g, color.b);
+    }
+  }
+  function appendSimulatedBackhaul(points, colors, start, end, parentRole) {
+    const deltaX = end[0] - start[0], deltaY = end[1] - start[1];
+    const length = Math.hypot(deltaX, deltaY);
+    if (!Number.isFinite(length) || length < 0.0001) return;
+    for (let distance = 0; distance < length; distance += 0.54) {
+      const finish = Math.min(length, distance + 0.32);
+      const first = [start[0] + deltaX * distance / length, start[1] + deltaY * distance / length];
+      const last = [start[0] + deltaX * finish / length, start[1] + deltaY * finish / length];
+      appendBackhaulRibbon(points, colors, first, last, parentRole, {width: 0.026, offset: 0.14});
+    }
+  }
+  function heroRole() {
+    return trafficProbeState && trafficProbeState.role || networkState && networkState.hero && networkState.hero.role;
+  }
+  function applyTrafficProbe(probe) {
+    if (!probe || !probe.role || trafficProbeState && Number(probe.selection || 0) < Number(trafficProbeState.selection || 0)) return;
+    if (!trafficProbeState || probe.role !== trafficProbeState.role || probe.selection !== trafficProbeState.selection) trafficState = null;
+    trafficProbeState = Object.assign({}, trafficProbeState, probe);
+  }
+  function canSelectTrafficProbe(role) {
+    return interactiveLiveMode && interaction.apiEnabled && world && world.roles[role] === 'station';
+  }
+  async function selectTrafficProbe(role) {
+    if (!canSelectTrafficProbe(role) || !await acquireInteractionLease()) return;
+    const accepted = await sendControl('/api/demo/traffic-probe', 'POST', {role});
+    if (accepted) {
+      applyTrafficProbe(accepted.traffic_probe);
+      interactionMessage(displayRole(role) + ' is now the traffic probe; RF unchanged.');
+      update();
+    }
+  }
   function optimizerSubjectRole() {
     return optimizerState && optimizerState.subject_role || heroRole();
   }
@@ -1079,13 +1267,48 @@
     const candidate = (optimizerState.candidates || []).find((item) => item.bssid === decision.target_bssid);
     return candidate ? (candidate.role || deviceRole(candidate.device_name)) : null;
   }
+  let updateQueued = false;
+  const renderStats = {requests: 0, updates: 0, totalMilliseconds: 0, maximumMilliseconds: 0};
+  const frameTimings = new URLSearchParams(location.search).get('profile') === '1' ? [] : null;
+  let receivedNetworkFrame = null;
+  let updatedNetworkFrame = null;
   function update() {
+    renderStats.requests++;
+    if (updateQueued) return;
+    updateQueued = true;
+    requestAnimationFrame(() => {
+      updateQueued = false;
+      const started = performance.now();
+      updateFrame();
+      updatedNetworkFrame = receivedNetworkFrame;
+      renderScene();
+      const elapsed = performance.now() - started;
+      renderStats.updates++;
+      renderStats.totalMilliseconds += elapsed;
+      renderStats.maximumMilliseconds = Math.max(renderStats.maximumMilliseconds, elapsed);
+    });
+  }
+  function renderScene() {
     if (!world3d) return;
+    renderer.render(scene, camera);
+    sceneRenderDirty = false;
+    if (frameTimings && updatedNetworkFrame && updatedNetworkFrame !== renderStats.lastNetworkFrame) {
+      renderStats.lastNetworkFrame = updatedNetworkFrame;
+      const frame = {...updatedNetworkFrame, submitted_at: performance.now()};
+      requestAnimationFrame(() => {
+        frame.next_frame_at = performance.now();
+        frameTimings.push(frame);
+        if (frameTimings.length > 2000) frameTimings.splice(0, frameTimings.length - 2000);
+      });
+    }
+  }
+  function updateFrame() {
+    if (!world3d) return;
+    $('#fullscreenTime').textContent = (tMs / 1000).toFixed(1) + ' / ' + (world.duration_ms / 1000) + ' s';
     const fr = frameAt(tMs), g = fr.g;
     const { nodes } = world3d;
     const pos = {};
     const visualPos = {};
-    const showSta = $('#showSta').checked;
 
     for (const role in nodes) {
       pos[role] = effectivePosition(role, fr);
@@ -1110,7 +1333,7 @@
         const label = (observed.cohort === 'iot' ? 'iot-' : 'sta-') + suffix;
         setSpriteLabel(n.tag, label, observed.cohort === 'iot' ? '#256f3f' : '#225ca8');
       }
-      n.tag.visible = n.ap || showSta;
+      n.tag.visible = true;
       n.tag.material.opacity = present ? 1 : 0.4;
       if (!present) { mat.color.setHex(COL.absent); mat.transparent = true; mat.opacity = 0.35; n.post.material.color.setHex(COL.absent); }
       else {
@@ -1121,25 +1344,29 @@
         mat.color.setHex(identity);
       }
       if (n.ghost) {
-        n.ghost.visible = !!interaction.previewPositions[role] && present &&
-          (n.ap || showSta);
+        n.ghost.visible = !!interaction.previewPositions[role] && present;
         if (n.ghost.visible) {
           const preview = interaction.previewPositions[role];
           n.ghost.position.copy(P(preview[0], preview[1], 0));
         }
       }
       if (n.gauge) {
-        n.gauge.group.visible = present && showSta;
-        updateSignalGauge(n, signalLevel(observed, best[role]));
-        const serving = observed && observed.connected_role
+        const uplink = n.ap ? actualBackhaulFor(role) : null;
+        n.gauge.group.visible = n.ap || present;
+        updateSignalGauge(n, signalLevel(n.ap ? extenderSignal(uplink) : observed, best[role]));
+        if (n.gauge.label) setSpriteLabel(n.gauge.label, extenderRfLabel(uplink), '#80401f');
+        const serving = n.ap ? uplink && uplink.parent_role : observed && observed.connected_role
           ? observed.connected_role : best[role] && best[role].ap;
         const peer = serving && pos[serving];
         // Put the meter on the side opposite the serving RF line.
-        n.gauge.group.position.x = peer && peer[0] >= pos[role][0] ? -0.36 : 0.36;
+        n.gauge.group.position.x = (peer && peer[0] >= pos[role][0] ? -1 : 1) * (n.ap ? 0.65 : 0.36);
       }
       const hero = role === heroRole();
       const optimizerSubject = role === optimizerSubjectRole();
-      n.ring.visible = role === selected || hero || optimizerSubject;
+      n.probeRing.visible = hero;
+      n.probeRing.material.opacity = present ? 1 : 0.35;
+      n.probeRing.material.transparent = !present;
+      n.ring.visible = role === selected || optimizerSubject;
       n.ring.material.color.setHex(optimizerSubject ? 0xf0ad00 : n.color);
       const pulsing = optimizerSubject && performance.now() < actionPulseUntil;
       const pulse = pulsing ? 1 + 0.22 * Math.sin(performance.now() / 90) : 1;
@@ -1181,15 +1408,14 @@
     // The live room uses the exact parent/child graph reported by the
     // controller.  The geometric all-AP graph is only an offline-world
     // fallback and is never presented as actual live mesh topology.
-    const bp = [];
+    const bp = [], bc = [];
     if ($('#showBackhaul').checked) {
       const mesh = networkState && networkState.mesh;
       if (mesh && mesh.available) {
         for (const edge of mesh.backhaul_edges || []) {
           const a = pos[edge.parent_role], b = pos[edge.child_role];
-          if (!a || !b || !effectivePresent(edge.parent_role, g) ||
-              !effectivePresent(edge.child_role, g)) continue;
-          bp.push(a[0], AP_H, -a[1], b[0], AP_H, -b[1]);
+          if (!a || !b) continue;
+          appendBackhaulRibbon(bp, bc, a, b, edge.parent_role);
         }
       } else if (!liveMode && !replayMode) {
         const seen = {};
@@ -1201,11 +1427,23 @@
         }
         for (const key in seen) {
           const l = seen[key].l, a = pos[l.source_role], b = pos[l.destination_role];
-          bp.push(a[0], AP_H, -a[1], b[0], AP_H, -b[1]);
+          const parentRole = l.source_role === 'gateway' || l.destination_role === 'gateway'
+            ? 'gateway' : l.source_role;
+          appendBackhaulRibbon(bp, bc, a, b, parentRole);
         }
       }
     }
-    setSegments(world3d.backhaul, bp);
+    setSegments(world3d.backhaul, bp, bc);
+    setSegments(world3d.backhaulOccluded, bp, backhaulOccludedColors(bc));
+
+    const simulatedPoints = [], simulatedColors = [];
+    if ($('#showLinks').checked) {
+      for (const [role, peer] of Object.entries(bestMeshServing(g, visualPos))) {
+        appendSimulatedBackhaul(simulatedPoints, simulatedColors, visualPos[peer.role], visualPos[role], peer.role);
+      }
+    }
+    setSegments(world3d.simulatedBackhaul, simulatedPoints, simulatedColors);
+    setSegments(world3d.simulatedBackhaulOccluded, simulatedPoints, backhaulOccludedColors(simulatedColors));
 
     // trails up to now
     const tp = [];
@@ -1303,18 +1541,12 @@
       wall.material.color.setHex(COL.wall);
       wall.material.opacity = 0.55;
     }
-    if (preview && effectivePresent(role, g)) {
+    if (preview && (preview.ap ? meshPresent(role, g) : effectivePresent(role, g))) {
       const links = [];
       if (preview.ap) {
-        for (const item of preview.candidates) {
-          links.push({item, color: new THREE.Color(0x6f3e8e)});
-        }
+        for (const wall of preview.strongest && preview.strongest.walls || []) highlightedWalls.add(wall.name);
       } else if (preview.strongest) {
         links.push({item: preview.strongest, color: new THREE.Color(0x6f3e8e)});
-      }
-      if (!preview.ap && preview.associated && preview.strongest &&
-          preview.associated.role !== preview.strongest.role) {
-        links.push({item: preview.associated, color: new THREE.Color(0x05a9cf)});
       }
       for (const entry of links) {
         const peer = pos[entry.item.role];
@@ -1399,8 +1631,11 @@
     const base = posAt(role, frameAt(tMs));
     const moved = Math.hypot(preview.point[0] - base[0], preview.point[1] - base[1]);
     const measured = observedClient(role) || {};
-    const age = measured.metric_age_seconds != null ? measured.metric_age_seconds
-      : measured.age_s != null ? measured.age_s : measured.sample_age_s;
+    const measuredAt = Date.parse(measured.metric_observed_at || '');
+    const referenceTime = replayMode ? Date.parse(networkState && networkState.observed_at || '')
+      : liveClock ? liveClock.serverMs + Math.max(0, performance.now() - liveClock.receivedMs) : NaN;
+    const age = Number.isFinite(measuredAt) && Number.isFinite(referenceTime)
+      ? Math.max(0, referenceTime - measuredAt) / 1000 : null;
     const strongest = preview.strongest;
     const associated = preview.associated;
     let movementRow = '';
@@ -1431,11 +1666,17 @@
         '<span>Fronthaul</span><b>' + (present ? 'available' : 'disabled') + '</b>' +
         '<span>Serving clients</span><b>' + servingClients + '</b>' +
         '<span>Actual parent</span><b>' + esc(actualLink.join(' · ')) + '</b>' +
-        '<span>Modeled mesh peer</span><b>' + esc(peer ? displayRole(peer.role) : 'none') + '</b>' +
+        '<span>Uplink RSSI</span><b>' + (signalLevel(extenderSignal(actualBackhaul), null) > 0
+          ? esc(actualBackhaul.signal.rssi_dbm) + ' dBm' : 'unknown / stale') + '</b>' +
+        '<span>Applied uplink SNR</span><b>' + esc(extenderRfLabel(actualBackhaul)) + '</b>' +
+        '<span>Strongest simulated peer</span><b>' + esc(peer ? displayRole(peer.role) : 'none') + '</b>' +
         '<span>Distance / walls</span><b>' + (peer ? peer.distance_m.toFixed(1) + ' m / ' + peer.wall_count : 'N/A') + '</b>' +
         '<span>Wall loss</span><b>' + (peer ? peer.wall_loss_db.toFixed(1) + ' dB' : 'N/A') + '</b>' +
         '<span>Predicted mesh SNR</span><b>' + (peer ? peer.snr_db + ' dB at ' + esc(band) + ' GHz' : 'N/A') + '</b></div>' +
-        '<div class="candidate">Moving this extender updates every three-band client link and mesh-peer link in one RF generation.<br>Modeled mesh peers: ' +
+        '<div class="candidate">Bars: fresh measured uplink RSSI. RF dB: verified wmediumd SNR on the actual parent link, not measured SNR.<br>' +
+        (interaction.backhaulPolicy === 'adaptive-rdk'
+          ? 'Moving mesh nodes updates RF; lab parent selection waits for settling and a worthwhile loop-free improvement.'
+          : 'Startup backhaul may be protected; preview geometry alone does not select a parent.') + '<br>Modeled mesh peers: ' +
         preview.candidates.slice(0, 4).map((item) => esc(displayRole(item.role)) + ' ' + item.snr_db + ' dB').join(' · ') + '</div>';
       hud.style.display = 'block';
       return;
@@ -1448,12 +1689,89 @@
       '<span>Wall loss</span><b>' + (associated ? associated.wall_loss_db.toFixed(1) + ' dB' : 'N/A') + '</b>' +
       '<span>Predicted SNR</span><b>' + (associated ? associated.snr_db + ' dB' : 'N/A') + '</b>' +
       '<span>Measured</span><b>' + (measured.rcpi == null ? 'N/A' : 'RCPI ' + esc(measured.rcpi)) + '</b>' +
+      '<span>Signal source</span><b>' + (measured.measurement_source === 'client_kernel_iw_link_after_wlan_traffic_probe' ? 'Client Wi-Fi measurement' : 'Controller telemetry') + '</b>' +
       '<span>Metric age</span><b>' + (age == null ? 'N/A' : Number(age).toFixed(1) + ' s') + '</b>' +
       '<span>Strongest AP</span><b>' + esc(strongest ? displayRole(strongest.role) : 'none') + '</b>' +
       '<span>Best path</span><b>' + (strongest ? strongest.distance_m.toFixed(1) + ' m / ' + strongest.wall_count + ' walls' : 'N/A') + '</b></div>' +
       '<div class="candidate">Walls: ' + esc(associated ? wallNames(associated) : 'unknown') + '<br>Best candidates: ' +
       preview.candidates.slice(0, 3).map((item) => esc(displayRole(item.role)) + ' ' + item.snr_db + ' dB').join(' · ') + '</div>';
     hud.style.display = 'block';
+  }
+
+  function makeDraggablePropertiesPanel(panel) {
+    const storageKey = 'room-properties-panel-position';
+    let position = null, drag = null;
+    try {
+      const saved = JSON.parse(localStorage.getItem(storageKey));
+      if (Array.isArray(saved) && saved.length === 2 && saved.every(Number.isFinite)) position = saved;
+    } catch (_) {}
+    function place() {
+      if (!position || !panel.offsetWidth || !panel.offsetHeight) return;
+      position = [Math.max(0, Math.min(position[0], window.innerWidth - panel.offsetWidth)),
+        Math.max(0, Math.min(position[1], window.innerHeight - panel.offsetHeight))];
+      panel.style.left = position[0] + 'px';
+      panel.style.top = position[1] + 'px';
+      panel.style.right = 'auto';
+    }
+    function save() {
+      try {
+        if (position) localStorage.setItem(storageKey, JSON.stringify(position));
+        else localStorage.removeItem(storageKey);
+      } catch (_) {}
+    }
+    function reset() {
+      position = null;
+      panel.style.left = 'auto';
+      panel.style.top = panel.style.right = '14px';
+      save();
+    }
+    panel.addEventListener('pointerdown', event => {
+      if (event.button !== 0 || drag) return;
+      event.preventDefault();
+      event.stopPropagation();
+      const bounds = panel.getBoundingClientRect();
+      drag = {pointerId: event.pointerId, x: event.clientX - bounds.left, y: event.clientY - bounds.top};
+      panel.setPointerCapture(event.pointerId);
+      panel.classList.add('panel-dragging');
+      panel.focus({preventScroll: true});
+    });
+    panel.addEventListener('pointermove', event => {
+      if (!drag || drag.pointerId !== event.pointerId) return;
+      event.preventDefault();
+      event.stopPropagation();
+      position = [event.clientX - drag.x, event.clientY - drag.y];
+      place();
+    });
+    function finish(event) {
+      if (!drag || drag.pointerId !== event.pointerId) return;
+      event.stopPropagation();
+      drag = null;
+      panel.classList.remove('panel-dragging');
+      if (panel.hasPointerCapture(event.pointerId)) panel.releasePointerCapture(event.pointerId);
+      save();
+    }
+    for (const name of ['pointerup', 'pointercancel', 'lostpointercapture']) panel.addEventListener(name, finish);
+    panel.addEventListener('dblclick', event => {
+      event.stopPropagation();
+      if (event.target.closest('.hud-title')) reset();
+    });
+    panel.addEventListener('keydown', event => {
+      event.stopPropagation();
+      if (event.key === 'Home') { event.preventDefault(); reset(); return; }
+      const directions = {ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1]};
+      const direction = directions[event.key];
+      if (!direction) return;
+      event.preventDefault();
+      const bounds = panel.getBoundingClientRect();
+      const step = event.shiftKey ? 1 : 10;
+      position = [bounds.left + direction[0] * step, bounds.top + direction[1] * step];
+      place();
+      save();
+    });
+    panel.addEventListener('wheel', event => event.stopPropagation(), {passive: true});
+    window.addEventListener('resize', place);
+    new ResizeObserver(place).observe(panel);
+    place();
   }
 
   function esc(value) {
@@ -1464,6 +1782,129 @@
   function phaseClass(value) {
     const phase = String(value || 'stable').toLowerCase();
     return /failed|error|timeout/.test(phase) ? 'failed' : phase;
+  }
+  function optimizerBadgeClasses(phase) {
+    const status = optimizerState || {}, progress = status.progress;
+    const now = liveMode
+      ? liveClock ? liveClock.serverMs + Math.max(0, performance.now() - liveClock.receivedMs) : NaN
+      : Date.parse(networkState && networkState.observed_at || status.evaluated_at || '');
+    const age = (now - Date.parse(status.evaluated_at || '')) / 1000;
+    const fresh = Number.isFinite(age) && age >= 0 && age <= 60 && status.status !== 'unavailable' &&
+      (!progress || progress.kind === 'optimizer.progress');
+    const healthy = fresh && (!healthState || healthState.healthy !== false);
+    const settled = ['candidate_gain_too_small', 'current_link_acceptable'].includes((status.decision || {}).reason);
+    return {
+      phase: !fresh ? 'unknown' : phase === 'stable' ? (healthy && settled ? 'healthy' : 'waiting') : phaseClass(phase),
+      mode: !status.automatic_actuation ? '' : !fresh ? 'unknown' :
+        healthy && status.automatic_actuation_ready && Number(status.actions_used || 0) < Number(status.maximum_actions || 0)
+          ? 'healthy' : 'waiting',
+    };
+  }
+  function optimizerReason(reason) {
+    const reasons = {
+      minimum_dwell_not_met: 'Waiting for association dwell time',
+      condition_hold_not_met: 'Confirming that the better AP stays better',
+      post_steer_cooldown: 'Cooldown after a verified move',
+      steer_failure_backoff: 'Waiting before retrying a failed move',
+      candidate_gain_too_small: 'No sufficiently stronger measured AP',
+      current_link_acceptable: 'Current link meets policy',
+      current_metric_missing: 'Blocked: current signal is missing',
+      current_metric_freshness_unknown: 'Blocked: current signal age is unknown',
+      current_metric_stale: 'Blocked: current signal is stale',
+      fresh_candidate_metric_missing: 'Blocked: fresh AP alternatives are missing',
+      fresh_band_candidate_metric_missing: 'Blocked: fresh band alternatives are missing',
+      client_count_mismatch: 'Waiting for the expected client roster',
+      mesh_device_count_mismatch: 'Waiting for all mesh agents',
+      movement_active: 'Waiting for device movement to finish',
+      rf_settle_interval: 'Waiting for the radio environment to settle',
+      rf_not_applied: 'Waiting for the initial verified RF generation',
+      rf_snapshot_superseded: 'RF changed; refreshing measurements',
+      backhaul_reconciling: 'Settling mesh backhaul before measuring client APs',
+      fresh_current_link_metric: 'Waiting for a signal sample after the RF change',
+      target_association_observed: 'Move observed; checking stability and traffic',
+      recommendation_unchanged: 'Recommendation unchanged; no automatic move',
+      target_gain_sustained: 'Better AP confirmed; ready to steer',
+    };
+    return reasons[reason] || String(reason || 'Waiting for evaluation').replace(/_/g, ' ');
+  }
+  function renderOptimizerStatus() {
+    if (profilingState && profilingState.mode === 'native-observation') {
+      $('#optimizerStatus').innerHTML = '<b>Native observation · no lab steering</b><p>Only the room RF stimulus is applied. No external candidate queries, client steering or backhaul-parent selection.</p>';
+      $('#optimizerActivityDetails').textContent = 'External candidate collection is disabled in native observation.';
+      $('#optimizerClientRows').textContent = 'No external policy evaluations. Serving metrics and the selected traffic probe remain observational inputs.';
+      return;
+    }
+    const status = optimizerState || {}, progress = status.progress;
+    const fleet = status.fleet || {}, rows = status.client_decisions || [];
+    const now = liveMode
+      ? liveClock ? liveClock.serverMs + Math.max(0, performance.now() - liveClock.receivedMs) : NaN
+      : Date.parse(networkState && networkState.observed_at || status.evaluated_at || '');
+    const age = status.evaluated_at ? (now - Date.parse(status.evaluated_at)) / 1000 : null;
+    const freshEvaluation = Number.isFinite(age) && age >= 0 && age <= 60;
+    const blocked = rows.filter(row => /missing|stale|unknown|mismatch|minimum_dwell/.test(row.reason));
+    let activity = status.status === 'unavailable' ? 'Waiting for the next measurement retry.'
+      : 'Background monitoring continues between evaluations.';
+    if (progress) {
+      if (progress.kind === 'optimizer.progress') {
+        activity = progress.phase === 'candidate_queries' ? 'Measuring AP alternatives' : 'Reading current connections';
+        if (status.status === 'unavailable') activity = 'Retrying: ' + activity.charAt(0).toLowerCase() + activity.slice(1);
+        if (progress.total_queries != null) {
+          const node = networkState && networkState.mesh && (networkState.mesh.nodes || []).find(item => item.device_id === progress.active_agent);
+          activity += ': ' + progress.completed_queries + ' / ' + progress.total_queries + ' queries completed' +
+            (node ? ' · ' + displayRole(node.role) : '') + '. ' + progress.selected_clients + ' / ' + progress.total_clients + ' clients eligible to measure.';
+        }
+      } else {
+        activity = optimizerReason(progress.reason || (progress.kind === 'optimizer.environment.changed' ? 'rf_settle_interval' : 'movement_active'));
+      }
+    }
+    $('#optimizerActivityDetails').textContent = activity;
+    let heading = 'Waiting for evaluation', detail = '';
+    if (progress && progress.kind !== 'optimizer.progress') {
+      heading = activity;
+      detail = 'Previous decisions are not valid for the changed environment.';
+    } else if (status.status === 'unavailable') {
+      heading = 'Paused: measurements unavailable';
+      detail = 'Automatic steering waits for a successful measurement retry.';
+    } else if (age != null && !freshEvaluation) {
+      heading = 'Waiting for an updated evaluation';
+      detail = Number.isFinite(age) && age > 60 ? 'Last result is old; convergence is not confirmed.'
+        : 'Evaluation age is unknown; convergence is not confirmed.';
+    } else if (healthState && healthState.healthy === false) {
+      heading = 'Waiting for lab health recovery';
+      detail = 'The latest health check is degraded; convergence is not confirmed.';
+    } else if (fleet.converged && freshEvaluation && fleet.roster_complete !== false && fleet.measurement_complete !== false) {
+      heading = 'Converged: all clients checked';
+      detail = 'Last check: all clients were within ' + (Number(fleet.minimum_gain_rcpi || 1) / 2) + ' dB of their strongest measured AP. Monitoring continues.';
+    } else if (blocked.length) {
+      heading = blocked.length + ' clients waiting or blocked';
+      const counts = {};
+      for (const row of blocked) counts[row.reason] = (counts[row.reason] || 0) + 1;
+      detail = Object.entries(counts).map(([reason, count]) => count + ' × ' + optimizerReason(reason)).join(' · ');
+    } else if (rows.length) {
+      heading = status.action_batch_size ? 'Steering a measured client batch' : 'Evaluating the fleet';
+      detail = (fleet.clients_checked || 0) + ' / ' + rows.length + ' clients have fresh AP comparisons.';
+    }
+    const selectedDecision = rows.find(row => row.role === selected);
+    if (fleet.roster_complete === false) {
+      detail += ' Native roster incomplete: ' + (fleet.missing_clients || []).length + ' missing clients, ' +
+        (fleet.unexpected_clients || []).length + ' unexpected/offline clients still reported. Available clients continue; whole-room convergence is not confirmed.';
+    }
+    $('#optimizerStatus').innerHTML = '<b>' + esc(heading) + '</b><p>' + esc(detail) + '</p>' +
+      '<div class="sub">' + (status.profiling || networkState && networkState.profiling ? 'Unassisted BTM profiling · external room policy' : 'Assisted demo · external room policy') + '</div>' +
+      (status.unavailable_cohort_reason ? '<div class="sub">One client group lacks fresh AP comparisons; other fresh groups remain actionable. ' + esc(status.unavailable_cohort_reason) + '</div>' : '') +
+      (!Number.isFinite(age) || age < 0 ? '' : '<div class="sub">Last evaluation ' + Math.floor(age) + ' s ago · cycle ' +
+        (Number(status.observation_elapsed_ms || 0) / 1000).toFixed(1) + ' s</div>') +
+      (selectedDecision ? '<p><b>' + esc(displayRole(selected)) + ':</b> ' + esc(optimizerReason(selectedDecision.reason)) +
+        (selectedDecision.wait_remaining_seconds ? ' · ' + esc(selectedDecision.wait_remaining_seconds) + ' s remaining at evaluation' : '') + '</p>' : '');
+    $('#optimizerClientRows').innerHTML = rows.length ? '<table><tbody>' + rows.map(row =>
+      '<tr' + (row.role === selected ? ' class="selected"' : '') + '><td><b>' + esc(displayRole(row.role)) + '</b><br>' +
+      esc(row.source_role ? displayRole(row.source_role) : 'Unknown AP') +
+      (row.target_role ? ' → ' + esc(displayRole(row.target_role)) : '') + '</td><td>' +
+      esc(optimizerReason(row.reason)) + '<br><span class="sub">Signal ' +
+      esc(row.current_rcpi == null ? 'unknown' : (row.current_rcpi / 2 - 110) + ' dBm') +
+      ' · association age ' + esc(row.association_uptime_seconds) + ' s' +
+      (row.wait_remaining_seconds ? ' · wait ' + esc(row.wait_remaining_seconds) + ' s at evaluation' : '') +
+      '</span></td></tr>').join('') + '</tbody></table>' : 'No current per-client evaluation yet.';
   }
   function renderLivePanels() {
     if (!liveMode && !replayMode) return;
@@ -1479,23 +1920,33 @@
         '<span>Clients</span><b>' + esc(api.clients) + ' / 20</b>' +
         '<span>Private / IoT</span><b>' + esc(cohorts.private) + ' / ' + esc(cohorts.iot) + '</b>' +
         '<span>Actual topology</span><b>' + esc(shape) + ' · ' + esc(backhaulCount) + ' backhaul links</b>' +
+        (mesh.backhaul_control ? '<span>Lab backhaul</span><b title="' + esc(mesh.backhaul_control.reason) + '">' +
+          esc(mesh.backhaul_control.status) + '</b><span>Parent selection</span><b>' + esc(mesh.backhaul_control.reason) + '</b>' : '') +
         '<span>Model</span><b>' + esc(h.model_devices == null ? '—' : h.model_devices + '/' + h.model_radios + '/' + h.model_bsses + '/' + h.model_associated) + '</b>' +
         '<span>Health</span><b>' + (h.healthy == null ? 'observing' : h.healthy ? 'healthy' : 'degraded') + '</b>';
-      const hero = networkState.hero;
+      const hero = (networkState.clients || []).find(client => client.role === heroRole());
       if (hero) {
         const servingName = hero.connected_world_name || hero.connected_device_name;
         const controllerName = hero.connected_device_name && hero.connected_device_name !== servingName
           ? ' <span class="sub">(controller label ' + esc(hero.connected_device_name) + ')</span>' : '';
         $('#heroMetrics').innerHTML =
-          '<div class="hero-name">sta-' + esc(hero.sta_mac.split(':')[4]) +
+          '<div class="hero-name">' + (hero.cohort === 'iot' ? 'iot-' : 'sta-') + esc(hero.sta_mac.split(':')[4]) +
           ' <span class="phase">traffic probe · ' + esc(hero.band) + ' GHz</span></div>' +
           '<div class="hero-line">' + esc(servingName) + controllerName + ' · ' + esc(hero.connected_bssid) + '</div>' +
           '<div class="metric-grid"><span>Signal</span><b>' + (hero.rssi_dbm == null ? 'N/A' : esc(hero.rssi_dbm) + ' dBm / RCPI ' + esc(hero.rcpi)) + '</b>' +
+          '<span>Signal source</span><b>' + (hero.measurement_source === 'client_kernel_iw_link_after_wlan_traffic_probe' ? 'Client Wi-Fi measurement' : 'Controller telemetry') + '</b>' +
           '<span>SSID</span><b>' + esc(hero.ssid) + '</b><span>Traffic</span><b>' +
-          (trafficState == null ? 'waiting' : trafficState.success ? 'pass' + (trafficState.rtt_ms == null ? '' : ' · ' + esc(trafficState.rtt_ms) + ' ms') : 'FAIL') + '</b></div>';
+          (trafficState == null ? 'waiting' : trafficState.status === 'offline' ? 'offline · paused' : trafficState.success ? 'pass' + (trafficState.rtt_ms == null ? '' : ' · ' + esc(trafficState.rtt_ms) + ' ms') : 'FAIL') + '</b></div>';
+      } else {
+        $('#heroMetrics').innerHTML = '<div class="hero-name">' + esc(displayRole(heroRole())) + '</div><div>' +
+          (trafficState && trafficState.status === 'offline' ? 'Client offline · probe paused' : 'Waiting for this client’s association and traffic sample…') + '</div>';
       }
     }
-    if (optimizerState && optimizerState.status === 'unavailable') {
+    if (optimizerState && optimizerState.progress && optimizerState.progress.reason === 'backhaul_reconciling') {
+      $('#optimizerMetrics').innerHTML = '<div><span class="phase waiting">BACKHAUL SETTLING</span></div>' +
+        '<p><b>Client steering waits for mesh parent verification.</b></p>' +
+        '<div class="sub">Only an active parent-switch transaction blocks client work; ordinary backhaul settling does not.</div>';
+    } else if (optimizerState && optimizerState.status === 'unavailable') {
       $('#optimizerMetrics').innerHTML =
         '<div><span class="phase">MEASUREMENTS UNAVAILABLE</span></div>' +
         '<p><b>' + (optimizerState.automatic_actuation
@@ -1510,6 +1961,7 @@
       const target = targetRole();
       let phase = state.phase || (d.action === 'steer' ? 'eligible' : 'stable');
       if (actionState && actionState.phase === 'requested' && !verificationState) phase = 'steering';
+      const badges = optimizerBadgeClasses(phase);
       const outcomeBadge = verificationState
         ? ' <span class="phase ' + (verificationState.success ? 'verified' : 'failed') + '">last action ' +
           (verificationState.success ? 'verified' : 'failed') + '</span>' : '';
@@ -1523,18 +1975,21 @@
       const checked = Number(fleet.clients_checked || 0);
       const total = Number(fleet.clients_evaluated || 0);
       $('#optimizerMetrics').innerHTML =
-        '<div><span class="phase ' + phaseClass(phase) + '">' + esc(phase) + '</span> ' +
-        '<span class="phase">' + esc(automatic ? 'AUTO BTM' : optimizerState.mode) + '</span>' + outcomeBadge + '</div>' +
-        '<div class="policy-reason" style="margin-top:6px"><b>' + esc(d.reason || 'waiting') + '</b></div>' +
+        '<div><span class="phase ' + badges.phase + '" title="Last evaluated client: ' + esc(optimizerReason(d.reason)) + '">' + esc(phase) + '</span> ' +
+        '<span class="phase ' + badges.mode + '" title="' + (automatic
+          ? 'Automatic BSS Transition Management: green means enabled and ready; yellow means waiting; grey means no fresh evaluation. Not proof of an active roam.'
+          : 'Recommendations only; automatic steering is disabled.') + '">' +
+          esc(automatic ? 'AUTO BTM' : optimizerState.mode) + '</span>' + outcomeBadge + '</div>' +
+        '<div class="policy-reason" style="margin-top:6px"><b>' + esc(optimizerReason(d.reason)) + '</b></div>' +
         '<div class="metric-grid"><span>Current</span><b>' + esc(d.current_rcpi == null ? 'N/A' : 'RCPI ' + d.current_rcpi) + '</b>' +
-        '<span>Current focus</span><b>' + esc(displayRole(optimizerState.subject_role)) + '</b>' +
-        '<span>Best target</span><b>' + esc(target || 'none') + '</b>' +
+        '<span>Last evaluated client</span><b>' + esc(displayRole(optimizerState.subject_role)) + '</b>' +
+        '<span>Best target</span><b>' + esc(target ? displayRole(target) : 'none') + '</b>' +
         '<span>Target metric</span><b>' + esc(d.target_rcpi == null ? 'N/A' : 'RCPI ' + d.target_rcpi) + '</b>' +
         '<span>Hold</span><b>' + esc(Number(d.hold_seconds || 0).toFixed(1)) + ' s</b>' +
         '<span>Fleet check</span><b>' + esc(checked) + ' / ' + esc(total) + ' clients</b>' +
         '<span>Kernel signal fallback</span><b>' + esc((optimizerState.kernel_current_link_measurements || []).length) +
           ' clients (verified Wi-Fi traffic)</b>' +
-        '<span>Stronger AP available</span><b>' + esc(stronger) + '</b>' +
+        '<span>Stronger AP available</span><b>' + esc(stronger) + (fleet.measurement_complete ? '' : ' · incomplete check') + '</b>' +
         '<span>Next measured batch</span><b>' + esc(optimizerState.action_batch_size || 0) +
           ' / ' + esc(optimizerState.action_batch_limit || 1) + '</b>' +
         '<span>Action budget</span><b>' + esc(used) + ' / ' + esc(limit || '—') + '</b>' +
@@ -1549,9 +2004,30 @@
         (scores.length ? '<div class="sub" style="margin:6px 0 0">Measured: ' + scores.slice(0, 4).map((s) =>
           esc(s.role ? displayRole(s.role) : (s.device_name || s.world_name)) + ' ' + esc(s.rcpi)).join(' · ') + '</div>' : '');
     }
-    $('#eventRibbon').innerHTML = recentEvents.slice(-7).reverse().map((item) =>
-      '<div class="event-row"><span class="event-time">' + (item.world_time_ms / 1000).toFixed(1) + 's</span><span>' + esc(item.label) + '</span></div>'
-    ).join('');
+    renderOptimizerStatus();
+    renderRecentEvents();
+  }
+  function renderRecentEvents() {
+    const serverNow = liveClock
+      ? liveClock.serverMs + Math.max(0, performance.now() - liveClock.receivedMs) : NaN;
+    $('#eventRibbon').innerHTML = recentEvents.slice(-7).reverse().map((item) => {
+      const recordedAt = Date.parse(item.recorded_at || '');
+      let label = (Number(item.world_time_ms || 0) / 1000).toFixed(1) + 's';
+      let title = 'Scenario time';
+      if (liveMode) {
+        label = 'Unknown age';
+        title = 'Event timestamp unavailable';
+        if (Number.isFinite(recordedAt) && Number.isFinite(serverNow)) {
+          const seconds = Math.max(0, Math.floor((serverNow - recordedAt) / 1000));
+          label = seconds < 60 ? seconds + 's ago'
+            : seconds < 3600 ? Math.floor(seconds / 60) + 'm ' + seconds % 60 + 's ago'
+            : Math.floor(seconds / 3600) + 'h ' + Math.floor(seconds % 3600 / 60) + 'm ago';
+          title = 'Recorded ' + new Date(recordedAt).toLocaleString() + ' · ' + item.recorded_at;
+        }
+      }
+      return '<div class="event-row"><span class="event-time" title="' + esc(title) + '">' +
+        esc(label) + '</span><span>' + esc(item.label) + '</span></div>';
+    }).join('');
   }
 
   // ---- inspector -----------------------------------------------------------
@@ -1655,6 +2131,9 @@
     presenceAction.style.display = canChangePresence(role) ? '' : 'none';
     menu.querySelector('[data-role-action=move]').style.display =
       canMoveRole(role) ? '' : 'none';
+    const probeAction = menu.querySelector('[data-role-action=probe]');
+    probeAction.style.display = canSelectTrafficProbe(role) ? '' : 'none';
+    probeAction.disabled = role === heroRole();
     menu.querySelector('[data-role-action=reset]').style.display =
       roleIsModified(role) ? '' : 'none';
     menu.style.display = 'block';
@@ -1671,6 +2150,7 @@
   function loadWorld(w) {
     if (replayMode && replayDurationMs) w = Object.assign({}, w, {duration_ms: replayDurationMs});
     world = w; tMs = 0; selected = null; playing = false; $('#play').textContent = 'Play';
+    showPlaybackCheckpoint(null);
     for (const role of Object.keys(interaction.overrides)) delete interaction.overrides[role];
     for (const role of Object.keys(interaction.previewPositions)) delete interaction.previewPositions[role];
     interaction.drag = interaction.movement = interaction.awaitingDestination = interaction.hudRole = null;
@@ -1778,12 +2258,21 @@
   // ---- controls ------------------------------------------------------------
   $('#scrub').addEventListener('input', (e) => {
     if (!world || liveMode) return;
+    showPlaybackCheckpoint(null);
     tMs = e.target.value / 1000 * world.duration_ms;
     if (replayMode) applyReplayUntil(tMs);
     update();
   });
+  function showPlaybackCheckpoint(time) {
+    const message = $('#playbackCheckpoint');
+    message.hidden = time == null;
+    message.textContent = time == null ? '' : 'Checkpoint at ' + (time / 1000) + ' s. ' +
+      (liveMode ? 'Wait for fresh measurements and verified roaming in both views; press Play to continue.'
+        : 'Compare predicted links; press Play to continue. This preview does not steer real clients.');
+  }
   function applyPlaybackSnapshot(snapshot) {
     livePlayback = snapshot;
+    showPlaybackCheckpoint(replayMode ? null : snapshot.checkpoint_ms);
     if (liveMode) tMs = Number(snapshot.time_ms || 0);
     if (interactiveLiveMode) {
       $('#play').disabled = playbackBusy || !interaction.apiEnabled || !snapshot.enabled;
@@ -1811,19 +2300,20 @@
       return;
     }
     playing = !playing;
+    if (playing) showPlaybackCheckpoint(null);
     $('#play').textContent = playing ? 'Pause' : 'Play';
     lastTick = performance.now();
     if (playing && tMs >= world.duration_ms) tMs = 0;
   }
   $('#play').addEventListener('click', togglePlay);
-  document.addEventListener('keydown', (e) => { if (!$('#viewerManual').open && e.code === 'Space' && !/INPUT|SELECT|BUTTON/.test(document.activeElement.tagName)) { e.preventDefault(); togglePlay(); } });
+  document.addEventListener('keydown', (event) => { if (!$('#viewerManual').open && event.code === 'Space' && !/INPUT|SELECT|BUTTON|SUMMARY/.test(document.activeElement.tagName) && !document.activeElement.closest('.live-scroll')) { event.preventDefault(); togglePlay(); } });
   document.querySelectorAll('[data-speed]').forEach((b) => b.addEventListener('click', () => {
     speed = +b.dataset.speed; document.querySelectorAll('[data-speed]').forEach((x) => x.setAttribute('aria-pressed', x === b));
   }));
   document.querySelectorAll('[data-band]').forEach((b) => b.addEventListener('click', () => {
     band = b.dataset.band; document.querySelectorAll('[data-band]').forEach((x) => x.setAttribute('aria-pressed', x === b)); update();
   }));
-  ['#showLinks', '#showBackhaul', '#showTrails', '#showSta'].forEach((id) => $(id).addEventListener('change', update));
+  ['#showLinks', '#showBackhaul', '#showTrails'].forEach((id) => $(id).addEventListener('change', update));
 
   function roleIsModified(role) {
     const current = interaction.overrides[role];
@@ -2023,6 +2513,7 @@
     if (!action || !role) return;
     hideRoleMenu();
     if (action === 'move') beginDestinationSelection(role);
+    else if (action === 'probe') selectTrafficProbe(role);
     else if (action === 'presence') togglePresence(role);
     else if (action === 'reset') {
       if (interactiveLiveMode) resetLiveRole(role);
@@ -2049,11 +2540,15 @@
   }
   function resetEventState() {
     networkState = optimizerState = trafficState = healthState = actionState = verificationState = null;
+    trafficProbeState = liveClock = null;
     storyState = 'Waiting for the scenario…';
     recentEvents = [];
   }
   function eventLabel(event) {
     const p = event.payload || {};
+    if (event.kind.startsWith('backhaul.action.')) {
+      return 'Lab backhaul: ' + p.status + (p.child ? ' · ' + displayRole(p.child) + ' → ' + displayRole(p.parent) : '') + ' · ' + p.reason;
+    }
     if (event.kind.startsWith('interaction.playback.') && !event.kind.endsWith('.progress')) {
       return 'World playback: ' + p.playback.status + (p.reason ? ' · ' + p.reason : '');
     }
@@ -2084,7 +2579,9 @@
       return 'Steering batch paused: ' + String(p.reason || 'remeasure').replaceAll('_', ' ');
     }
     if (event.kind === 'optimizer.verification') return p.success ? 'Association and traffic verified' : 'Steering verification failed';
-    if (event.kind === 'traffic.sample' && !p.success) return 'Hero traffic probe failed';
+    if (event.kind === 'traffic.probe.selected') return displayRole(p.traffic_probe.role) + ' selected as traffic probe';
+    if (event.kind === 'traffic.sample' && p.status === 'offline') return 'Traffic probe paused: client offline';
+    if (event.kind === 'traffic.sample' && p.success === false) return 'Traffic probe failed';
     if (event.kind === 'health.sample' && p.healthy === false) return 'Lab health degraded';
     if (event.kind === 'room.position.committed') return displayRole(p.role) + ' RF position applied';
     if (event.kind === 'room.presence.committed') {
@@ -2110,7 +2607,26 @@
     return null;
   }
   function applyDemoEvent(event, advanceClock = true) {
+    const recordedAt = Date.parse(event.recorded_at || '');
+    if (liveMode && Number.isFinite(recordedAt)) {
+      const receivedMs = performance.now();
+      const priorTime = liveClock ? liveClock.serverMs + Math.max(0, receivedMs - liveClock.receivedMs) : recordedAt;
+      liveClock = {serverMs: Math.max(priorTime, recordedAt), receivedMs};
+    }
     if (advanceClock) tMs = Math.max(0, Math.min(world.duration_ms, Number(event.world_time_ms) || 0));
+    if (event.kind === 'lab.profiling') {
+      const profile = event.payload;
+      profilingState = profile;
+      const label = profile.mode === 'native-observation'
+        ? 'Native observation · no lab steering'
+        : profile.mode === 'unassisted-btm' ? 'External policy · unassisted BTM'
+        : profile.mode === 'external-recommendations' ? 'External recommendations · no lab steering'
+        : 'Assisted demo · external policy';
+      for (const selector of ['#profilingAuthority', '#fullscreenAuthority']) {
+        const element = $(selector);
+        if (element) element.textContent = label + ' · ' + (profile.backhaul_rf || 'scenario') + ' backhaul';
+      }
+    }
     if (event.kind === 'room.world.committed') {
       const payload = event.payload;
       loadWorld(payload.world);
@@ -2129,10 +2645,35 @@
     } else if (event.kind.startsWith('interaction.playback.')) {
       interaction.revision = Math.max(interaction.revision, Number(event.payload.revision || 0));
       applyPlaybackSnapshot(event.payload.playback);
-    } else if (event.kind === 'network.snapshot') networkState = event.payload;
+    } else if (event.kind === 'network.snapshot') {
+      networkState = event.payload;
+      if (frameTimings) receivedNetworkFrame = {sequence: event.sequence, received_at: performance.now(),
+        recorded_at: event.recorded_at, owners: (networkState.clients || []).map(client =>
+          [client.sta_mac, client.connected_bssid])};
+      applyTrafficProbe(networkState.traffic_probe);
+    } else if (event.kind === 'traffic.probe.selected') {
+      applyTrafficProbe(event.payload.traffic_probe);
+      interaction.revision = Math.max(interaction.revision, Number(event.payload.revision || 0));
+    }
     else if (event.kind === 'optimizer.evaluation' ||
              event.kind === 'optimizer.measurement.unavailable') optimizerState = event.payload;
-    else if (event.kind === 'traffic.sample') trafficState = event.payload;
+    else if (['optimizer.progress', 'optimizer.measurement.waiting', 'optimizer.environment.changed', 'observation.inconsistent_rf_epoch'].includes(event.kind)) {
+      optimizerState = {...(optimizerState || {}), progress: {...event.payload, kind: event.kind, recorded_at: event.recorded_at}};
+      if (event.kind !== 'optimizer.progress') {
+        optimizerState.automatic_actuation_ready = false;
+        optimizerState.fleet = {};
+        optimizerState.client_decisions = [];
+        verificationState = null;
+        actionState = null;
+      }
+    }
+    else if (event.kind === 'traffic.sample') {
+      const probe = event.payload.traffic_probe;
+      if (!probe || !trafficProbeState || probe.role === trafficProbeState.role && probe.selection === trafficProbeState.selection) {
+        applyTrafficProbe(probe);
+        trafficState = event.payload;
+      }
+    }
     else if (event.kind === 'health.sample') {
       healthState = event.payload;
       if (interactiveLiveMode && healthState.expected_online_clients != null && !applyingWorld && !worldSwitchError) {
@@ -2190,7 +2731,7 @@
     }
     if (liveMode && livePlayback) tMs = Number(livePlayback.time_ms || 0);
     const label = eventLabel(event);
-    if (label) recentEvents.push({world_time_ms: event.world_time_ms, label});
+    if (label) recentEvents.push({world_time_ms: event.world_time_ms, recorded_at: event.recorded_at, label});
     if (recentEvents.length > 30) recentEvents = recentEvents.slice(-30);
   }
   function runStateFor(event) {
@@ -2205,6 +2746,7 @@
     resetEventState();
     Object.values(state.latest || {}).sort((a, b) => a.sequence - b.sequence)
       .forEach((event) => applyDemoEvent(event, false));
+    applyTrafficProbe(state.traffic_probe);
     for (const [role, value] of Object.entries(state.roles || {})) {
       if (world.roles[role] && Array.isArray(value.authoritative_position)) {
         interaction.overrides[role] = {
@@ -2227,7 +2769,7 @@
     $('#play').disabled = true;
     document.querySelectorAll('[data-speed]').forEach((button) => { button.disabled = true; });
     $('#viewerTitle').textContent = interactiveLiveMode
-      ? 'prplMesh interactive room' : 'prplMesh immersive room demo';
+      ? 'EasyMesh interactive room' : 'EasyMesh immersive room demo';
     $('#hint').textContent = interactiveLiveMode
       ? 'drag devices to move · drag empty space to orbit · Shift-drag to pan · scroll to zoom'
       : 'live runner clock · drag to orbit · wheel to zoom · shift-drag to pan';
@@ -2256,6 +2798,12 @@
       applyLiveState(state);
       if (interactiveLiveMode) await refreshInteractionSnapshot();
       liveSource = new EventSource('/api/demo/events?after=' + encodeURIComponent(state.sequence));
+      liveSource.addEventListener('reset', () => {
+        liveSource.close();
+        liveSource = null;
+        setLiveStatus('connecting', 'history expired; resynchronizing');
+        connectLive();
+      });
       liveSource.onopen = () => {
         const current = $('#liveStatus').dataset.state;
         if (current === 'connecting' || current === 'disconnected') setLiveStatus(state.state, 'connected');
@@ -2295,7 +2843,7 @@
     setLiveStatus('connecting');
     $('#world').disabled = true;
     $('#file').disabled = true;
-    $('#viewerTitle').textContent = 'prplMesh room demo replay';
+    $('#viewerTitle').textContent = 'EasyMesh room demo replay';
     $('#hint').textContent = 'recorded evidence · drag to orbit · wheel to zoom · shift-drag to pan · space plays';
     try {
       const [stateResponse, worldResponse, eventsResponse] = await Promise.all([
@@ -2307,7 +2855,9 @@
       const state = await stateResponse.json();
       replayInitialWorld = await worldResponse.json();
       loadWorld(replayInitialWorld);
-      replayEvents = (await eventsResponse.json()).events.sort((a, b) => a.sequence - b.sequence);
+      const eventDocument = await eventsResponse.json();
+      if (eventDocument.history?.truncated) throw new Error('Full replay expired; use the live view or a complete archived run');
+      replayEvents = eventDocument.events.sort((a, b) => a.sequence - b.sequence);
       replayDurationMs = replayEvents.reduce((maximum, event) => Math.max(maximum, event.world_time_ms), replayInitialWorld.duration_ms);
       loadWorld(replayInitialWorld);
       $('#liveRun').style.display = 'block';
@@ -2324,7 +2874,14 @@
     requestAnimationFrame(loop);
     const interactionChanged = world && advanceMovement(now);
     if (playing && world && !liveMode) {
-      tMs += (now - lastTick) * speed;
+      const targetTime = Math.min(world.duration_ms, tMs + (now - lastTick) * speed);
+      const checkpoint = replayMode ? null : interactionModel.nextPlaybackPause(world, tMs, targetTime);
+      tMs = checkpoint == null ? targetTime : checkpoint;
+      if (checkpoint != null) {
+        playing = false;
+        $('#play').textContent = 'Play';
+        showPlaybackCheckpoint(checkpoint);
+      }
       if (tMs >= world.duration_ms) { tMs = world.duration_ms; playing = false; $('#play').textContent = 'Play'; }
       if (replayMode) applyReplayUntil(tMs);
       update();
@@ -2333,10 +2890,12 @@
       update();
     }
     lastTick = now;
-    if (world3d) renderer.render(scene, camera);
+    if (sceneRenderDirty && !updateQueued) renderScene();
   }
   resize(); placeCamera(); requestAnimationFrame(loop);
   window.__scene = scene; window.__viewer = {
+    renderStats,
+    frameTimings,
     loadWorld, update, frameAt: (t) => frameAt(t),
     bestServing: (g) => bestServing(g),
     setTime: (t) => { tMs = t; update(); },
@@ -2350,7 +2909,7 @@
   const initial = new URLSearchParams(location.search).get('world');
   if (initial && GOLDEN.includes(initial)) sel.value = initial;
   if (noConnectMode) {
-    $('#viewerTitle').textContent = 'prplMesh room sandbox';
+    $('#viewerTitle').textContent = 'EasyMesh room sandbox';
     $('#interactionBadge').textContent = 'NO CONNECT';
     $('#interactionHelp').textContent =
       'Browser-only sandbox: movements preview room geometry and RF; no controller, optimizer, client or wmediumd is connected.';

@@ -88,7 +88,19 @@ def device_name(device_id, role, fallback_ordinal):
     return f"agent-{fallback_ordinal}"
 
 
-def topology():
+def topology(objects=None):
+    if objects is None:
+        objects = ubus(ROOT, "_get", {"rel_path": "", "depth": 10})
+    if not isinstance(objects, dict):
+        raise ValueError("NBAPI snapshot is not an object map")
+
+    def instances(relative_path, depth=1):
+        prefix = ROOT + "." + relative_path
+        return [key.rstrip(".") for key in objects if key.startswith(prefix)]
+
+    def parameters(object_path):
+        return objects.get(object_path + ".", {})
+
     device_paths = indexed(instances("Device.", 1), rf"{re.escape(ROOT)}\.Device\.(\d+)")
     devices = []
     for display_index, device_path in enumerate(device_paths, 1):

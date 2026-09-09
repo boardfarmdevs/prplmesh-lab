@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import socket
 import tempfile
 import unittest
 import urllib.error
@@ -55,6 +56,10 @@ class FakeInteractions:
         self.revision += 1
         return {"revision": self.revision, "playback": {"status": action}, **body}
 
+    def select_traffic_probe(self, role, **body):
+        self.revision += 1
+        return {"revision": self.revision, "traffic_probe": {"role": role}, **body}
+
     def start_recording(self, **body):
         return {"revision": self.revision, "recording": {"active": True}, **body}
 
@@ -108,7 +113,6 @@ class ServerTests(unittest.TestCase):
             data=json.dumps(body).encode(),
             headers={
                 "Content-Type": "application/json",
-                "Authorization": "Bearer operator-secret",
             },
         )
         with urllib.request.urlopen(request, timeout=2) as response:
@@ -120,6 +124,59 @@ class ServerTests(unittest.TestCase):
         self.assertEqual(self._json("/api/demo/world")["name"], "test-world")
         with urllib.request.urlopen(self.base + "/viewer/?mode=live", timeout=2) as response:
             self.assertIn(b"viewer", response.read())
+
+    def test_viewer_defaults_are_host_specific_without_changing_static_files(self):
+        viewer_root = Path(__file__).resolve().parents[2] / "wmediumd/configurator/worlds/viewer"
+        original = (viewer_root / "index.html").read_bytes()
+        self.assertIn(b'<meta name="room-viewer-mode" content="no-connect">', original)
+        for interactions, replay, expected in [
+            (None, False, "live"),
+            (FakeInteractions(), False, "interactive"),
+            (None, True, "replay"),
+        ]:
+            with self.subTest(mode=expected):
+                server = RoomDemoServer(("127.0.0.1", 0), self.store, viewer_root, interactions, replay=replay)
+                server.start()
+                try:
+                    base = f"http://127.0.0.1:{server.address[1]}"
+                    for route in ["/", "/viewer", "/viewer/", "/viewer/index.html", "/?mode=live&world=example"]:
+                        with urllib.request.urlopen(base + route, timeout=2) as response:
+                            body = response.read()
+                            self.assertIn(f'<meta name="room-viewer-mode" content="{expected}">'.encode(), body)
+                            self.assertEqual(response.headers["Cache-Control"], "no-store")
+                            self.assertEqual(int(response.headers["Content-Length"]), len(body))
+                            if route == "/":
+                                self.assertEqual(response.url, base + "/viewer/")
+                            elif route.startswith("/?"):
+                                self.assertEqual(response.url, base + "/viewer/?mode=live&world=example")
+                    with urllib.request.urlopen(base + "/viewer/interaction-model.js", timeout=2) as response:
+                        self.assertEqual(response.read(), (viewer_root / "interaction-model.js").read_bytes())
+                    self.assertEqual((viewer_root / "index.html").read_bytes(), original)
+                finally:
+                    server.close()
+
+    def test_event_stream_limit_reserves_regular_api_capacity(self):
+        for _ in range(16):
+            self.assertTrue(self.server.httpd.event_streams.acquire(blocking=False))
+        try:
+            with self.assertRaises(urllib.error.HTTPError) as caught:
+                urllib.request.urlopen(self.base + "/api/demo/events", timeout=2)
+            self.assertEqual(caught.exception.code, 503)
+            self.assertEqual(self._json("/healthz")["status"], "ok")
+        finally:
+            for _ in range(16):
+                self.server.httpd.event_streams.release()
+
+    def test_connection_capacity_rejects_without_creating_a_worker(self):
+        for _ in range(64):
+            self.assertTrue(self.server.httpd.connections.acquire(blocking=False))
+        try:
+            with socket.create_connection(self.server.address, timeout=2) as connection:
+                self.assertIn(b"503", connection.recv(1024))
+        finally:
+            for _ in range(64):
+                self.server.httpd.connections.release()
+        self.assertEqual(self._json("/healthz")["status"], "ok")
         with urllib.request.urlopen(
             self.base + "/viewer/vendor/three.min.js", timeout=2
         ) as response:
@@ -134,6 +191,17 @@ class ServerTests(unittest.TestCase):
         with self.assertRaises(urllib.error.HTTPError) as caught:
             urllib.request.urlopen(request, timeout=2)
         self.assertEqual(caught.exception.code, 405)
+
+    def test_expired_sse_history_requests_explicit_state_resynchronization(self):
+        self.store._history_events = 1
+        self.store.emit("scenario.clock", 0, {})
+        self.store.emit("scenario.clock", 0, {})
+        with urllib.request.urlopen(self.base + "/api/demo/events?after=0", timeout=2) as response:
+            lines = [response.readline().decode().strip() for _index in range(4)]
+        self.assertEqual(lines[0], "id: 2")
+        self.assertEqual(lines[1], "event: reset")
+        self.assertIn("history_expired", lines[2])
+        self.assertTrue(self._json("/api/demo/storage")["history"]["truncated"])
 
     def test_sse_replays_an_ordered_event(self):
         self.store.publish({
@@ -159,7 +227,21 @@ class ServerTests(unittest.TestCase):
 
 
 class InteractiveServerTests(unittest.TestCase):
-    def test_playback_uses_authenticated_revisioned_endpoint(self):
+    def test_traffic_probe_route_requires_json_and_revision_without_operator(self):
+        status, result = self._request("/api/demo/traffic-probe", "POST", {
+            "role": "sta_01", "token": "lease-token", "expected_revision": 2,
+        })
+        self.assertEqual(status, 200)
+        self.assertEqual(result["traffic_probe"]["role"], "sta_01")
+        with self.assertRaises(urllib.error.HTTPError) as caught:
+            self._request("/api/demo/traffic-probe", "POST", {"role": "sta_01"})
+        self.assertEqual(caught.exception.code, 428)
+        request = urllib.request.Request(self.base + "/api/demo/traffic-probe", method="POST", data=b'{}')
+        with self.assertRaises(urllib.error.HTTPError) as caught:
+            urllib.request.urlopen(request, timeout=2)
+        self.assertEqual(caught.exception.code, 415)
+
+    def test_playback_uses_revisioned_endpoint_without_operator(self):
         status, result = self._request("/api/demo/playback", "POST", {
             "action": "play", "token": "lease-token", "expected_revision": 2,
         })
@@ -176,7 +258,6 @@ class InteractiveServerTests(unittest.TestCase):
         self.interactions = FakeInteractions()
         self.server = RoomDemoServer(
             ("127.0.0.1", 0), store, root, self.interactions,
-            operator_token="operator-secret",
         )
         self.server.start()
         self.addCleanup(self.server.close)
@@ -189,7 +270,6 @@ class InteractiveServerTests(unittest.TestCase):
         data = None if body is None else json.dumps(body).encode()
         headers = {
             "Content-Type": "application/json",
-            "Authorization": "Bearer operator-secret",
         }
         if body is not None and "expected_revision" in body:
             headers["If-Match"] = (
@@ -202,7 +282,7 @@ class InteractiveServerTests(unittest.TestCase):
         with urllib.request.urlopen(request, timeout=2) as response:
             return response.status, json.load(response)
 
-    def test_world_apply_requires_authorization_and_revision(self):
+    def test_world_apply_requires_revision_without_operator(self):
         _, catalog = self._request("/api/demo/worlds")
         self.assertEqual(catalog["clients"], 20)
         with self.assertRaises(urllib.error.HTTPError) as caught:
@@ -215,7 +295,7 @@ class InteractiveServerTests(unittest.TestCase):
             data=b'{"world":"default"}', headers={"Content-Type": "application/json"})
         with self.assertRaises(urllib.error.HTTPError) as caught:
             urllib.request.urlopen(request, timeout=2)
-        self.assertEqual(caught.exception.code, 401)
+        self.assertEqual(caught.exception.code, 428)
 
     def test_lease_position_presence_and_release_routes(self):
         _, state = self._request("/api/demo/interactions")
@@ -294,7 +374,6 @@ class InteractiveServerTests(unittest.TestCase):
             }).encode(),
             headers={
                 "Content-Type": "application/json",
-                "Authorization": "Bearer operator-secret",
             },
         )
         with self.assertRaises(urllib.error.HTTPError) as caught:
@@ -318,7 +397,7 @@ class InteractiveServerTests(unittest.TestCase):
             urllib.request.urlopen(request, timeout=2)
         self.assertEqual(caught.exception.code, 403)
 
-    def test_write_without_operator_capability_is_rejected(self):
+    def test_lease_without_operator_capability_is_accepted(self):
         request = urllib.request.Request(
             self.base + "/api/demo/interactions/lease",
             method="POST",
@@ -328,9 +407,20 @@ class InteractiveServerTests(unittest.TestCase):
             }).encode(),
             headers={"Content-Type": "application/json"},
         )
-        with self.assertRaises(urllib.error.HTTPError) as caught:
-            urllib.request.urlopen(request, timeout=2)
-        self.assertEqual(caught.exception.code, 401)
+        with urllib.request.urlopen(request, timeout=2) as response:
+            self.assertEqual(response.status, 201)
+            self.assertEqual(json.load(response)["token"], "lease-token")
+
+    def test_cross_origin_put_and_delete_remain_rejected_without_operator(self):
+        for method, path in (("PUT", "/api/demo/roles/sta_01/position"),
+                             ("DELETE", "/api/demo/interactions/lease")):
+            with self.subTest(method=method):
+                request = urllib.request.Request(self.base + path, method=method,
+                    data=b'{}', headers={"Content-Type": "application/json",
+                                         "Origin": "http://not-the-room.example"})
+                with self.assertRaises(urllib.error.HTTPError) as caught:
+                    urllib.request.urlopen(request, timeout=2)
+                self.assertEqual(caught.exception.code, 403)
 
 
 if __name__ == "__main__":

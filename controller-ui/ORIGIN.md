@@ -1,8 +1,8 @@
 # Source origin
 
 This application is a host-native port of the RDK Unified EasyMesh EM CLI Web
-application. The Web assets were copied from the patched 0824 source used by
-the RDK virtual-radio lab:
+application. The topology renderer, shared signal meter and fullscreen assets
+are synchronized with the patched RDK 0908 source at layer commit `56a689f`:
 
 ```text
 unified-wifi-mesh/src/rdkb-cli/static/

@@ -26,13 +26,17 @@ class OutcomeVerifier:
         observer,
         *,
         traffic_probe: Callable[[str], bool] | None = None,
+        association_probe: Callable[[str], str | None] | None = None,
         sleeper: Callable[[float], None] = time.sleep,
         monotonic: Callable[[], float] = time.monotonic,
+        cancelled: Callable[[], bool] | None = None,
     ) -> None:
         self.observer = observer
         self.traffic_probe = traffic_probe
+        self.association_probe = association_probe
         self.sleeper = sleeper
         self.monotonic = monotonic
+        self.cancelled = cancelled or (lambda: False)
 
     def verify(
         self,
@@ -48,11 +52,17 @@ class OutcomeVerifier:
         polls = 0
         final_bssid = None
         while self.monotonic() - started <= timeout_seconds:
-            snapshot: Snapshot = self.observer.observe()
+            if self.cancelled():
+                return VerificationResult(False, "verification_cancelled", polls,
+                                          self.monotonic() - started, final_bssid, None)
+            if self.association_probe is not None:
+                final_bssid = self.association_probe(sta_mac)
+            else:
+                snapshot: Snapshot = self.observer.observe()
+                client = snapshot.client(sta_mac)
+                final_bssid = client.connected_bssid if client else None
             polls += 1
-            client = snapshot.client(sta_mac)
-            final_bssid = client.connected_bssid if client else None
-            if client and final_bssid == target_bssid:
+            if final_bssid == target_bssid:
                 traffic = self.traffic_probe(sta_mac) if self.traffic_probe else None
                 return VerificationResult(
                     success=traffic is not False,

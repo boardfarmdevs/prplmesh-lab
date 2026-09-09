@@ -6,12 +6,42 @@ import threading
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-import secrets
 from urllib.parse import parse_qs, unquote, urlparse
 
 from .engine import RoomEngine
-from .events import EventStore
+from .events import EventHistoryGap, EventStore
 from .interactions import InteractionError
+
+
+class BoundedHTTPServer(ThreadingHTTPServer):
+    daemon_threads = True
+    request_queue_size = 64
+
+    def __init__(self, address, handler):
+        self.connections = threading.BoundedSemaphore(64)
+        self.event_streams = threading.BoundedSemaphore(16)
+        super().__init__(address, handler)
+
+    def process_request(self, request, client_address):
+        request.settimeout(5)
+        if not self.connections.acquire(blocking=False):
+            try:
+                request.sendall(b"HTTP/1.1 503 Service Unavailable\r\nConnection: close\r\nContent-Length: 0\r\n\r\n")
+            except OSError:
+                pass
+            self.shutdown_request(request)
+            return
+        try:
+            super().process_request(request, client_address)
+        except BaseException:
+            self.connections.release()
+            raise
+
+    def process_request_thread(self, request, client_address):
+        try:
+            super().process_request_thread(request, client_address)
+        finally:
+            self.connections.release()
 
 
 class RoomDemoServer:
@@ -21,15 +51,15 @@ class RoomDemoServer:
         store: EventStore,
         viewer_root: Path,
         interactions: RoomEngine | None = None,
-        operator_token: str | None = None,
+        *,
+        replay: bool = False,
     ):
         self.store = store
         self.viewer_root = viewer_root.resolve()
         self.interactions = interactions
-        self.operator_token = operator_token
+        self.viewer_mode = "replay" if replay else "interactive" if interactions is not None else "live"
         handler = self._handler()
-        self.httpd = ThreadingHTTPServer(address, handler)
-        self.httpd.daemon_threads = True
+        self.httpd = BoundedHTTPServer(address, handler)
         self._thread: threading.Thread | None = None
 
     @property
@@ -55,7 +85,7 @@ class RoomDemoServer:
         store = self.store
         viewer_root = self.viewer_root
         interactions = self.interactions
-        operator_token = self.operator_token
+        viewer_mode = self.viewer_mode
 
         class Handler(BaseHTTPRequestHandler):
             server_version = "EasyMeshRoomDemo/0.1"
@@ -134,21 +164,6 @@ class RoomDemoServer:
                         "cross-origin interactive writes are not allowed",
                     )
 
-            def _require_operator(self) -> None:
-                self._require_same_origin()
-                if operator_token is None:
-                    return
-                supplied = self.headers.get("Authorization", "")
-                prefix = "Bearer "
-                if not supplied.startswith(prefix) or not secrets.compare_digest(
-                    supplied[len(prefix):], operator_token
-                ):
-                    raise InteractionError(
-                        401,
-                        "operator_authorization_required",
-                        "a valid run-scoped operator capability is required",
-                    )
-
             def _expected_revision(self, body: dict) -> int:
                 raw = self.headers.get("If-Match")
                 if raw is None:
@@ -217,6 +232,12 @@ class RoomDemoServer:
                     self.send_error(HTTPStatus.NOT_FOUND)
                     return
                 body = target.read_bytes()
+                if relative == "index.html":
+                    body = body.replace(
+                        b'<meta name="room-viewer-mode" content="no-connect">',
+                        f'<meta name="room-viewer-mode" content="{viewer_mode}">'.encode(),
+                        1,
+                    )
                 content_type = mimetypes.guess_type(str(target))[0] or "application/octet-stream"
                 self._headers(HTTPStatus.OK, content_type, len(body))
                 self.wfile.write(body)
@@ -229,10 +250,22 @@ class RoomDemoServer:
                 except ValueError:
                     self.send_error(HTTPStatus.BAD_REQUEST, "invalid event sequence")
                     return
-                self._headers(HTTPStatus.OK, "text/event-stream; charset=utf-8")
+                if not self.server.event_streams.acquire(blocking=False):
+                    self.send_error(HTTPStatus.SERVICE_UNAVAILABLE, "event stream capacity reached")
+                    return
                 try:
+                    self._headers(HTTPStatus.OK, "text/event-stream; charset=utf-8")
                     while True:
-                        events = store.wait_after(sequence, 10)
+                        try:
+                            events = store.wait_after(sequence, 10)
+                        except EventHistoryGap:
+                            current = store.current()
+                            sequence = current["sequence"]
+                            encoded = json.dumps({"reason": "history_expired", "sequence": sequence,
+                                                  "current_url": "/api/demo/current"})
+                            self.wfile.write(f"id: {sequence}\nevent: reset\ndata: {encoded}\n\n".encode())
+                            self.wfile.flush()
+                            continue
                         if not events:
                             self.wfile.write(b": keepalive\n\n")
                             self.wfile.flush()
@@ -242,18 +275,21 @@ class RoomDemoServer:
                             self.wfile.write(f"id: {event['sequence']}\ndata: {encoded}\n\n".encode())
                             sequence = event["sequence"]
                         self.wfile.flush()
-                except (BrokenPipeError, ConnectionResetError):
+                except (BrokenPipeError, ConnectionResetError, TimeoutError):
                     return
+                finally:
+                    self.server.event_streams.release()
 
             def do_GET(self):
                 parsed = urlparse(self.path)
                 if parsed.path == "/":
-                    self.send_response(HTTPStatus.FOUND)
-                    self.send_header("Location", "/viewer/?mode=live")
-                    self.end_headers()
+                    location = "/viewer/" + (f"?{parsed.query}" if parsed.query else "")
+                    self._headers(HTTPStatus.FOUND, "text/plain; charset=utf-8", 0, {"Location": location})
                 elif parsed.path == "/healthz":
                     current = store.current()
-                    self._json({"status": "ok", "run_id": store.run_id,
+                    complete = store.storage_status()["journal"].get("complete", True)
+                    self._json({"status": "ok" if complete else "degraded", "run_id": store.run_id,
+                                "evidence_complete": complete,
                                 "state": current["state"]})
                 elif parsed.path == "/api/demo/current":
                     current = store.current()
@@ -269,7 +305,10 @@ class RoomDemoServer:
                         "schema": "easymesh.room-demo.events.v1",
                         "run_id": store.run_id,
                         "events": store.all(),
+                        "history": store.storage_status()["history"],
                     })
+                elif parsed.path == "/api/demo/storage":
+                    self._json(store.storage_status())
                 elif parsed.path == "/api/demo/interactions" and interactions is not None:
                     snapshot = interactions.snapshot()
                     self._json(snapshot, revision=snapshot["revision"])
@@ -291,9 +330,15 @@ class RoomDemoServer:
                     self.send_error(HTTPStatus.METHOD_NOT_ALLOWED, "read-only milestone")
                     return
                 try:
-                    self._require_operator()
+                    self._require_same_origin()
                     body = self._body(4 * 1024 * 1024 if parsed.path == "/api/demo/world/apply" else 64 * 1024)
                     command_id = str(body.get("command_id") or "")
+                    if parsed.path == "/api/demo/traffic-probe":
+                        self._interaction_json(interactions.select_traffic_probe(
+                            str(body.get("role") or ""), token=str(body.get("token") or ""),
+                            expected_revision=self._expected_revision(body), command_id=command_id,
+                        ))
+                        return
                     if parsed.path == "/api/demo/playback":
                         self._interaction_json(interactions.playback_control(
                             str(body.get("action") or ""), token=str(body.get("token") or ""),
@@ -366,7 +411,7 @@ class RoomDemoServer:
                     return
                 role, operation = matched
                 try:
-                    self._require_operator()
+                    self._require_same_origin()
                     body = self._body()
                     common = {
                         "token": str(body.get("token") or ""),
@@ -395,7 +440,7 @@ class RoomDemoServer:
                     self.send_error(HTTPStatus.METHOD_NOT_ALLOWED, "read-only milestone")
                     return
                 try:
-                    self._require_operator()
+                    self._require_same_origin()
                     body = self._body()
                     command_id = str(body.get("command_id") or "")
                     if parsed.path == "/api/demo/interactions/lease":

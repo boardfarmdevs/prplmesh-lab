@@ -27,7 +27,7 @@
     <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
     <meta http-equiv="Pragma" content="no-cache">
     <meta http-equiv="Expires" content="0">
-    <link rel="stylesheet" href="static/style.css?v=topology-shape-roam-3">
+    <link rel="stylesheet" href="static/style.css?v=topology-fullscreen-1">
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
     <link href="https://cdnjs.cloudflare.com/ajax/libs/animate.css/4.1.1/animate.min.css" rel="stylesheet">
     <!-- Added Chart.js library -->
@@ -42,7 +42,7 @@
                 <div class="logo">
                     <i class="fas fa-network-wired"></i>
                     <span class="logo-text">EasyMesh Controller</span>
-                    <span class="version-badge">prplMesh host port</span>
+                    <span class="version-badge">prplMesh 0908</span>
                 </div>
             </div>
             <div class="header-center">
@@ -379,12 +379,14 @@
                                     </button>
                                 </div>
                             </div>
-                            <button class="btn btn-primary" id="optimize-topology">
+                            <button class="btn btn-primary" id="optimize-topology" title="Fit to available space without moving devices or clients">
                                 <i class="fas fa-magic"></i> Optimize Layout
                             </button>
+                            <button class="btn btn-secondary" type="button" id="topologyFullscreen" aria-pressed="false">Full screen</button>
                         </div>
                     </div>
 
+                    <div id="topologyFullscreenStatus" role="status" aria-live="polite"></div>
                     <div class="topology-container">
                         <div class="topology-main">
                             <div id="topology-visualization">
@@ -1849,20 +1851,6 @@
                     </div>
                     <div class="wifi-reset-section">
                         <h2>Wi-Fi Reset</h2>
-                        <div class="almac-section">
-                            <div class="almac-row">
-                                <label for="almac-select">Select AL MAC Address</label>
-                                <select id="almac-select">
-                                    <option value="">Choose AL MAC Address</option>
-                                </select>
-                            </div>
-                            <!-- Hidden input for manual MAC entry -->
-                            <div id="manual-almac-container" style="display: none; margin-top: 10px;">
-                                <div class="almac-row">
-                                    <label for="manual-almac">Enter AL MAC Address</label>
-                                    <input type="text" id="manual-almac" placeholder="e.g. d8:3a:dd:0d:ff:99" />
-                                </div>
-                        </div>
                         <!-- Haul Type Checkboxes -->
                         <div class="haultype-section" style="margin-top: 20px;">
                             <h2 class="haul-heading">Select Haul Types</h2>
@@ -2038,8 +2026,11 @@
     <div id="toast-container" class="toast-container"></div>
 
     <!-- Scripts -->
-    <script src="static/script.js?v=topology-signal-meter-1"></script>
-    <!-- RDK-only wireless and coverage controllers are intentionally not
-         started by the host port; their pages are explicit placeholders. -->
+    <script src="static/signal-meter.js?v=signal-meter-1"></script>
+    <script src="static/fullscreen-control.js?v=fullscreen-1"></script>
+    <script src="static/topology-fullscreen.js?v=fullscreen-1"></script>
+    <script src="static/script.js?v=topology-spacing-0906-1"></script>
+    <script src="static/wireless-settings.js"></script>
+    <script src="static/map.js"></script>
 </body>
 </html>

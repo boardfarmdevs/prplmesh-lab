@@ -23,6 +23,19 @@ def event(sequence: int, kind: str, **payload):
 
 
 class EventStoreTests(unittest.TestCase):
+    def test_probe_selection_clears_old_sample_and_ignores_late_old_identity(self):
+        old = {"role": "sta_old", "selection": 0}
+        selected = {"role": "sta_new", "selection": 1}
+        self.store.emit("traffic.sample", 0, {"traffic_probe": old, "success": True})
+        self.store.emit("traffic.probe.selected", 0, {"traffic_probe": selected, "revision": 1})
+        self.assertNotIn("traffic.sample", self.store.current()["latest"])
+        self.store.emit("traffic.sample", 0, {"traffic_probe": old, "success": True})
+        self.assertNotIn("traffic.sample", self.store.current()["latest"])
+        self.store.emit("network.snapshot", 0, {"traffic_probe": old,
+            "clients": [{"role": "sta_old"}, {"role": "sta_new"}], "hero": {"role": "sta_old"}})
+        self.assertEqual(self.store.current()["traffic_probe"], selected)
+        self.assertEqual(self.store.current()["network"]["hero"]["role"], "sta_new")
+
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
         self.addCleanup(self.temp.cleanup)
@@ -46,13 +59,46 @@ class EventStoreTests(unittest.TestCase):
         self.store.publish(event(2, "scenario.clock"))
         self.assertEqual([item["sequence"] for item in self.store.after(1)], [2])
 
+    def test_incremental_replay_uses_an_index_instead_of_scanning_the_journal(self):
+        for sequence in (1, 3, 9):
+            self.store.publish(event(sequence, "scenario.clock"))
+        class IndexedOnly(list):
+            def __iter__(self):
+                raise AssertionError("the entire event history was scanned")
+        self.store._events = IndexedOnly(self.store._events)
+        self.assertEqual([item["sequence"] for item in self.store.after(3)], [9])
+        self.assertEqual([item["sequence"] for item in self.store.wait_after(2, 0)], [3, 9])
+        self.assertEqual(self.store.wait_after(9, 0), [])
+
     def test_measurement_outage_replaces_old_convergence_until_recovered(self):
         self.store.emit("optimizer.evaluation", 0, {"fleet": {"converged": True}})
         unavailable = {"status": "unavailable", "automatic_actuation_ready": False}
         self.store.emit("optimizer.measurement.unavailable", 100, unavailable)
         self.assertEqual(self.store.current()["optimizer"], unavailable)
+
+    def test_rf_changes_invalidate_old_convergence_and_progress_survives_reload(self):
+        self.store.emit("optimizer.evaluation", 0, {"fleet": {"converged": True}, "client_decisions": [{"reason": "ready"}]})
+        self.store.emit("optimizer.environment.changed", 0, {"environment_epoch": 2})
+        current = self.store.current()["optimizer"]
+        self.assertEqual(current["fleet"], {})
+        self.assertEqual(current["client_decisions"], [])
+        self.assertFalse(current["automatic_actuation_ready"])
+        self.store.emit("optimizer.progress", 0, {"phase": "candidate_queries", "completed_queries": 2, "total_queries": 5})
+        self.assertEqual(self.store.current()["optimizer"]["progress"]["completed_queries"], 2)
+        self.store.emit("optimizer.evaluation", 0, {"evaluated_at": "2026-09-07T03:00:00Z"})
+        self.assertNotIn("progress", self.store.current()["optimizer"])
         self.store.emit("optimizer.evaluation", 200, {"fleet": {"converged": False}})
         self.assertNotIn("status", self.store.current()["optimizer"])
+
+    def test_verified_subject_leaves_pending_without_another_candidate_round(self):
+        self.store.emit('optimizer.evaluation', 0, {'subject_role': 'station', 'policy_state': {'phase': 'pending'},
+                                                   'fleet': {'converged': False}, 'decision': {'action': 'steer'}})
+        self.store.emit('optimizer.verification', 0, {'subject_role': 'station', 'success': True,
+                                                     'policy_state': {'phase': 'cooldown'}})
+        optimizer = self.store.current()['optimizer']
+        self.assertEqual(optimizer['policy_state']['phase'], 'cooldown')
+        self.assertEqual(optimizer['decision']['action'], 'none')
+        self.assertFalse(optimizer['fleet']['converged'])
 
     def test_rejects_out_of_order_event(self):
         self.store.publish(event(1, "scenario.started"))

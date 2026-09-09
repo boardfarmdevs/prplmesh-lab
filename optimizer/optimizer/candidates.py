@@ -3,6 +3,8 @@ from __future__ import annotations
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timezone
 import json
+import threading
+import time
 from typing import Any, Callable, Iterable
 import urllib.error
 import urllib.request
@@ -17,12 +19,15 @@ from .model import (
 
 
 JsonRequester = Callable[[str, dict[str, Any]], dict[str, Any]]
+ClientSelector = Callable[[ClientObservation, str], bool]
 
 # The hwsim lab deliberately uses one fixed 20 MHz control channel per band.
-# The controller's current model exposes Band but leaves Radio.Channel at zero;
-# this mapping is therefore only legal behind the explicit simulated-provider
-# opt-in.  A physical deployment must report its actual operating channel.
-LAB_CONTROL_CHANNELS = {"2.4": 6, "5": 36, "6": 5}
+# OneWifi can retain its requested 6 GHz channel (37) in controller telemetry
+# even when the single-wiphy hwsim AP is actually live on channel 1. Candidate
+# RCPI must query the frequency that wmediumd is controlling. This mapping is
+# legal only behind explicit simulated-provider opt-in; the room conductor
+# replaces it with channels derived from the live compiled radio inventory.
+LAB_CONTROL_CHANNELS = {"2.4": 6, "5": 36, "6": 1}
 
 # The unified-wifi-mesh data model stores at most EM_MAX_UNASSOC_STA (eight)
 # response entries.  Sending a larger request makes the current Agent omit a
@@ -43,7 +48,11 @@ class CandidateMetricsError(RuntimeError):
 
 
 class CandidateMetricsUnavailable(CandidateMetricsError):
-    """A temporary collection failure prevented a fresh candidate snapshot."""
+    """A temporary transport failure prevented a candidate measurement."""
+
+
+class CandidateSnapshotSuperseded(CandidateMetricsError):
+    """RF changed before a complete candidate snapshot could be collected."""
 
 
 def operating_class(band: str | int, channel: int) -> int:
@@ -86,10 +95,16 @@ def _default_request(url: str, payload: dict[str, Any]) -> dict[str, Any]:
             detail = json.load(error)
         except (json.JSONDecodeError, UnicodeDecodeError):
             detail = {"message": error.read().decode(errors="replace")}
-        raise CandidateMetricsError(
+        error_type = (
+            CandidateMetricsUnavailable
+            if error.code in {408, 429, 502, 503, 504} else CandidateMetricsError
+        )
+        raise error_type(
             f"candidate query failed with HTTP {error.code}: {detail}"
         ) from error
-    except (OSError, TimeoutError, json.JSONDecodeError) as error:
+    except OSError as error:
+        raise CandidateMetricsUnavailable(f"candidate query failed: {error}") from error
+    except (json.JSONDecodeError, UnicodeDecodeError) as error:
         raise CandidateMetricsError(f"candidate query failed: {error}") from error
 
 
@@ -113,22 +128,71 @@ class ControllerCandidateProvider:
         requester: JsonRequester | None = None,
         allow_simulated: bool = False,
         max_parallel_agents: int = DEFAULT_MAX_PARALLEL_AGENTS,
+        request_attempts: int = 1,
+        retry_delay_seconds: float = 0.25,
+        generation_guard: Callable[[], bool] | None = None,
+        stop_on_unavailable: bool = False,
+        client_selector: ClientSelector | None = None,
+        client_prioritizer: ClientSelector | None = None,
+        simulated_control_channels: dict[str, int] | None = None,
+        simulated_bss_channels: dict[str, int] | None = None,
+        progress: Callable[[dict[str, Any]], None] | None = None,
+        result_ready: Callable | None = None,
     ) -> None:
         if max_parallel_agents < 1:
             raise ValueError("max_parallel_agents must be positive")
+        if request_attempts < 1:
+            raise ValueError("request_attempts must be positive")
+        if retry_delay_seconds < 0:
+            raise ValueError("retry_delay_seconds must not be negative")
         self.url = base_url.rstrip("/") + "/api/v1/unassoc_sta_query"
         self.requester = requester or _default_request
+        self.generation_guard = generation_guard
+        self.stop_on_unavailable = stop_on_unavailable
         self.allow_simulated = allow_simulated
         self.max_parallel_agents = max_parallel_agents
+        self.request_attempts = request_attempts
+        self.retry_delay_seconds = retry_delay_seconds
+        self.client_selector = client_selector
+        self.client_prioritizer = client_prioritizer
+        self.progress = progress
+        self.result_ready = result_ready
+        self.override_simulated_control_channels = (
+            simulated_control_channels is not None
+        )
+        self.simulated_control_channels = {
+            normalize_band(band): int(channel)
+            for band, channel in (
+                simulated_control_channels or LAB_CONTROL_CHANNELS
+            ).items()
+        }
+        self.simulated_bss_channels = {
+            normalize_mac(bssid): int(channel)
+            for bssid, channel in (simulated_bss_channels or {}).items()
+        }
         self.last_raw: list[dict[str, Any]] = []
+        self.last_rejected_candidate_keys: set[tuple[str, str]] = set()
+        self.last_selected_sta_macs: set[str] = set()
+        self.last_selection: dict[str, int] = {}
 
     def _channel(self, raw: dict[str, Any]) -> int:
+        band = normalize_band(raw.get("band"))
+        bssid = normalize_mac(raw["bssid"]) if raw.get("bssid") else None
         channel = int(raw.get("channel") or 0)
+        if (
+            self.allow_simulated
+            and bssid is not None
+            and bssid in self.simulated_bss_channels
+        ):
+            return self.simulated_bss_channels[bssid]
+        if (
+            self.allow_simulated
+            and band in self.simulated_control_channels
+            and (self.override_simulated_control_channels or channel <= 0)
+        ):
+            return self.simulated_control_channels[band]
         if channel > 0:
             return channel
-        band = normalize_band(raw.get("band"))
-        if self.allow_simulated and band in LAB_CONTROL_CHANNELS:
-            return LAB_CONTROL_CHANNELS[band]
         raise CandidateMetricsError(
             f"BSS {raw.get('bssid', '<unknown>')} has no operating channel; "
             "the controller must report it for a physical candidate query"
@@ -141,8 +205,27 @@ class ControllerCandidateProvider:
         bsses: list[dict[str, Any]],
         observed_at: str,
     ) -> Iterable[CandidateObservation]:
-        del observed_at  # individual controller receipt times are authoritative
-        clients_by_mac = {item.sta_mac: item for item in clients}
+        self.last_rejected_candidate_keys = set()
+        clients_by_mac = {
+            item.sta_mac: item
+            for item in clients
+            if self.client_selector is None
+            or self.client_selector(item, observed_at)
+        }
+        eligible_count = len(clients_by_mac)
+        priority_clients = {
+            station: client for station, client in clients_by_mac.items()
+            if self.client_prioritizer is not None and self.client_prioritizer(client, observed_at)
+        }
+        if priority_clients:
+            clients_by_mac = priority_clients
+        self.last_selection = {
+            "eligible_clients": eligible_count,
+            "selected_clients": len(clients_by_mac),
+            "priority_clients": len(priority_clients),
+            "deferred_clients": eligible_count - len(clients_by_mac),
+        }
+        self.last_selected_sta_macs = set(clients_by_mac)
         bss_by_id = {
             normalize_mac(item["bssid"]): item
             for item in bsses
@@ -207,13 +290,41 @@ class ControllerCandidateProvider:
         transactions_by_agent: dict[str, list[dict[str, Any]]] = {
             agent: [] for agent in jobs_by_agent
         }
+        completed_queries = 0
+        total_queries = sum(len(jobs) for jobs in jobs_by_agent.values())
+        progress_lock = threading.Lock()
+        collection_cancelled = threading.Event()
+
+        def report_progress(agent=None, completed=False):
+            nonlocal completed_queries
+            with progress_lock:
+                if completed:
+                    completed_queries += 1
+                if self.progress is not None:
+                    self.progress({
+                        "status": "measuring", "phase": "candidate_queries",
+                        "completed_queries": completed_queries,
+                        "total_queries": total_queries, "active_agent": agent,
+                        "selected_clients": len(clients_by_mac),
+                        "total_clients": len(clients),
+                        "priority_clients": len(priority_clients),
+                        "deferred_clients": eligible_count - len(clients_by_mac),
+                    })
+
+        report_progress()
 
         def query_agent(
             agent: str,
             jobs: list[tuple[str, list[tuple[int, int, str]]]],
-        ) -> list[CandidateObservation]:
+        ) -> tuple[list[CandidateObservation], set[tuple[str, str]]]:
             agent_measured: list[CandidateObservation] = []
+            agent_rejected: set[tuple[str, str]] = set()
             for query_radio, batch in jobs:
+                if collection_cancelled.is_set():
+                    return [], set()
+                report_progress(agent)
+                measured_start = len(agent_measured)
+                rejected_before = set(agent_rejected)
                 by_opclass: dict[int, dict[int, list[str]]] = {}
                 for opclass, channel, station in batch:
                     by_opclass.setdefault(opclass, {}).setdefault(channel, []).append(
@@ -232,19 +343,49 @@ class ControllerCandidateProvider:
                         for opclass, channels in sorted(by_opclass.items())
                     ],
                 }
-                transaction = {
-                    "request": payload,
-                    "query_radio": query_radio,
-                }
-                transactions_by_agent[agent].append(transaction)
-                try:
-                    response = self.requester(self.url, payload)
-                except CandidateMetricsError as error:
-                    transaction["error"] = str(error)
-                    raise CandidateMetricsError(
-                        f"candidate query failed for agent {agent} radio "
-                        f"{query_radio}: {error}"
-                    ) from error
+                response = None
+                for attempt in range(1, self.request_attempts + 1):
+                    if self.generation_guard is not None and not self.generation_guard():
+                        raise CandidateSnapshotSuperseded("RF changed before candidate request")
+                    transaction = {
+                        "request": payload,
+                        "query_radio": query_radio,
+                        "requested_at": format_time(datetime.now(timezone.utc)),
+                    }
+                    started = time.monotonic()
+                    if self.request_attempts > 1:
+                        transaction["attempt"] = attempt
+                    transactions_by_agent[agent].append(transaction)
+                    try:
+                        response = self.requester(self.url, payload)
+                        if self.generation_guard is not None and not self.generation_guard():
+                            raise CandidateSnapshotSuperseded("RF changed during candidate request")
+                        break
+                    except CandidateSnapshotSuperseded:
+                        raise
+                    except CandidateMetricsError as error:
+                        transaction["error"] = str(error)
+                        if attempt == self.request_attempts:
+                            if self.stop_on_unavailable and isinstance(error, CandidateMetricsUnavailable):
+                                collection_cancelled.set()
+                            suffix = (
+                                f": {error}" if self.request_attempts == 1
+                                else f" after {attempt} attempt(s): {error}"
+                            )
+                            error_type = (
+                                CandidateMetricsUnavailable
+                                if isinstance(error, CandidateMetricsUnavailable)
+                                else CandidateMetricsError
+                            )
+                            raise error_type(
+                                f"candidate query failed for agent {agent} radio "
+                                f"{query_radio}{suffix}"
+                            ) from error
+                        time.sleep(self.retry_delay_seconds)
+                    finally:
+                        transaction["elapsed_ms"] = round((time.monotonic() - started) * 1000, 3)
+                        transaction["finished_at"] = format_time(datetime.now(timezone.utc))
+                assert response is not None
                 transaction["response"] = response
                 if response.get("success") is not True:
                     raise CandidateMetricsError(
@@ -266,7 +407,11 @@ class ControllerCandidateProvider:
                     for opclass, channel, station in batch
                 }
                 received: set[tuple[str, str, str, int, int]] = set()
-                for metric in response.get("metrics", []):
+                # Successful controller replies always define both list-valued
+                # fields, but older helpers encoded an empty Go slice as JSON
+                # null.  Treat absent and null as the same empty compatibility
+                # value while retaining strict validation for list entries.
+                for metric in response.get("metrics") or []:
                     metric_agent = normalize_mac(metric["agent_al"])
                     radio = normalize_mac(metric["ruid"])
                     sta = normalize_mac(metric["sta"])
@@ -302,7 +447,39 @@ class ControllerCandidateProvider:
                                 band=candidate.band,
                             )
                         )
-                missing = sorted(expected - received)
+                rejected: set[tuple[str, str, str, int, int]] = set()
+                for candidate_error in response.get("rejected") or []:
+                    error_agent = normalize_mac(candidate_error["agent_al"])
+                    radio = normalize_mac(candidate_error["ruid"])
+                    sta = normalize_mac(candidate_error["sta"])
+                    error_code = int(candidate_error["error_code"])
+                    if error_agent != agent:
+                        raise CandidateMetricsError(
+                            f"candidate rejection agent {error_agent} does not match {agent}"
+                        )
+                    if error_code <= 0:
+                        raise CandidateMetricsError(
+                            f"candidate rejection has invalid error code: {error_code}"
+                        )
+                    _metric_time(candidate_error.get("received_at_ms"))
+                    matched = {
+                        key for key in expected
+                        if key[0] == error_agent and key[1] == radio and key[2] == sta
+                    }
+                    if not matched:
+                        raise CandidateMetricsError(
+                            "candidate response contains an unexpected rejection: "
+                            f"{sta}@{radio} error={error_code}"
+                        )
+                    if matched & received:
+                        raise CandidateMetricsError(
+                            f"candidate response both measured and rejected {sta}@{radio}"
+                        )
+                    rejected.update(matched)
+                    for response_key in matched:
+                        for candidate in targets.get(response_key, []):
+                            agent_rejected.add((candidate.sta_mac, candidate.bssid))
+                missing = sorted(expected - received - rejected)
                 if missing:
                     missing_text = ", ".join(
                         f"{sta}@{radio}/opclass-{opclass}/channel-{channel}"
@@ -312,9 +489,14 @@ class ControllerCandidateProvider:
                         f"candidate response for agent {agent} radio {query_radio} "
                         f"omitted {missing_text}"
                     )
-            return agent_measured
+                if self.result_ready is not None:
+                    self.result_ready(tuple(agent_measured[measured_start:]),
+                                      frozenset(agent_rejected - rejected_before), transaction)
+                report_progress(agent, completed=True)
+            return agent_measured, agent_rejected
 
         measured_by_agent: dict[str, list[CandidateObservation]] = {}
+        rejected_by_agent: dict[str, set[tuple[str, str]]] = {}
         failures: dict[str, CandidateMetricsError] = {}
         if jobs_by_agent:
             with ThreadPoolExecutor(
@@ -328,7 +510,9 @@ class ControllerCandidateProvider:
                 for future in as_completed(future_agents):
                     agent = future_agents[future]
                     try:
-                        measured_by_agent[agent] = future.result()
+                        measured, rejected = future.result()
+                        measured_by_agent[agent] = measured
+                        rejected_by_agent[agent] = rejected
                     except CandidateMetricsError as error:
                         failures[agent] = error
 
@@ -338,7 +522,16 @@ class ControllerCandidateProvider:
             for transaction in transactions_by_agent[agent]
         ]
         if failures:
-            raise failures[sorted(failures)[0]]
+            failed_agent = min(failures, key=lambda agent: (
+                isinstance(failures[agent], CandidateMetricsUnavailable), agent
+            ))
+            raise failures[failed_agent]
+
+        self.last_rejected_candidate_keys = {
+            key
+            for agent in sorted(rejected_by_agent)
+            for key in rejected_by_agent[agent]
+        }
 
         measured = [
             item

@@ -5,17 +5,17 @@ nested containers, hwsim/wmediumd, prplMesh services, and UIs within one VM.
 
 ## Use the universal appliance
 
-Start with `prplmesh-0904-thin.tar` and its adjacent checksum in an empty
+Start with `prplmesh-0908-thin.tar` and its adjacent checksum in an empty
 directory:
 
 ```sh
-sha256sum -c prplmesh-0904-thin.tar.sha256
-tar -xf prplmesh-0904-thin.tar
-cd prplmesh-0904-thin
+sha256sum -c prplmesh-0908-thin.tar.sha256
+tar -xf prplmesh-0908-thin.tar
+cd prplmesh-0908-thin
 sha256sum -c SHA256SUMS
 sudo ./install-host.sh
 newgrp lxd
-PRPLMESH_UI_HOST_IP=192.168.2.140 ./import.sh --profile 20
+PRPLMESH_UI_HOST_IP=192.168.2.150 ./import.sh --profile 20
 ```
 
 The same archive supports all profiles:
@@ -44,7 +44,7 @@ ports `8090`, `8091`, and `18891`. Override them without changing the appliance:
 
 ```sh
 PRPLMESH_LXD_STORAGE=bpi-lab \
-PRPLMESH_UI_HOST_IP=192.168.2.140 \
+PRPLMESH_UI_HOST_IP=192.168.2.150 \
 PRPLMESH_WMEDIUMD_CONSOLE_HOST_PORT=18090 \
 PRPLMESH_UI_HOST_PORT=18091 \
 PRPLMESH_ROOM_DEMO_HOST_PORT=18892 \
@@ -62,9 +62,9 @@ image. It does not clone repositories or download runtime artifacts. Monitor
 it with the selected instance name:
 
 ```sh
-lxc console prplmesh-20-0904 --show-log
-lxc exec prplmesh-20-0904 -- journalctl -fu prplmesh-lab.service
-lxc exec prplmesh-20-0904 -- prplmesh-lab-start status
+lxc console prplmesh-20-0908 --show-log
+lxc exec prplmesh-20-0908 -- journalctl -fu prplmesh-lab.service
+lxc exec prplmesh-20-0908 -- prplmesh-lab-start status
 ```
 
 When ready, the wmediumd Console is on host port `8090`, the Controller UI is
@@ -73,14 +73,14 @@ started by `prplmesh-room-demo.service` for the 20-client profile; stop that
 service before starting a manual `demo/room-demo` session. The NBAPI adapter
 is internal on guest loopback port `8092`. Open
 `http://HOST_IP:18891/viewer/?mode=interactive` for the live room and its
-built-in manual. The release's `INTERACTIVE-0906.md` covers credentials,
+built-in manual. The release's `INTERACTIVE-0908.md` covers trusted-network access,
 automatic world loading, fixed-pool presence and RF recovery.
 Normal lifecycle is:
 
 ```sh
-lxc stop prplmesh-20-0904
-lxc start prplmesh-20-0904
-lxc config get prplmesh-20-0904 boot.autostart
+lxc stop prplmesh-20-0908
+lxc start prplmesh-20-0908
+lxc config get prplmesh-20-0908 boot.autostart
 ```
 
 Imported appliances default to `boot.autostart=false`. Manually starting the
@@ -89,7 +89,7 @@ The VM does not start automatically when the outer host reboots. Deleting it is
 destructive and must be explicit:
 
 ```sh
-lxc delete prplmesh-20-0904
+lxc delete prplmesh-20-0908
 ```
 
 ## Release engineering
@@ -114,14 +114,14 @@ PRPLMESH_RUNTIME_BASE_COMMIT=READY-COMMIT \
 PRPLMESH_LAB_PROFILE=20 \
 PRPLMESH_VM_NAME=READY-VM \
 PRPLMESH_THIN_CONFIRM=READY-VM \
-  deploy/lxd-vm/package-thin.sh release/0904
-PRPLMESH_RELEASE_ID=0904 \
-  deploy/lxd-vm/package-release.sh release/0904/prplmesh-0904-thin
+  deploy/lxd-vm/package-thin.sh release/0908
+PRPLMESH_RELEASE_ID=0908 \
+  deploy/lxd-vm/package-release.sh release/0908/prplmesh-0908-thin
 ```
 
 Thin conversion removes provisioned nested instances from the source VM,
 retains the verified local runtime image and exact source, and exports a
-stopped instance-only backup. It emits `prplmesh-0904-thin.tar`, its adjacent
+stopped instance-only backup. It emits `prplmesh-0908-thin.tar`, its adjacent
 `.sha256`, schema-2 `release.json`, inner `SHA256SUMS`, and this README.
 The bundle also includes `RELEASE-NOTES.md` for the delivered checkpoint.
 ## Optional container management and metrics
@@ -136,4 +136,4 @@ offline/no-monitoring import. Existing immutable release archives are unchanged.
 See [first login and resource limits](observability/README.md) and the
 [detailed reference](../../reference/lxd-ui-and-monitoring.md).
 This source support is shared with RDK; runtime deployment/testing for this
-change is RDK on rev140 only, not the prplMesh lab on rev120.
+earlier release was RDK on rev140 only. Enable prplMesh monitoring on rev150 explicitly.

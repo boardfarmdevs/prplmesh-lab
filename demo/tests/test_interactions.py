@@ -5,6 +5,7 @@ import threading
 import time
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 from wmdcfg.actuator import ActuatorError, DaemonStatus
 from room_demo.engine import RoomEngine
@@ -171,6 +172,58 @@ class InteractiveMediumSessionTests(unittest.TestCase):
                 position=[7, 2], final=True,
             )
 
+    def test_projection_read_never_queues_behind_an_rf_transaction(self):
+        engine = RoomEngine(self.session)
+        self.addCleanup(engine.close)
+        acquired = threading.Event()
+        release = threading.Event()
+        def transaction():
+            with self.session._lock:
+                acquired.set()
+                release.wait(3)
+        worker = threading.Thread(target=lambda: engine._execute_callable(transaction))
+        worker.start()
+        try:
+            self.assertTrue(acquired.wait(1))
+            started = time.monotonic()
+            self.assertIsNone(engine.projection_snapshot())
+            self.assertLess(time.monotonic() - started, 0.1)
+        finally:
+            release.set()
+            worker.join(timeout=1)
+        self.assertEqual(self.session.projection_snapshot()["revision"], self.session.snapshot()["revision"])
+        self.assertEqual(engine.projection_snapshot()["revision"], engine.snapshot()["revision"])
+        with patch.object(self.session, "_expire_lease", side_effect=AssertionError("a display read mutated the lease")):
+            self.assertIsNotNone(engine.projection_snapshot())
+
+    def test_probe_selection_is_client_only_and_does_not_write_rf(self):
+        self.session._traffic_probe_role = None
+        before = self.session.snapshot()
+        writes = len(self.client.applied)
+        engine = RoomEngine(self.session)
+        self.addCleanup(engine.close)
+        result = engine.select_traffic_probe("sta_01", token=self.lease["token"],
+            expected_revision=0, command_id="select-probe")
+        duplicate = engine.select_traffic_probe("sta_01", token=self.lease["token"],
+            expected_revision=0, command_id="select-probe")
+        self.assertEqual(result, duplicate)
+        self.assertEqual(result["traffic_probe"], {"role": "sta_01", "selection": 1})
+        after = self.session.snapshot()
+        for field in ("roles", "daemon", "environment_epoch", "measurement_epoch", "last_rf_role", "playback"):
+            self.assertEqual(before[field], after[field], field)
+        self.assertEqual(len(self.client.applied), writes)
+        with self.assertRaisesRegex(InteractionError, "current revision"):
+            self.session.select_traffic_probe("sta_01", token=self.lease["token"], expected_revision=0)
+        for role in ("gateway", "extender_1", "not-a-client"):
+            with self.assertRaisesRegex(InteractionError, "not interactive"):
+                self.session.select_traffic_probe(role, token=self.lease["token"], expected_revision=1)
+        with self.assertRaisesRegex(InteractionError, "lease does not match"):
+            self.session.select_traffic_probe("sta_01", token="wrong", expected_revision=1)
+        self.session.presence("sta_01", token=self.lease["token"], expected_revision=1, present=False)
+        self.session._selected_roles.discard("sta_01")
+        self.session.select_traffic_probe("sta_01", token=self.lease["token"], expected_revision=2)
+        self.assertFalse(self.session.snapshot()["roles"]["sta_01"]["present"])
+
     def test_same_quantized_position_commits_without_an_rf_generation(self):
         generation = self.client.generation
         apply_count = len(self.client.applied)
@@ -311,7 +364,20 @@ class InteractiveMediumSessionTests(unittest.TestCase):
         self.assertTrue(self.client.closed)
         self.assertTrue(self.store.current()["restored"])
 
+    def test_recent_rf_roles_include_both_movers_but_not_temporary_assist(self):
+        with patch('room_demo.interactions.time.monotonic', return_value=100):
+            self.session._mark_rf_committed('sta_01')
+            self.session._mark_rf_committed('extender_1')
+            self.session._mark_measurements_stale('gateway')
+            self.assertEqual(self.session.snapshot()['recent_rf_roles'], ['extender_1', 'sta_01'])
+        with patch('room_demo.interactions.time.monotonic', return_value=220):
+            self.assertEqual(self.session.snapshot()['recent_rf_roles'], [])
+        self.session._mark_rf_committed()
+        self.assertEqual(self.session._recent_rf_roles, {})
+
     def test_steering_assist_is_atomic_and_restores_room_matrix(self):
+        before_backhaul_epoch = self.session.snapshot()["backhaul_epoch"]
+        before_backhaul_clock = self.session._last_backhaul_change_monotonic
         before_generation = self.client.generation
         before_values = dict(self.client.values)
         before_epoch = self.session.snapshot()["environment_epoch"]
@@ -353,6 +419,8 @@ class InteractiveMediumSessionTests(unittest.TestCase):
             snapshot["measurement_epoch"], before_measurement_epoch + 1
         )
         self.assertEqual(snapshot["last_rf_role"], "sta_01")
+        self.assertEqual(snapshot["backhaul_epoch"], before_backhaul_epoch)
+        self.assertEqual(self.session._last_backhaul_change_monotonic, before_backhaul_clock)
         events = self.store.all()
         self.assertIn("rf.steering_assist.started", [item["kind"] for item in events])
         completed = next(
@@ -383,6 +451,18 @@ class InteractiveMediumSessionTests(unittest.TestCase):
         )
         self.assertTrue(completed["payload"]["room_matrix_restored"])
         self.assertEqual(completed["payload"]["error"], "BTM failed")
+
+    def test_only_ap_or_world_changes_restart_backhaul_settling(self):
+        before = self.session.snapshot()
+        self.session.position("sta_01", token=self.lease["token"], expected_revision=0,
+                              position=[8, 2], final=True)
+        moved = self.session.snapshot()
+        self.assertGreater(moved["environment_epoch"], before["environment_epoch"])
+        self.assertEqual(moved["backhaul_epoch"], before["backhaul_epoch"])
+        self.session.position("extender_1", token=self.lease["token"], expected_revision=moved["revision"],
+                              position=[2, 2], final=True)
+        self.assertEqual(self.session.snapshot()["backhaul_epoch"], before["backhaul_epoch"] + 1)
+        self.assertLess(self.session.snapshot()["backhaul_stable_for_seconds"], 1)
 
     def test_runtime_world_carries_source_geometry(self):
         runtime = InteractiveMediumSession.runtime_world(WORLD, LAYOUT)

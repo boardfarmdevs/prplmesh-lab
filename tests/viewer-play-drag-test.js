@@ -14,6 +14,7 @@ const commandSource = source.slice(source.indexOf('  function sendControl('), so
 function harness({live = false, replay = false, interactive = live} = {}) {
   const handlers = {};
   const writes = [];
+  const probes = [];
   let authorizations = 0;
   const context = vm.createContext({
     world: {roles: {client: 'station', gateway: 'fronthaul_ap'}},
@@ -34,15 +35,29 @@ function harness({live = false, replay = false, interactive = live} = {}) {
     setPositionOverride: (role, point) => { context.interaction.overrides[role] = {position: point}; },
     acquireInteractionLease: async () => { authorizations++; return true; },
     sendMutation: async (operation, role, payload) => { writes.push({operation, role, ...payload}); return payload; },
+    canSelectTrafficProbe: role => live && interactive && !replay && role === 'client',
+    selectTrafficProbe: role => { probes.push(role); },
   });
   vm.runInContext(permissionSource + commitSource + orbitSource, context);
   const pointer = (event, extra = {}) => handlers[event]({button: 0, pointerId: 1,
     clientX: 10, clientY: 10, shiftKey: false, role: 'client', ...extra});
-  return {context, writes, pointer, authorizations: () => authorizations};
+  return {context, writes, probes, pointer, authorizations: () => authorizations};
 }
 
 async function main() {
   assert.doesNotMatch(source, /id="(?:cameraMode|interactMode)"|interaction\.mode|setInteractionMode/);
+  const probe = harness({live: true});
+  await probe.pointer('pointerdown', {ctrlKey: true});
+  await probe.pointer('pointermove', {ctrlKey: true, clientX: 30});
+  await probe.pointer('pointerup', {ctrlKey: true, clientX: 30});
+  assert.deepEqual(probe.probes, ['client']);
+  assert.deepEqual(probe.writes, []);
+  assert.equal(probe.context.interaction.drag, null);
+  await probe.pointer('pointerdown', {ctrlKey: true, role: 'gateway'});
+  assert.deepEqual(probe.probes, ['client']);
+  const readOnlyProbe = harness({live: true, interactive: false});
+  await readOnlyProbe.pointer('pointerdown', {ctrlKey: true});
+  assert.deepEqual(readOnlyProbe.probes, []);
   const offline = harness();
   await offline.pointer('pointerdown');
   await offline.pointer('pointermove', {clientX: 30});

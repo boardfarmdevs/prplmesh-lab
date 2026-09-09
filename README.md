@@ -6,9 +6,11 @@ the RDK-B EasyMesh source tree, images, containers, medium, or runtime.
 
 ## Accepted profile
 
-The 0906 refresh adds a locally served interactive room on rev120, using
-prplMesh NBAPI metrics and BTM steering. See [0906 deployment and operation](reference/release-0906.md)
-for thin import, URLs, credentials, fixed-pool world switching and recovery.
+The 0908 release moves the canonical prplMesh checkout and deployment to rev150,
+on `codex/0908-clean`, independently of RDK on rev140. It synchronizes the
+room viewer and EM CLI-style topology with RDK 0908 while retaining native
+prplMesh NBAPI metrics and BTM steering. See [0908 operation](reference/release-0908.md)
+for thin import, side-by-side URLs, fixed-pool world switching and recovery.
 Outer VM autostart is disabled; manually starting the VM starts its lab services.
 
 The current scale profile contains:
