@@ -12,7 +12,7 @@ container; monitoring runs in two limited Docker containers inside the VM.
 On its physical LXD host, from this checkout:
 
 ```sh
-LAB_MONITORING_ALLOW_RESTART=1 bash deploy/lxd-vm/observability/enable.sh prplmesh-20-0907 HOST_IPV4 my-prpl-lab
+LAB_MONITORING_ALLOW_RESTART=1 bash deploy/lxd-vm/observability/enable.sh prplmesh-20-0908 HOST_IPV4 my-prpl-lab
 ```
 
 The explicit variable permits the first identity-rotation maintenance restart
@@ -27,6 +27,13 @@ container. The helper discovers the guest's management address, installs into
 For future newly packaged thin releases, use
 `bash import.sh --profile 20 --monitoring`. Without the flag the original
 offline import contract is unchanged. Existing 0906 archives are not modified.
+
+Explicit enablement now checks guest dependencies before setup. On a managed
+Ubuntu 24.04 lab VM, missing Docker/Compose, curl, OpenSSL, jq or Python packages
+are installed using apt; this needs repository access. Other guest versions
+require operator-provided dependencies. Already provisioned guests take the
+read-only dependency fast path. This does not add network access to an import
+without `--monitoring` or change existing immutable archives.
 
 ## Open and authenticate
 
@@ -141,10 +148,23 @@ Full prerequisites, checks, rollback and renewal steps are in the portable
 
 ## Validation scope
 
-This change provides reusable source setup for both RDK and prplMesh.
-Runtime deployment and browser/metrics testing are restricted to RDK on rev140.
-No prplMesh VM on rev120 or RDK VM on rev150 is changed or runtime-tested here.
-The Windows-access corrections and outer-VM integration are source additions;
-they do not imply a new live host listener, completed outer-dashboard browser
-acceptance, or repackaged immutable thin tars. The rev140 convenience preset
-targets active RDK 0907; use the generic helper for prplMesh.
+On 2026-09-09 both layers are enabled and scrape-verified for RDK 0908 on
+rev140 and prplMesh 0908 on rev150. `lxd`, `lxd-outer` and `prometheus` targets
+are UP in both VMs; both Grafana health endpoints report a healthy database.
+
+| Lab | Inner LXD UI | Grafana, inner and outer dashboards |
+| --- | --- | --- |
+| RDK | <https://192.168.2.140:48892/ui/> | <https://192.168.2.140:48893/> |
+| prplMesh | <https://192.168.2.150:18892/ui/> | <https://192.168.2.150:18893/> |
+
+Dashboard UIDs are `easymesh-lxd` and `easymesh-lxd-outer`. These checks do not
+replace browser certificate enrollment or prove physical-host cooling health.
+The first prpl enablement required its documented identity-rotation lab restart;
+it completed before the new room measurements. No native metrics intervals
+were changed. Later outer-only setup does not restart the lab.
+
+Outer setup now accepts a pinned LXD leaf certificate with OpenSSL partial-chain
+verification, preserving hostname and expiry checks, and passes project scope
+in the raw query URL rather than an unsupported `lxc query --project` flag.
+TLS verification and metrics authentication remain mandatory. These are source
+and live-deployment updates, not repackaged thin tarballs.

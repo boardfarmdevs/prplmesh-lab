@@ -34,6 +34,7 @@ for device in lab-lxd-ui lab-grafana; do
 done
 lxc exec "$instance" -- install -d -m 0755 /usr/local/share/lab-observability
 tar -C "$source_dir" -czf - . | lxc exec "$instance" -- tar -xzf - -C /usr/local/share/lab-observability
+lxc exec "$instance" -- bash /usr/local/share/lab-observability/prepare-dependencies.sh
 lxc exec "$instance" -- env LAB_MONITORING_BIND_ADDRESS="$guest_address" \
     LAB_MONITORING_PUBLIC_HOST="$host_address" LAB_GRAFANA_PORT="$grafana_port" \
     LAB_MONITORING_ALLOW_RESTART="${LAB_MONITORING_ALLOW_RESTART:-0}" \

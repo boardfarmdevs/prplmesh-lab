@@ -51,6 +51,10 @@ class CandidateMetricsUnavailable(CandidateMetricsError):
     """A temporary transport failure prevented a candidate measurement."""
 
 
+class CandidateMetricsBusy(CandidateMetricsUnavailable):
+    """The native controller explicitly rejected an unsubmitted command as busy."""
+
+
 class CandidateSnapshotSuperseded(CandidateMetricsError):
     """RF changed before a complete candidate snapshot could be collected."""
 
@@ -99,6 +103,8 @@ def _default_request(url: str, payload: dict[str, Any]) -> dict[str, Any]:
             CandidateMetricsUnavailable
             if error.code in {408, 429, 502, 503, 504} else CandidateMetricsError
         )
+        if error.code == 503 and "Error_Prev_Cmd_In_Progress" in str(detail.get("message", "")):
+            error_type = CandidateMetricsBusy
         raise error_type(
             f"candidate query failed with HTTP {error.code}: {detail}"
         ) from error
@@ -130,6 +136,7 @@ class ControllerCandidateProvider:
         max_parallel_agents: int = DEFAULT_MAX_PARALLEL_AGENTS,
         request_attempts: int = 1,
         retry_delay_seconds: float = 0.25,
+        busy_wait_seconds: float = 0,
         generation_guard: Callable[[], bool] | None = None,
         stop_on_unavailable: bool = False,
         client_selector: ClientSelector | None = None,
@@ -145,6 +152,8 @@ class ControllerCandidateProvider:
             raise ValueError("request_attempts must be positive")
         if retry_delay_seconds < 0:
             raise ValueError("retry_delay_seconds must not be negative")
+        if not 0 <= busy_wait_seconds <= 5:
+            raise ValueError("busy_wait_seconds must be between zero and five")
         self.url = base_url.rstrip("/") + "/api/v1/unassoc_sta_query"
         self.requester = requester or _default_request
         self.generation_guard = generation_guard
@@ -153,6 +162,7 @@ class ControllerCandidateProvider:
         self.max_parallel_agents = max_parallel_agents
         self.request_attempts = request_attempts
         self.retry_delay_seconds = retry_delay_seconds
+        self.busy_wait_seconds = busy_wait_seconds
         self.client_selector = client_selector
         self.client_prioritizer = client_prioritizer
         self.progress = progress
@@ -344,7 +354,13 @@ class ControllerCandidateProvider:
                     ],
                 }
                 response = None
-                for attempt in range(1, self.request_attempts + 1):
+                attempt = 0
+                failures = 0
+                admission_deadline = time.monotonic() + self.busy_wait_seconds
+                while True:
+                    attempt += 1
+                    if collection_cancelled.is_set():
+                        return [], set()
                     if self.generation_guard is not None and not self.generation_guard():
                         raise CandidateSnapshotSuperseded("RF changed before candidate request")
                     transaction = {
@@ -365,7 +381,14 @@ class ControllerCandidateProvider:
                         raise
                     except CandidateMetricsError as error:
                         transaction["error"] = str(error)
-                        if attempt == self.request_attempts:
+                        if isinstance(error, CandidateMetricsBusy):
+                            transaction["attempt"] = attempt
+                        if isinstance(error, CandidateMetricsBusy) and time.monotonic() < admission_deadline:
+                            transaction["native_admission_busy"] = True
+                            collection_cancelled.wait(min(0.1, max(0, admission_deadline - time.monotonic())))
+                            continue
+                        failures += 1
+                        if failures >= self.request_attempts:
                             if self.stop_on_unavailable and isinstance(error, CandidateMetricsUnavailable):
                                 collection_cancelled.set()
                             suffix = (

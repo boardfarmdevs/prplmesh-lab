@@ -3,7 +3,7 @@ from datetime import datetime, timezone
 
 import pytest
 
-from optimizer.candidates import CandidateMetricsError, CandidateMetricsUnavailable
+from optimizer.candidates import CandidateMetricsError, CandidateMetricsUnavailable, CandidateSnapshotSuperseded
 from optimizer.model import CandidateObservation, ClientObservation
 from optimizer.cli import parser
 from optimizer.prplmesh import PrplMeshCandidateProvider, PrplMeshObserver, _first_json
@@ -126,10 +126,42 @@ def test_candidate_provider_requires_explicit_simulated_metric_authority():
     with pytest.raises(CandidateMetricsError, match="allow-simulated-candidates"):
         list(provider((), (), [], STAMP))
 
+def test_same_second_publication_is_not_mistaken_for_stale_native_metrics(monkeypatch):
+    provider = PrplMeshCandidateProvider(allow_simulated=True)
+    elapsed = [0.25]
+    epoch = NOW.timestamp()
+    monkeypatch.setattr("optimizer.prplmesh.time.time", lambda: epoch + elapsed[0])
+    monkeypatch.setattr("optimizer.prplmesh.time.monotonic", lambda: elapsed[0])
+    monkeypatch.setattr("optimizer.prplmesh.time.sleep", lambda delay: elapsed.__setitem__(0, elapsed[0] + delay))
+    provider._await_timestamp_resolution({("radio", "sta"): (100, STAMP)})
+    assert elapsed[0] == pytest.approx(1)
+    assert provider.last_raw[-1]["elapsed_ms"] == pytest.approx(750)
+    provider.last_raw.clear()
+    provider._await_timestamp_resolution({("radio", "sta"): (100, STAMP)})
+    assert provider.last_raw == []
+
+def test_bulk_radio_read_uses_one_native_query_without_cross_radio_leakage(monkeypatch):
+    provider = PrplMeshCandidateProvider(allow_simulated=True)
+    radios = [provider.NETWORK + ".Device.1.Radio.1", provider.NETWORK + ".Device.2.Radio.1"]
+    calls = []
+    def call(obj, method, payload):
+        calls.append((obj, method, payload))
+        return {
+            radio + ".UnassociatedSTA.1.": {"MACAddress": "02:00:00:10:01:00",
+                "SignalStrength": 100 + index, "X_PRPLWARE-COM_TimeStamp": STAMP}
+            for index, radio in enumerate(radios)
+        }
+    monkeypatch.setattr(provider, "_call", call)
+    result = provider._read_radios(radios)
+    assert len(calls) == 1
+    assert calls[0][2]["rel_path"] == "Device.*.Radio.*.UnassociatedSTA."
+    assert result[radios[0]]["02:00:00:10:01:00"][0] == 100
+    assert result[radios[1]]["02:00:00:10:01:00"][0] == 101
+
 
 class _Provider(PrplMeshCandidateProvider):
     def __init__(self):
-        super().__init__(allow_simulated=True, timeout_seconds=0.01)
+        super().__init__(allow_simulated=True, timeout_seconds=0.01, batch_radio_reads=False)
         self.calls = []
 
     def _radio_objects(self):
@@ -147,6 +179,41 @@ class _Provider(PrplMeshCandidateProvider):
         updates = sum(method == "UpdateUnassociatedStationsStats" for _, method, _ in self.calls)
         timestamp = STAMP if updates else METRIC_STAMP
         return {"02:00:00:10:01:00": (122, timestamp)}
+
+
+def test_radio_discovery_is_one_read_and_does_not_publish_failed_cache(monkeypatch):
+    provider = PrplMeshCandidateProvider()
+    device = provider.NETWORK + ".Device.1"
+    radio_one, radio_two = device + ".Radio.1", device + ".Radio.2"
+    values = {device: {"ID": "02:00:00:27:01:01"}, radio_one: {"ID": "02:00:00:00:01:00"},
+              radio_two: {"ID": "02:00:00:00:02:00"}}
+    calls = []
+    def interrupted_read(obj, method, payload):
+        calls.append((obj, method, payload))
+        raise CandidateSnapshotSuperseded("world changed during discovery")
+    monkeypatch.setattr(provider, "_call", interrupted_read)
+    with pytest.raises(CandidateSnapshotSuperseded):
+        provider._radio_objects()
+    assert provider.object_cache == {}
+    def completed_read(*args):
+        calls.append(args)
+        return values
+    monkeypatch.setattr(provider, "_call", completed_read)
+    assert len(provider._radio_objects()) == 2
+    assert len(provider._radio_objects()) == 2
+    assert calls == [(provider.NETWORK, "_get", {"rel_path": "Device.*.", "depth": 2})] * 2
+
+
+def test_orphaned_radio_does_not_leave_a_partial_inventory(monkeypatch):
+    provider = PrplMeshCandidateProvider()
+    device = provider.NETWORK + ".Device.1"
+    values = {device: {"ID": "02:00:00:27:01:01"},
+              device + ".Radio.1": {"ID": "02:00:00:00:01:00"},
+              provider.NETWORK + ".Device.2.Radio.1": {"ID": "02:00:00:00:02:00"}}
+    monkeypatch.setattr(provider, "_call", lambda *args: values)
+    with pytest.raises(CandidateMetricsUnavailable, match="no discovered parent"):
+        provider._radio_objects()
+    assert provider.object_cache == {}
 
 
 def test_candidate_provider_registers_updates_and_returns_standard_metric():

@@ -12,7 +12,7 @@ from typing import Any, Callable
 from wmdcfg.actuator import ActuatorError, ControlClient
 from wmdcfg.geometry import directed_link, quantize_position
 from wmdcfg.runner import FREQUENCY_CAPABILITIES
-from wmdcfg.world import compile_world, playback_pause_points
+from wmdcfg.world import _hash, compile_world, playback_pause_points
 
 from .events import EventStore
 from .client_wifi import parallel_disconnections, parallel_reconnections
@@ -147,6 +147,8 @@ class InteractiveMediumSession:
             role: {"role": role, **layout_nodes.get(role, {})}
             for role in world["roles"]
         }
+        if self.worlds is not None:
+            self._nodes = self.worlds.rf_nodes(world, layout)
 
     def set_command_executor(self, executor: Callable[..., Any]) -> None:
         """Route autonomous movement ticks through the owning RoomEngine."""
@@ -536,7 +538,7 @@ class InteractiveMediumSession:
             expanded["generations"] = [{**copy.deepcopy(first),
                 "positions": {role: state["position"] for role, state in roles.items()},
                 "present": {role: state["present"] for role, state in roles.items()}}]
-            nodes = {item["role"]: dict(item) for item in layout.get("nodes", [])}
+            nodes = self.worlds.rf_nodes(world, layout)
             self.world, self.layout, self._roles = expanded, layout, roles
             self._nodes = {role: {"role": role, **nodes.get(role, {})} for role in roles}
             attempted = False
@@ -652,7 +654,10 @@ class InteractiveMediumSession:
                 "manual_roles": sorted(self._playback_overrides), "interval_ms": 1000}
 
     def _emit_playback(self, action: str, reason: str | None = None) -> dict[str, Any]:
-        payload = {"revision": self._revision, "playback": self._public_playback()}
+        payload = {"revision": self._revision, "playback": self._public_playback(),
+                   "roles": copy.deepcopy(self._roles),
+                   "environment_epoch": self._environment_epoch,
+                   "daemon_generation": self._generation}
         if reason is not None:
             payload["reason"] = reason
         self.store.emit(f"interaction.playback.{action}", self._world_time(), payload,
@@ -754,7 +759,7 @@ class InteractiveMediumSession:
                         self._roles[role][field] = desired[field]
                         changed_roles.append((role, change))
                 if changed_roles:
-                    self._apply_roles(changed_roles, client_sequence=None)
+                    self._apply_roles(changed_roles, client_sequence=None, publish_roles=False)
             except Exception as error:
                 if not self._faulted or self._faulted.startswith("unexpected external medium change:"):
                     self._roles = previous_roles
@@ -1041,6 +1046,8 @@ class InteractiveMediumSession:
                 if frame["position"] != positions[-1]["position"]:
                     positions.append(frame)
             node: dict[str, Any] = {"role": role}
+            if "tx_gain_db_by_band" in self._nodes[role]:
+                node["tx_gain_db_by_band"] = copy.deepcopy(self._nodes[role]["tx_gain_db_by_band"])
             if len(positions) == 1:
                 node["position"] = positions[0]["position"]
             else:
@@ -1066,6 +1073,13 @@ class InteractiveMediumSession:
         recording_layout["nodes"] = [node for node in recording_layout["nodes"] if node["role"] in self._selected_roles]
         mobility["nodes"] = [node for node in mobility["nodes"] if node["role"] in self._selected_roles]
         world = compile_world(recording_layout, mobility)
+        world["rf_nodes"] = {
+            role: {key: copy.deepcopy(value) for key, value in self._nodes[role].items()
+                   if key == "tx_gain_db_by_band"}
+            for role in world["roles"]
+        }
+        world.pop("golden_sha256", None)
+        world["golden_sha256"] = _hash(world)
         self._recorded_mobility = mobility
         self._recorded_world = world
         name = self._recording["name"]
@@ -1892,7 +1906,7 @@ class InteractiveMediumSession:
     ) -> dict[str, Any]:
         return self._apply_roles([(role, change)], client_sequence=client_sequence)[0]
 
-    def _apply_roles(self, changes, *, client_sequence):
+    def _apply_roles(self, changes, *, client_sequence, publish_roles=True):
         assert self._client is not None
         unique_updates = {}
         links_by_change = {}
@@ -1912,13 +1926,13 @@ class InteractiveMediumSession:
         applied_started = False
         try:
             self._capture_baseline(updates)
-            if changed:
+            if changed or any(change == "presence" for _role, change in changes):
                 with parallel_disconnections(
                     self.disconnect_client(role) for role, change in changes
                     if self.disconnect_client is not None and change == "presence"
                     and role in self._allowed_roles and not self._roles[role]["present"]
                 ):
-                    applied = self._apply_generation(changed)
+                    applied = self._apply_generation(changed) if changed else []
                     applied_started = True
                 readback = []
                 for item in applied:
@@ -1965,10 +1979,11 @@ class InteractiveMediumSession:
                 "changed_link_count": len(applied),
                 "links": links_by_change[(role, change)],
             }
-            self.store.emit(
-                f"room.{change}.committed", self._world_time(), payload,
-                producer="interaction",
-            )
+            if publish_roles:
+                self.store.emit(
+                    f"room.{change}.committed", self._world_time(), payload,
+                    producer="interaction",
+                )
             payloads.append(payload)
         self.store.emit(
             "rf.generation.applied" if applied else "rf.generation.noop",

@@ -718,7 +718,8 @@ class LiveConductor:
                 return None
             return next((client.connected_bssid for client in self._network_clients if client.sta_mac == station), None)
 
-    def _verify_profile_action(self, verifier, decision, guard, policy_config, batch_index, batch_size):
+    def _verify_profile_action(self, verifier, decision, guard, policy_config, batch_index, batch_size,
+                               action_context=None, action_started=None):
         subject_role = self._role_by_mac[decision.sta_mac]
         verifier = OutcomeVerifier(
             None, association_probe=self._projected_association,
@@ -733,6 +734,9 @@ class LiveConductor:
         with self._error_lock:
             self.verification_successes += int(verified.success and current_world)
         self.store.emit("optimizer.verification" if current_world else "optimizer.verification.discarded", self._time(), {
+            **(action_context or {}),
+            "request_to_verified_ms": None if action_started is None else
+                round((time.monotonic() - action_started) * 1000, 3),
             **verified.to_dict(), "subject_role": self._role_by_mac[decision.sta_mac],
             "subject_mac": decision.sta_mac, "target_bssid": decision.target_bssid,
             "batch_index": batch_index, "batch_size": batch_size, "profiling": True,
@@ -1242,7 +1246,8 @@ class LiveConductor:
                         "profiling": self.profiling,
                         "unavailable_cohort_reason": provider.last_unavailable if self.profiling else None,
                         "candidate_timings": [
-                            {key: transaction.get(key) for key in ("query_radio", "requested_at", "finished_at", "elapsed_ms")}
+                            {key: transaction.get(key) for key in ("operation", "method", "object", "radio", "query_radio",
+                             "requested_at", "finished_at", "elapsed_ms", "error", "attempt", "native_admission_busy")}
                             | {"native": (transaction.get("response") or {}).get("coordination")}
                             for transaction in provider.last_raw
                         ],
@@ -1332,9 +1337,18 @@ class LiveConductor:
                         subject_mac = decision.sta_mac
                         subject_role = self._role_by_mac[subject_mac]
                         self.action_attempts += 1
+                        action_started = time.monotonic()
+                        action_context = {
+                            "action_id": f"{self.store.run_id}:{self.action_attempts}",
+                            "requested_at": datetime.now(timezone.utc).isoformat(),
+                            "world_epoch": self.store.world_epoch(),
+                            "environment_epoch": (room_after or {}).get("environment_epoch", 0),
+                            "rf_applied_at": (room_after or {}).get("last_rf_applied_at"),
+                            "measurement_observed_at": snapshot.observed_at,
+                        }
                         self.store.emit(
                             "optimizer.action", self._time(),
-                            {"phase": "requested", "subject_role": subject_role,
+                            {**action_context, "phase": "requested", "subject_role": subject_role,
                              "decision": decision.to_dict(),
                              "batch_index": batch_index,
                              "batch_size": len(action_batch),
@@ -1370,7 +1384,8 @@ class LiveConductor:
                             self.action_successes += 1
                         self.store.emit(
                             "optimizer.action", self._time(),
-                            {"phase": "submitted", "subject_role": subject_role,
+                            {**action_context, "phase": "submitted", "subject_role": subject_role,
+                             "submission_elapsed_ms": round((time.monotonic() - action_started) * 1000, 3),
                              "decision": decision.to_dict(),
                              "result": result.to_dict(),
                              "batch_index": batch_index,
@@ -1397,7 +1412,7 @@ class LiveConductor:
                         if self.profiling:
                             pending_verifications[decision.sta_mac] = self._verification_executor.submit(
                                 self._verify_profile_action, verifier, decision, batch_guard, policy.config,
-                                batch_index, len(action_batch))
+                                batch_index, len(action_batch), action_context, action_started)
                             continue
                         verified = verifier.verify(
                             decision.sta_mac,

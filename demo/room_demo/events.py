@@ -155,6 +155,13 @@ class EventStore:
                     del self._state["latest"][stale_kind]
         elif kind.startswith("interaction.playback."):
             self._state["playback"] = copy.deepcopy(payload["playback"])
+            for role, value in payload.get("roles", {}).items():
+                if role in self._state["roles"]:
+                    self._state["roles"][role].update({
+                        "authoritative_position": copy.deepcopy(value["position"]),
+                        "present": bool(value["present"]),
+                        "control_state": "scripted" if value["present"] else "absent",
+                    })
         elif kind in {"room.position.committed", "room.presence.committed"}:
             role = payload.get("role")
             if role in self._state["roles"]:

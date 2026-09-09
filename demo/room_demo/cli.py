@@ -25,7 +25,7 @@ from .conductor import LiveConductor, load_manifest
 from .engine import RoomEngine
 from .events import EventStore
 from .interactions import InteractiveMediumSession
-from .recovery import RecoveryJournal, recover_medium
+from .recovery import RecoveryJournal, inventory_identity, load_recovery, recover_medium
 from .server import RoomDemoServer
 from .worlds import BoundWorlds
 from .client_wifi import disconnected_client, resume_bound_client
@@ -264,6 +264,22 @@ def _run(args) -> int:
         lock_stream.close()
 
 
+def _interactive_preflight(conductor, expected_agents, expected_clients, recovered, stop_event):
+    deadline = time.monotonic() + (30 if recovered else 0)
+    while True:
+        try:
+            health = mesh_health(expected_agents, expected_clients)
+            Runner._require_healthy(health, "interactive preflight")
+            conductor.preflight()
+            return health
+        except (ActuatorError, RuntimeError) as error:
+            expected_failure = isinstance(error, ActuatorError) or str(error).startswith("demo preflight failed:")
+            if not recovered or not expected_failure or time.monotonic() >= deadline:
+                raise
+            if stop_event.wait(0.5):
+                raise ActuatorError("recovery preflight cancelled") from error
+
+
 def _interactive(args) -> int:
     if args.model_backhaul and (not args.profiling or args.mode != "stimulus"):
         raise ActuatorError("--model-backhaul requires --profiling --mode stimulus: no external client or parent steering")
@@ -279,7 +295,8 @@ def _interactive(args) -> int:
     run_id = f"{timestamp}-{manifest['name']}-interactive"
     runner = Runner(plan, args.socket, args.output_root, run_id=run_id)
     store = EventStore(run_id, runtime_world, runner.run_dir / "live-events.jsonl", asynchronous=True)
-    recovery = RecoveryJournal(args.recovery_file, run_id, _hash(inventory))
+    recovery = RecoveryJournal(args.recovery_file, run_id, _hash(inventory),
+                               inventory_identity_sha256=inventory_identity(inventory))
     interactions = RoomEngine(
         InteractiveMediumSession(
             store, world, layout, plan, args.socket,
@@ -348,13 +365,21 @@ def _interactive(args) -> int:
         expected = plan.get("expected_lab") or {}
         expected_agents = int(expected.get("mesh_devices", 5))
         expected_clients = int(expected.get("clients", 20))
-        initial_health = mesh_health(expected_agents, expected_clients)
-        Runner._require_healthy(initial_health, "interactive preflight")
+        recovered = False
+        if args.recovery_file.exists():
+            previous_run = load_recovery(args.recovery_file)
+            if previous_run.get("state") != "restored" or previous_run.get("paused_clients"):
+                if previous_run.get("inventory_identity_sha256") != inventory_identity(inventory):
+                    raise ActuatorError("recovery inventory does not match this lab")
+                recovery_result = recover_medium(args.recovery_file, args.socket)
+                store.emit("room.recovery.completed", 0, recovery_result, producer="interaction")
+                recovered = True
+        initial_health = _interactive_preflight(
+            conductor, expected_agents, expected_clients, recovered, stop_event)
         (runner.run_dir / "health-preflight.json").write_text(
             json.dumps(initial_health, indent=2, sort_keys=True) + "\n",
             encoding="utf-8",
         )
-        conductor.preflight()
         interactions.start()
         session_started = True
         store.emit(
