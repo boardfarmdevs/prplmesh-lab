@@ -102,3 +102,21 @@ Ctrl-click probe selection, Play/Pause, a smaller world and return to the
 default room. Inspect browser errors and evidence for worker failures.
 Full all-room soak testing is not required for this release. Record exact
 source IDs, hashes, timing and any limitations beside the release archive.
+
+## Fresh-import findings
+
+The first candidate provisioned all 25 nested containers offline, but the
+new whole-network recursive NBAPI read returned no payload at full depth
+and prevented UI readiness. The adapter now discovers device IDs once and
+reads each device subtree concurrently with bounded depth and native call
+timeouts. This includes BSS/STA measurements without serializing hundreds
+of object reads or requesting one oversized network response. The repaired
+live adapter returned five mesh devices and twenty clients in a 44 ms sample;
+that is one observation, not a latency guarantee or a steering benchmark.
+Regression coverage checks concurrent merging and propagates a failed device
+read as unavailable rather than a deceptively empty topology.
+
+Failed transient adapter units are reset before recreation and have bounded
+shutdown. Candidate archives preceding these fixes are diagnostic inputs,
+not qualified deliveries. Final qualification still requires another fresh
+import of the packaged committed source and the bounded checks above.
