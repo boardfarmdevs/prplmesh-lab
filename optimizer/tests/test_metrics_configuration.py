@@ -12,7 +12,7 @@ spec.loader.exec_module(metrics)
 
 
 def test_configures_native_metrics_and_checks_readback():
-    expected = {"LinkMetricsRequestIntervalSec": 0, "StatisticsPollingRateSec": 1,
+    expected = {"LinkMetricsRequestIntervalSec": 1, "StatisticsPollingRateSec": 1,
                 "AssocSTALinkMetricsInclusionPolicy": True,
                 "AssocSTATrafficStatsInclusionPolicy": True}
     with patch.object(metrics, "call", side_effect=[{}, {metrics.OBJECT + ".": expected}]) as native:
@@ -27,15 +27,13 @@ def test_native_rejection_is_not_success():
             metrics.configure()
 
 
-def test_boot_defaults_precede_native_task_creation(tmp_path):
-    path = tmp_path / "99_lab_metrics.odl"
-    metrics.write_defaults(path, 2)
-    source = path.read_text()
-    assert "object 'X_PRPLWARE-COM_Controller.Configuration'" in source
-    assert "parameter 'LinkMetricsRequestIntervalSec' = 0;" in source
-    assert "parameter 'StatisticsPollingRateSec' = 2;" in source
-    assert "parameter 'AssocSTALinkMetricsInclusionPolicy' = true;" in source
-    assert "parameter 'AssocSTATrafficStatsInclusionPolicy' = true;" in source
+def test_metrics_policy_precedes_root_and_extender_configuration():
+    source = (path.parents[2] / "scripts/radio-lab.sh").read_text()
+    start = source.index("configure_credentials()")
+    end = source.index("\nclient_cohort()", start)
+    body = source[start:end]
+    assert body.index("configure-metrics.py") < body.index('set_device_credentials "$CONTROLLER_AL_MAC"')
+    assert metrics.policy(2)["LinkMetricsRequestIntervalSec"] == 2
 
 
 @pytest.mark.parametrize("interval", [0, 61, -1, 0.5, True])

@@ -565,14 +565,14 @@ configure_credentials()
         return 1
     }
 
+    lxc exec "$CONTROLLER" -- env \
+        PRPL_METRICS_INTERVAL_SEC="${PRPL_METRICS_INTERVAL_SEC:-1}" \
+        python3 /mnt/project/scripts/container/configure-metrics.py
     set_device_credentials "$CONTROLLER_AL_MAC"
     for ordinal in $(seq 1 "$ACTIVE_AGENTS"); do
         set_device_credentials "$(agent_al "$ordinal")"
     done
     controller_cli bml_update_wifi_credentials >/dev/null
-    lxc exec "$CONTROLLER" -- env \
-        PRPL_METRICS_INTERVAL_SEC="${PRPL_METRICS_INTERVAL_SEC:-1}" \
-        python3 /mnt/project/scripts/container/configure-metrics.py
 }
 
 client_cohort()

@@ -62,12 +62,13 @@ selection. RDK's external adaptive-parent adapter is not a prplMesh feature.
 
 ## Portable release and import
 
-0908 refreshes committed source, viewer, services and orchestration on the
-qualified prplMesh native runtime retained in the 0907 thin archive. This is
-not a new native prplMesh compilation or a Yocto build. `release.json`, the
-runtime provenance and checksums identify the exact inputs. Packaging must
-contain a clean committed source tree, zero provisioned nested instances,
-the retained local runtime image, and no monitoring credentials.
+0908 refreshes committed source, viewer, services and orchestration and rebuilds
+the pinned prplMesh 6.0.0 native runtime with patch 0013. The guest OS/dependency
+base comes from the qualified 0907 appliance; the native binaries and runtime
+image are refreshed, not silently retained. This is not a Yocto build.
+`release.json`, runtime provenance and checksums identify the exact inputs.
+Packaging must contain a clean committed source tree, zero provisioned nested
+instances, the matching local runtime image, and no monitoring credentials.
 
 After release qualification, install from the new thin tar on rev150:
 
@@ -120,19 +121,24 @@ Failed transient adapter units are reset before recreation and have bounded
 shutdown. Native statistics polling is configured to one second at lab startup,
 with associated-link and traffic reporting included and NBAPI readback verified.
 `PRPL_METRICS_INTERVAL_SEC` may select 1–60 seconds for less demanding deployments.
-The separate `LinkMetricsRequestIntervalSec` timer is disabled: in this retained
-runtime it also broadcasts empty unassociated-STA queries, clearing the candidate
-collector's in-flight registrations. The external room collector owns explicit
-NBAPI candidate requests instead. Periodic 1905 neighbor-link statistics from
-that timer are consequently disabled; topology parent observation and native
-AP/STA reporting remain active. No synthetic freshness or one-second roaming
-guarantee is implied.
+Native patch 0013 removes empty unassociated-STA broadcasts from the link timer:
+those broadcasts clear the candidate collector's in-flight registrations.
+The timer remains enabled at one second, preserving neighbor-link queries and
+the same interval in AP reporting policies. Explicit NBAPI candidate requests
+remain unchanged. A compiled native-timer regression verifies this separation.
+The policy is set before root/extender credential configuration. Prepopulating
+an ODL file is not a substitute for the running controller's configuration
+callbacks. No synthetic freshness or one-second roaming guarantee is implied.
 
 In the live diagnostic import, disabling the competing timer eliminated the
 unavailable cohorts and produced a complete converged snapshot within thirty
 seconds: twenty clients checked, eighty fresh candidate comparisons, and no
 client with a stronger eligible AP. This is a bounded default-room observation,
-not an all-room soak or a native autonomous-optimizer benchmark.
+not an all-room soak or a native autonomous-optimizer benchmark. However, a
+subsequent virgin boot showed that disabling this timer also gave newly joined
+agents a zero AP-report interval. That workaround is rejected for the release;
+the rebuilt native timer preserves both kinds of useful reporting without
+the destructive empty candidate requests.
 The room is also wanted by the lab service so an explicit lab start brings
 its viewer up after native readiness.
 
