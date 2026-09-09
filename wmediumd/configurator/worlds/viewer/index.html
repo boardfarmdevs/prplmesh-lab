@@ -1490,6 +1490,7 @@
     if (role === 'gateway') return 'Agent-1';
     if (role.startsWith('extender_')) return 'Extender-' + role.slice(9);
     const observed = observedClient(role);
+    if (observed && observed.display_name) return observed.display_name;
     if (observed && observed.sta_mac) {
       const suffix = observed.sta_mac.split(':')[4];
       return (observed.cohort === 'iot' ? 'iot-' : 'sta-') + suffix;

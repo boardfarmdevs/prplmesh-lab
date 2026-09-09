@@ -510,6 +510,8 @@ class LiveConductor:
             "role": role,
             "container": self._container_by_mac.get(client.sta_mac),
             "sta_mac": client.sta_mac,
+            "display_name": ("iot-" if client.cohort == "iot" else "sta-")
+            + f"{int(client.sta_mac.split(':')[4], 16):02d}",
             "cohort": client.cohort,
             "ssid": client.ssid,
             "band": client.band,

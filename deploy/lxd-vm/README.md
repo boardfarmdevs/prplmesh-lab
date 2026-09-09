@@ -72,7 +72,7 @@ on `8091`, and the room-demo proxy is on `18891`. The room server is
 started by `prplmesh-room-demo.service` for the 20-client profile; stop that
 service before starting a manual `demo/room-demo` session. The NBAPI adapter
 is internal on guest loopback port `8092`. Open
-`http://HOST_IP:18891/viewer/?mode=interactive` for the live room and its
+`http://HOST_IP:18891/` for the live room and its
 built-in manual. The release's `INTERACTIVE-0908.md` covers trusted-network access,
 automatic world loading, fixed-pool presence and RF recovery.
 Normal lifecycle is:

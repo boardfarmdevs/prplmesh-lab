@@ -320,11 +320,11 @@
   <div class="table-wrap"><table>
     <thead><tr><th scope="col">Symptom</th><th scope="col">What to check</th></tr></thead>
     <tbody>
-      <tr><td>The rev140 room URL refuses connections.</td><td>The server may be stopped. Confirm lab-network access, the appliance, its port proxy, and the room process. Refreshing cannot restart it. Use the public sandbox while the operator investigates.</td></tr>
+      <tr><td>The rev150 room URL refuses connections.</td><td>The server may be stopped. Confirm lab-network access, the appliance, its port proxy, and the room process. Refreshing cannot restart it. Use the public sandbox while the operator investigates.</td></tr>
       <tr><td>The room draws but nothing roams.</td><td>Check NO CONNECT/preview versus LIVE RF, optimizer authority, action budget, stronger candidates, and measurement freshness. Recommend mode never sends the steer.</td></tr>
       <tr><td>The optimizer says Measurements unavailable.</td><td>In interactive mode, temporary candidate-query timeouts pause steering, not the viewer. Previous candidate/convergence results are discarded. Retries back off for 1, 2, 4, then at most 8 seconds; a new RF epoch wakes that wait early. A complete fresh snapshot for the selected clients is required. Deferred clients do not count as whole-fleet convergence. Cooldown and action history remain intact. Inspect the unavailable event for failed query details.</td></tr>
       <tr><td>The room says disconnected or failed.</td><td>Check the run's latest worker/error events and summary. Invalid measurements, other fatal worker errors, and scripted-run query failures still stop the run and trigger RF restoration. Confirm the process is alive before trusting old cards.</td></tr>
-      <tr><td>A live change requests an operator token or returns 403.</td><td>Reload the updated rev140 viewer if an old page still prompts. No operator token is needed. A 403 can indicate a mismatched browser Origin/Host or invalid lease; open the viewer from the room server's own address and reacquire control.</td></tr>
+      <tr><td>A live change requests an operator token or returns 403.</td><td>Reload the updated prplMesh viewer if an old page still prompts. No operator token is needed. A 403 can indicate a mismatched browser Origin/Host or invalid lease; open the viewer from the room server's own address and reacquire control.</td></tr>
       <tr><td>Another operator holds control / lease conflict.</td><td>Coordinate with that browser, release its control, or allow its lease to expire. Observation remains available.</td></tr>
       <tr><td>A position is rejected as stale or conflicting.</td><td>Reload authoritative interaction state and retry the intended edit. Do not replay old revisions or change an already-used command ID's content.</td></tr>
       <tr><td>An extender is grey and clients have left.</td><td>Select that same extender and choose Restore fronthaul. Reset role also restores its session-start position/presence.</td></tr>
@@ -340,13 +340,14 @@
 <section id="operations" aria-labelledby="operations-title">
   <h2 id="operations-title">15. Operator setup and shutdown</h2>
   <p>Run these commands inside the prplMesh appliance, from its checked-out repository. The 0908 appliance is <code>prplmesh-20-0908</code> on rev150, using canonical branch <code>codex/0908-clean</code>. Other hosts retain their separately deployed release. The commands below require shell access; the public website does not run them.</p>
-  <pre><code>cd /home/easymesh/git/meta-cmf-bananapi-vcpe
-gen/tests/health-audit.sh
+  <pre><code>systemctl stop prplmesh-room-demo.service
+cd /opt/prplmesh-lab
+prplmesh-lab-start status
 demo/room-demo check
 demo/room-demo interactive --mode recommend --listen 0.0.0.0:8891</code></pre>
   <p>For an explicitly authorized automatic-steering session:</p>
   <pre><code>demo/room-demo interactive \
-  --mode act --yes-act --max-actions 100 \
+  --mode act --yes-act --profiling --max-actions 100 \
   --listen 0.0.0.0:8891</code></pre>
   <p>The rev150 0908 proxy maps outer port <code>18891</code> to appliance port <code>8891</code>. Do not create a second room process on the same medium. A process PID or a reachable page alone is not a complete medium-health check.</p>
   <p>The updated CLI creates no operator token file. Interactive control requires only the renewable lease and normal revision checks. Restrict network access to trusted users or place an authenticated gateway in front of the whole service.</p>
@@ -354,16 +355,16 @@ demo/room-demo interactive --mode recommend --listen 0.0.0.0:8891</code></pre>
   <p>Use <kbd>Ctrl</kbd> + <kbd>C</kbd> in the owning room terminal, or stop the actual owning service if the operator launched one. SIGINT/SIGTERM drain accepted work and restore the captured RF matrix. Check the final outcome and <code>restored=true</code>; a worker failure can have <code>outcome=failed</code> even if RF restoration succeeded.</p>
   <h3>After an unclean interruption</h3>
   <pre><code>demo/room-demo recover</code></pre>
-  <p>This uses the checksummed journal at <code>/run/easymesh-room-demo/recovery.json</code>. Recovery refuses an unexpected medium instance or unexplained generation. Resolve that condition before starting another writer. Do not run another configurator, independent RF-bias helper, or room scenario concurrently.</p>
+  <p>This uses the checksummed journal at <code>/run/prplmesh-room-demo/recovery.json</code>. Recovery refuses an unexpected medium instance or unexplained generation. Resolve that condition before starting another writer. Do not run another configurator, independent RF-bias helper, or room scenario concurrently.</p>
   <h3>Replay a completed run</h3>
   <pre><code>demo/room-demo replay \
-  /tmp/easymesh-room-demo-runs/RUN_ID \
+  /var/lib/prplmesh-lab/room-runs/RUN_ID \
   --listen 0.0.0.0:8891</code></pre>
   <p>Open <code>/viewer/</code> on that replay server and ensure port 8891 is free first. Explicit <code>?mode=replay</code> bookmarks still work. Replay serves saved evidence and is not an interactive live session.</p>
 </section>
 <section id="evidence" aria-labelledby="evidence-title">
   <h2 id="evidence-title">16. Evidence and API reference</h2>
-  <p>Run evidence is stored under <code>/tmp/easymesh-room-demo-runs/RUN_ID/</code>. Copy important runs to durable storage before clearing temporary files or rebuilding the appliance.</p>
+  <p>The installed service stores evidence under <code>/var/lib/prplmesh-lab/room-runs/RUN_ID/</code>; manual CLI runs default to <code>/tmp/prplmesh-room-demo-runs/</code>. Copy important runs before rebuilding the appliance.</p>
   <ul>
     <li><code>world.json</code>, <code>layout.json</code>, and <code>runtime-world.json</code>: scenario inputs and viewer geometry.</li>
     <li><code>inventory.json</code>, <code>bindings.json</code>, and <code>demo-manifest.json</code>: identities and run configuration.</li>
