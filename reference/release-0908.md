@@ -118,7 +118,7 @@ read as unavailable rather than a deceptively empty topology.
 
 Failed transient adapter units are reset before recreation and have bounded
 shutdown. Native controller link-metric and statistics polling are configured
-to one second at lab startup, with associated-link reporting included and
+to one second at lab startup, with associated-link and traffic reporting included and
 NBAPI readback verified. `PRPL_METRICS_INTERVAL_SEC` may select 1–60 seconds
 for less demanding deployments. This replaces the old 60-second request
 interval; it does not synthesize fresh metrics or promise one-second roaming.

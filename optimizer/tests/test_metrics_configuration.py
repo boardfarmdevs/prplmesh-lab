@@ -13,7 +13,8 @@ spec.loader.exec_module(metrics)
 
 def test_configures_native_metrics_and_checks_readback():
     expected = {"LinkMetricsRequestIntervalSec": 1, "StatisticsPollingRateSec": 1,
-                "AssocSTALinkMetricsInclusionPolicy": True}
+                "AssocSTALinkMetricsInclusionPolicy": True,
+                "AssocSTATrafficStatsInclusionPolicy": True}
     with patch.object(metrics, "call", side_effect=[{}, {metrics.OBJECT + ".": expected}]) as native:
         assert metrics.configure() == expected
     assert native.call_args_list[0].args == ("_set", {"parameters": expected})
@@ -34,6 +35,7 @@ def test_boot_defaults_precede_native_task_creation(tmp_path):
     assert "parameter 'LinkMetricsRequestIntervalSec' = 2;" in source
     assert "parameter 'StatisticsPollingRateSec' = 2;" in source
     assert "parameter 'AssocSTALinkMetricsInclusionPolicy' = true;" in source
+    assert "parameter 'AssocSTATrafficStatsInclusionPolicy' = true;" in source
 
 
 @pytest.mark.parametrize("interval", [0, 61, -1, 0.5, True])

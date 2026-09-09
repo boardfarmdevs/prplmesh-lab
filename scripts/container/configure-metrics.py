@@ -24,6 +24,7 @@ def policy(interval=1):
         "LinkMetricsRequestIntervalSec": interval,
         "StatisticsPollingRateSec": interval,
         "AssocSTALinkMetricsInclusionPolicy": True,
+        "AssocSTATrafficStatsInclusionPolicy": True,
     }
 
 
