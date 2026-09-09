@@ -6,7 +6,7 @@ from pathlib import Path
 import re
 from typing import Any
 
-from wmdcfg.world import _hash, _validate_layout, load_json, verify_world_plan
+from wmdcfg.world import _hash, _merge_nodes, _validate_layout, load_json, verify_world_plan
 
 from .interactions import InteractionError
 
@@ -22,6 +22,32 @@ class BoundWorlds:
         self.mesh_roles = {
             role for role, kind in self.roles.items() if kind == "fronthaul_ap"
         }
+
+    def rf_nodes(self, world: dict, layout: dict) -> dict:
+        if "rf_nodes" in world:
+            metadata = world["rf_nodes"]
+            if not isinstance(metadata, dict) or set(metadata) != set(world["roles"]):
+                raise ValueError("RF metadata must cover exactly the world roles")
+            nodes = {node["role"]: dict(node) for node in layout.get("nodes", [])}
+            for role, value in metadata.items():
+                if not isinstance(value, dict) or set(value) - {"tx_gain_db_by_band"}:
+                    raise ValueError("unsupported RF node metadata")
+                gains = value.get("tx_gain_db_by_band", {})
+                if not isinstance(gains, dict) or set(gains) - {"2.4", "5", "6"}:
+                    raise ValueError("invalid RF gain bands")
+                if any(type(gain) not in (int, float) or not math.isfinite(gain)
+                       for gain in gains.values()):
+                    raise ValueError("RF gains must be finite numbers")
+                nodes.setdefault(role, {"role": role}).update(copy.deepcopy(value))
+            return {role: {"role": role, **nodes.get(role, {})} for role in self.roles}
+        name = world.get("mobility")
+        if not isinstance(name, str) or not re.fullmatch(r"[a-zA-Z0-9_-]{1,100}", name):
+            raise ValueError("invalid mobility name")
+        mobility = load_json(self.root / "mobility" / f"{name}.json")
+        if _hash(mobility) != world.get("mobility_sha256"):
+            raise ValueError("world does not match its installed mobility")
+        nodes = {node["role"]: node for node in _merge_nodes(layout, mobility)}
+        return {role: {"role": role, **nodes.get(role, {})} for role in self.roles}
 
     def select(self, selection: Any) -> tuple[dict, dict]:
         try:
@@ -45,6 +71,7 @@ class BoundWorlds:
             _validate_layout(layout)
             if _hash(layout) != world.get("layout_sha256"):
                 raise ValueError("world does not match its installed layout")
+            self.rf_nodes(world, layout)
             roles = world["roles"]
             if not isinstance(roles, dict) or not roles:
                 raise ValueError("world requires bound roles")

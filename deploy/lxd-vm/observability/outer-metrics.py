@@ -91,6 +91,8 @@ class Host:
         print(f"Private backup/diagnostics: {self.backup}", flush=True)
 
     def lxc(self, *arguments):
+        if arguments and arguments[0] == "query":
+            return run("lxc", "--force-local", *arguments)
         return run("lxc", "--force-local", "--project", self.project, *arguments)
 
     def guest(self, *arguments):
@@ -188,7 +190,8 @@ def enable(host, settings):
     listener = f'{settings["address"]}:{settings["port"]}'
     certificate = HOST_CERTIFICATE
     run("openssl", "x509", "-in", str(certificate), "-checkend", "86400", "-noout")
-    run("openssl", "verify", "-CAfile", str(certificate), "-verify_hostname", settings["tls_name"], str(certificate))
+    run("openssl", "verify", "-partial_chain", "-CAfile", str(certificate),
+        "-verify_hostname", settings["tls_name"], str(certificate))
     previous_address = host.lxc("config", "get", "core.metrics_address").strip()
     previous_auth = host.lxc("config", "get", "core.metrics_authentication").strip()
     if previous_address not in ("", listener) or previous_auth not in ("", "true"):

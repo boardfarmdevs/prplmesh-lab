@@ -3,6 +3,7 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from dataclasses import replace
 import json
+import re
 import subprocess
 import time
 from typing import Any, Callable, Iterable
@@ -261,6 +262,7 @@ class PrplMeshCandidateProvider:
         client_prioritizer=None,
         progress=None,
         result_ready=None,
+        batch_radio_reads: bool = True,
     ) -> None:
         self.controller = controller
         self.allow_simulated = allow_simulated
@@ -270,6 +272,7 @@ class PrplMeshCandidateProvider:
         self.client_prioritizer = client_prioritizer
         self.progress = progress or (lambda _value: None)
         self.result_ready = result_ready
+        self.batch_radio_reads = batch_radio_reads
         self.registered: set[tuple[str, str]] = set()
         self.object_cache: dict[tuple[str, str], str] = {}
         self.last_raw: list[dict[str, Any]] = []
@@ -281,6 +284,10 @@ class PrplMeshCandidateProvider:
     def _call(self, obj: str, method: str, payload: dict[str, Any]) -> dict[str, Any]:
         if self.generation_guard is not None and not self.generation_guard():
             raise CandidateSnapshotSuperseded("prplMesh candidate generation was superseded")
+        started = time.monotonic()
+        transaction = {"operation": "nbapi", "object": obj, "method": method,
+                       "requested_at": format_time(datetime.now(timezone.utc))}
+        self.last_raw.append(transaction)
         try:
             completed = subprocess.run(
                 [
@@ -293,40 +300,41 @@ class PrplMeshCandidateProvider:
                 timeout=12,
             )
         except (subprocess.CalledProcessError, subprocess.TimeoutExpired) as error:
+            transaction["error"] = str(error)
             raise CandidateMetricsUnavailable(
                 f"prplMesh NBAPI call failed: {obj} {method}"
             ) from error
+        finally:
+            transaction["elapsed_ms"] = round((time.monotonic() - started) * 1000, 3)
+            transaction["finished_at"] = format_time(datetime.now(timezone.utc))
         return _first_json(completed.stdout)
-
-    def _instances(self, rel_path: str) -> list[str]:
-        value = self._call(
-            self.NETWORK,
-            "_get_instances",
-            {"rel_path": rel_path, "depth": 1},
-        )
-        return sorted(key.rstrip(".") for key in value)
-
-    def _get(self, obj: str, depth: int = 0) -> dict[str, Any]:
-        value = self._call(obj, "_get", {"rel_path": "", "depth": depth})
-        return value.get(obj + ".", value.get(obj, {}))
 
     def _radio_objects(self) -> dict[tuple[str, str], str]:
         if self.object_cache:
             return self.object_cache
-        device_ids = {}
-        for device in self._instances("Device."):
-            device_value = self._get(device)
-            device_ids[device] = normalize_mac(device_value["ID"])
-        for radio in self._instances("Device.*.Radio."):
+        values = self._call(self.NETWORK, "_get", {"rel_path": "Device.*.", "depth": 2})
+        device_pattern = re.escape(self.NETWORK) + r"\.Device\.\d+"
+        device_ids = {
+            path.rstrip("."): normalize_mac(value["ID"])
+            for path, value in values.items()
+            if re.fullmatch(device_pattern, path.rstrip("."))
+        }
+        discovered = {}
+        for path, value in values.items():
+            radio = path.rstrip(".")
+            if not re.fullmatch(device_pattern + r"\.Radio\.\d+", radio):
+                continue
             device = radio.split(".Radio.", 1)[0]
             device_id = device_ids.get(device)
             if device_id is None:
-                raise CandidateMetricsError(
+                raise CandidateMetricsUnavailable(
                     f"NBAPI radio {radio} has no discovered parent device"
                 )
-            radio_value = self._get(radio)
-            radio_id = normalize_mac(radio_value["ID"])
-            self.object_cache[(device_id, radio_id)] = radio
+            radio_id = normalize_mac(value["ID"])
+            discovered[(device_id, radio_id)] = radio
+        if not discovered:
+            raise CandidateMetricsUnavailable("NBAPI radio inventory is empty")
+        self.object_cache = discovered
         return self.object_cache
 
     def _radio_metrics(self, radio: str) -> dict[str, tuple[int, str]]:
@@ -335,6 +343,10 @@ class PrplMeshCandidateProvider:
             "_get",
             {"rel_path": "", "depth": 2},
         )
+        return self._parse_radio_metrics(value)
+
+    @staticmethod
+    def _parse_radio_metrics(value) -> dict[str, tuple[int, str]]:
         result = {}
         for key, item in value.items():
             if not key.rstrip(".").split(".")[-1].isdigit() or not isinstance(item, dict):
@@ -345,6 +357,40 @@ class PrplMeshCandidateProvider:
             if mac and timestamp and not str(timestamp).startswith("0001-") and signal > 0:
                 result[normalize_mac(mac)] = (signal, str(timestamp))
         return result
+
+    def _read_radios(self, radios):
+        if not self.batch_radio_reads:
+            return {radio: self._radio_metrics(radio) for radio in radios}
+        values = self._call(self.NETWORK, "_get",
+                            {"rel_path": "Device.*.Radio.*.UnassociatedSTA.", "depth": 2})
+        return {
+            radio: self._parse_radio_metrics({
+                key: value for key, value in values.items()
+                if key.startswith(radio + ".UnassociatedSTA.")
+            }) for radio in radios
+        }
+
+    def _await_timestamp_resolution(self, baseline):
+        timestamps = [parse_time(value[1]) for value in baseline.values()]
+        if not timestamps:
+            return
+        latest = max(timestamps)
+        if latest.microsecond:
+            return
+        remaining = latest.timestamp() + 1 - time.time()
+        if not 0 < remaining <= 1:
+            return
+        started = time.monotonic()
+        deadline = started + remaining
+        while time.monotonic() < deadline:
+            if self.generation_guard is not None and not self.generation_guard():
+                raise CandidateSnapshotSuperseded("prplMesh publication admission was superseded")
+            time.sleep(min(0.05, max(0, deadline - time.monotonic())))
+        self.last_raw.append({
+            "operation": "timestamp_resolution_wait", "resolution_ms": 1000,
+            "baseline_timestamp": latest.isoformat(),
+            "elapsed_ms": round((time.monotonic() - started) * 1000, 3),
+        })
 
     def __call__(
         self,
@@ -358,6 +404,8 @@ class PrplMeshCandidateProvider:
                 "prplMesh candidate provider is hwsim/wmediumd-backed; "
                 "use --allow-simulated-candidates in this lab"
             )
+        self.last_raw = []
+        collection_started = time.monotonic()
         clients_by_mac = {item.sta_mac: item for item in clients}
         bss_by_id = {item["bssid"]: item for item in bsses}
         radio_objects = self._radio_objects()
@@ -380,11 +428,12 @@ class PrplMeshCandidateProvider:
             key = (bss["device_id"], bss["radio_id"])
             radio = radio_objects.get(key)
             if radio is None:
-                raise CandidateMetricsError(f"no NBAPI radio object for {key}")
+                self.object_cache.clear()
+                self.registered.clear()
+                raise CandidateMetricsUnavailable(f"no NBAPI radio object for {key}; rediscovery required")
             targets.setdefault((radio, candidate.sta_mac), []).append(candidate)
             radio_metadata[radio] = bss
 
-        self.last_raw = []
         self.last_selected_sta_macs = {sta_mac for _, sta_mac in targets}
         self.last_requested_sta_macs = set(self.last_selected_sta_macs)
         self.last_selection = {"eligible_clients": len(clients),
@@ -409,11 +458,13 @@ class PrplMeshCandidateProvider:
             )
             self.registered.add((radio, sta_mac))
 
+        radios = sorted({radio for radio, _ in targets})
         baseline = {
             (radio, sta_mac): value
-            for radio in sorted({radio for radio, _ in targets})
-            for sta_mac, value in self._radio_metrics(radio).items()
+            for radio, values in self._read_radios(radios).items()
+            for sta_mac, value in values.items()
         }
+        self._await_timestamp_resolution(baseline)
         response = self._call(self.NETWORK, "UpdateUnassociatedStationsStats", {})
         self.last_raw.append({"operation": "update", "response": response})
         self.progress({"phase": "collecting", "selected_clients": len(self.last_selected_sta_macs),
@@ -426,8 +477,8 @@ class PrplMeshCandidateProvider:
         while time.monotonic() < deadline:
             if self.generation_guard is not None and not self.generation_guard():
                 raise CandidateSnapshotSuperseded("prplMesh candidate generation was superseded")
-            for radio in sorted({radio for radio, _ in expected}):
-                for sta_mac, value in self._radio_metrics(radio).items():
+            for radio, values in self._read_radios(radios).items():
+                for sta_mac, value in values.items():
                     key = (radio, sta_mac)
                     if key not in baseline or parse_time(value[1]) > parse_time(baseline[key][1]):
                         metrics[key] = value
@@ -437,7 +488,8 @@ class PrplMeshCandidateProvider:
                          for key in sorted(ready) for candidate in targets[key]]
                 if batch:
                     transaction = {"operation": "published", "radio": radio,
-                                   "measurements": len(batch), "finished_at": format_time(datetime.now(timezone.utc))}
+                                   "measurements": len(batch), "finished_at": format_time(datetime.now(timezone.utc)),
+                                   "elapsed_ms": round((time.monotonic() - collection_started) * 1000, 3)}
                     measured.extend(batch)
                     published.update(ready)
                     self.last_raw.append(transaction)
@@ -445,14 +497,17 @@ class PrplMeshCandidateProvider:
                         self.result_ready(batch, set(), transaction)
             if expected.issubset(metrics):
                 break
-            time.sleep(0.5)
+            time.sleep(min(0.1, max(0, deadline - time.monotonic())))
         missing = sorted(expected - set(metrics))
         if missing:
+            self.last_raw.append({"operation": "incomplete", "missing": sorted(missing),
+                                  "elapsed_ms": round((time.monotonic() - collection_started) * 1000, 3)})
             raise CandidateMetricsUnavailable(
                 f"prplMesh candidate metrics incomplete after {self.timeout_seconds}s: {missing}"
             )
 
         self.last_raw.append(
-            {"operation": "complete", "measurements": len(measured)}
+            {"operation": "complete", "measurements": len(measured),
+             "elapsed_ms": round((time.monotonic() - collection_started) * 1000, 3)}
         )
         return measured

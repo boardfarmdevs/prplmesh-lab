@@ -54,20 +54,10 @@ printf -v container 'prpl-client-%02d' "$ordinal"
 
 station_object()
 {
-    local object value instances
-    instances=$(lxc exec "$CONTROLLER" -- ubus call \
-        Device.WiFi.DataElements.Network _get_instances \
-        '{"rel_path":"Device.*.Radio.*.BSS.*.STA.","depth":1}' | \
-        sed -n 's/^[[:space:]]*"\([^"]*\.STA\.[0-9][0-9]*\)\.":.*/\1/p')
-    while read -r object; do
-        value=$(lxc exec "$CONTROLLER" -- ubus call "$object" _get \
-            '{"rel_path":"","depth":0}' </dev/null 2>/dev/null || true)
-        if printf '%s\n' "$value" | grep -q "\"MACAddress\": \"$mac\""; then
-            printf '%s\n' "$object"
-            return
-        fi
-    done <<< "$instances"
-    return 1
+    lxc exec "$CONTROLLER" -- ubus -t 5 call \
+        Device.WiFi.DataElements.Network _get \
+        '{"rel_path":"Device.*.Radio.*.BSS.*.STA.","depth":0}' |
+        python3 "$ROOT/scripts/lib/nbapi-station.py" "$mac"
 }
 
 model_bssid()

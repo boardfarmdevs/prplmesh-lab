@@ -37,6 +37,7 @@ class RoomEngine:
         self._thread: threading.Thread | None = None
         self._thread_id: int | None = None
         self._lifecycle_lock = threading.Lock()
+        self._close_lock = threading.Lock()
         self._started = False
         self._start_attempted = False
         self._accepting = True
@@ -275,6 +276,10 @@ class RoomEngine:
         return self._call("recorded_documents")
 
     def close(self) -> bool:
+        with self._close_lock:
+            return self._close()
+
+    def _close(self) -> bool:
         with self._lifecycle_lock:
             if self._closed:
                 return bool(
@@ -289,7 +294,16 @@ class RoomEngine:
                 tuple[dict[str, Any] | None, dict[str, Any] | None],
                 dict[str, Any],
             ]:
-                restored = bool(self._session.close())
+                try:
+                    restored = bool(self._session.close())
+                except BaseException as error:
+                    try:
+                        failed_snapshot = self._session.snapshot(expire_lease=False)
+                    except BaseException:
+                        failed_snapshot = {"schema": "easymesh.room-demo.interactions.v1"}
+                    failed_snapshot.update(enabled=False, restored=False, fault=str(error))
+                    self._final_snapshot = copy.deepcopy(failed_snapshot)
+                    raise
                 if not self._start_attempted:
                     # No medium connection or write was attempted, so there
                     # is no RF state to restore.
@@ -304,6 +318,11 @@ class RoomEngine:
         command.completed.wait()
         if command.error is not None:
             with self._lifecycle_lock:
+                if self._final_snapshot is None:
+                    self._final_snapshot = {
+                        "schema": "easymesh.room-demo.interactions.v1",
+                        "enabled": False, "restored": False, "fault": str(command.error),
+                    }
                 self._closed = True
             self._commands.put(None)
             if thread is not None:

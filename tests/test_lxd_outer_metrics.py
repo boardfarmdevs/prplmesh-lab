@@ -89,6 +89,26 @@ def test_setup_renderer_preserves_outer_job_and_bind_inode(tmp_path, settings):
     assert output.read_text() == previous
 
 
+def test_raw_lxd_queries_carry_project_only_in_url(module, monkeypatch):
+    host = module.Host.__new__(module.Host)
+    host.project = "isolated"
+    calls = []
+    monkeypatch.setattr(module, "run", lambda *command: calls.append(command) or "{}")
+    host.lxc("query", "/1.0/instances/lab?project=isolated")
+    assert calls[-1] == ("lxc", "--force-local", "query", "/1.0/instances/lab?project=isolated")
+    host.lxc("exec", "lab", "--", "true")
+    assert calls[-1][:4] == ("lxc", "--force-local", "--project", "isolated")
+
+
+def test_explicit_monitoring_enable_installs_missing_compose_dependencies():
+    setup = (BUNDLE / "enable.sh").read_text()
+    assert setup.index("prepare-dependencies.sh") < setup.index("setup.sh")
+    dependencies = (BUNDLE / "prepare-dependencies.sh").read_text()
+    assert "docker compose version" in dependencies
+    assert "docker-compose-v2" in dependencies
+    assert "--no-install-recommends" in dependencies
+
+
 def test_outer_dashboard_uses_vm_capacity_and_guest_memory():
     dashboard = json.loads((BUNDLE / "grafana/dashboards/lxd-outer-vms.json").read_text())
     assert dashboard["uid"] == "easymesh-lxd-outer"

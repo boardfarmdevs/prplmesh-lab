@@ -37,13 +37,40 @@ def load_recovery(path: Path) -> dict[str, Any]:
     return document
 
 
+def inventory_identity(inventory: dict[str, Any]) -> str:
+    radios = []
+    for radio in inventory["radios"]:
+        entry = {key: radio.get(key) for key in (
+            "container", "kind", "permanent_mac", "tx_mac", "station_mac"
+        )}
+        if not entry["container"] or not entry["kind"] or not entry["tx_mac"]:
+            raise ActuatorError("recovery inventory has an incomplete radio identity")
+        entry["interfaces"] = sorted([
+            {key: interface.get(key) for key in ("name", "mac", "phy", "type")}
+            for interface in radio.get("interfaces", [])
+        ], key=lambda interface: (interface["name"] or "", interface["mac"] or ""))
+        entry["band_radios"] = {
+            band: {key: value.get(key) for key in (
+                "phy", "permanent_mac", "tx_mac", "frequency_mhz"
+            )}
+            for band, value in radio.get("band_radios", {}).items()
+        }
+        radios.append(entry)
+    if not radios or len({radio["container"] for radio in radios}) != len(radios):
+        raise ActuatorError("recovery inventory has missing or duplicate containers")
+    return _digest({"schema": inventory.get("schema"), "backend": inventory.get("backend"),
+                    "radios": sorted(radios, key=lambda radio: radio["container"])})
+
+
 class RecoveryJournal:
     """Checksummed crash-recovery state written before every RF mutation."""
 
-    def __init__(self, path: Path, run_id: str, inventory_sha256: str) -> None:
+    def __init__(self, path: Path, run_id: str, inventory_sha256: str,
+                 *, inventory_identity_sha256: str | None = None) -> None:
         self.path = path
         self.run_id = run_id
         self.inventory_sha256 = inventory_sha256
+        self.inventory_identity_sha256 = inventory_identity_sha256
         self._lock = threading.Lock()
         self._document: dict[str, Any] | None = None
 
@@ -110,6 +137,7 @@ class RecoveryJournal:
                 "updated_at": now,
                 "medium_instance_id": instance_id,
                 "inventory_sha256": self.inventory_sha256,
+                "inventory_identity_sha256": self.inventory_identity_sha256,
                 "captured_generation": generation,
                 "last_committed_generation": generation,
                 "pending_generation": None,
@@ -210,6 +238,16 @@ def recover_medium(
     """Restore an interrupted session only against its exact medium instance."""
     document = load_recovery(path)
     if document.get("state") == "restored":
+        if document.get("paused_clients"):
+            client = client_factory(socket_path)
+            try:
+                status = client.connect()
+                if status.instance_id != document.get("medium_instance_id"):
+                    raise ActuatorError("recovery medium instance mismatch before client reconnect")
+                if status.generation != document.get("last_committed_generation"):
+                    raise ActuatorError("recovery generation mismatch before client reconnect")
+            finally:
+                client.close()
         _resume_recovered_clients(path, document)
         return {
             "status": "already-restored",
