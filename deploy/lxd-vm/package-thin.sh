@@ -4,7 +4,7 @@ set -euo pipefail
 ROOT=$(cd "$(dirname "$0")/../.." && pwd)
 # shellcheck source=profile.sh
 source "$ROOT/deploy/lxd-vm/profile.sh"
-RELEASE_ID=${PRPLMESH_RELEASE_ID:-0904}
+RELEASE_ID=${PRPLMESH_RELEASE_ID:-0908}
 case "$RELEASE_ID" in
     [0-9][0-9][0-9][0-9]) ;;
     *) echo "invalid PRPLMESH_RELEASE_ID: $RELEASE_ID" >&2; exit 2 ;;
@@ -113,6 +113,7 @@ else
     exit 1
 fi
 
+lxc exec "$NAME" -- systemctl stop prplmesh-room-demo.service
 lxc exec "$NAME" -- systemctl stop prplmesh-lab.service
 lxc file push "$SOURCE_BUNDLE" "$NAME/run/prplmesh-thin-source.bundle"
 lxc exec "$NAME" -- env SOURCE_COMMIT="$SOURCE_COMMIT" bash -c '
@@ -237,10 +238,11 @@ install -m 0755 "$ROOT/deploy/lxd-vm/import.sh" "$BUNDLE/import.sh"
 cp -a "$ROOT/deploy/lxd-vm/observability" "$BUNDLE/observability"
 install -m 0755 "$ROOT/deploy/lxd-vm/install-host.sh" "$BUNDLE/install-host.sh"
 install -m 0755 "$ROOT/deploy/lxd-vm/package-release.sh" "$BUNDLE/package-release.sh"
-sed "s/0904/${RELEASE_ID}/g" "$ROOT/deploy/lxd-vm/README.md" \
+sed "s/0908/${RELEASE_ID}/g" "$ROOT/deploy/lxd-vm/README.md" \
     > "$BUNDLE/README.md"
 chmod 0644 "$BUNDLE/README.md"
 install -m 0644 "$ROOT/docs/release-notes.md" "$BUNDLE/RELEASE-NOTES.md"
+install -m 0644 "$ROOT/reference/release-0908.md" "$BUNDLE/INTERACTIVE-0908.md"
 cat > "$BUNDLE/release.env" <<EOF
 LAB_STACK=prplmesh
 LAB_RELEASE_ID=$RELEASE_ID
@@ -269,7 +271,9 @@ jq -n \
       profiles:{"20":{name:"small",instance:("prplmesh-20-"+$release_id),clients:20,hwsim_radios:40,cpus:6,memory:"8GiB"},
                 "50":{name:"medium",instance:("prplmesh-50-"+$release_id),clients:50,hwsim_radios:72,cpus:8,memory:"12GiB"},
                 "100":{name:"stress",instance:("prplmesh-100-"+$release_id),clients:100,hwsim_radios:120,cpus:12,memory:"20GiB"}},
-      defaults:{disk:$disk,wmediumd_console_host_port:8090,controller_ui_host_port:8091,room_demo_host_port:18891},
+      defaults:{disk:$disk,wmediumd_console_host_port:8090,controller_ui_host_port:8091,room_demo_host_port:18891,autostart:false},
+      room:{interactive:true,profile_clients:20,automatic_start:true,profiling:true,adaptive_backhaul:false,
+            service:"prplmesh-room-demo.service"},
       build:{storage_pool:$build_storage_pool},
       trim:{applied:true,report:"trim-report.txt"},
       first_boot:{provision:true,offline:true,initial_nested_instances:0},
@@ -277,7 +281,7 @@ jq -n \
 (
     cd "$BUNDLE"
     sha256sum "$(basename "$OUTPUT")" import.sh install-host.sh \
-        package-release.sh README.md RELEASE-NOTES.md release.env release.json trim-report.txt \
+        package-release.sh README.md RELEASE-NOTES.md INTERACTIVE-0908.md release.env release.json trim-report.txt \
         > SHA256SUMS
     find observability -type f -print0 | sort -z | xargs -0 sha256sum >> SHA256SUMS
 )

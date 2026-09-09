@@ -1,11 +1,38 @@
 from __future__ import annotations
 
-from contextlib import contextmanager
+from concurrent.futures import ThreadPoolExecutor
+from contextlib import ExitStack, contextmanager
 from datetime import datetime, timezone
 import re
 import subprocess
 
 from wmdcfg.actuator import ActuatorError
+
+
+@contextmanager
+def parallel_disconnections(managers):
+    managers = list(managers)
+    with ExitStack() as cleanup:
+        if managers:
+            with ThreadPoolExecutor(max_workers=min(4, len(managers)), thread_name_prefix="client-disconnect") as executor:
+                entered = [(manager, executor.submit(manager.__enter__)) for manager in managers]
+                failures = []
+                for manager, future in entered:
+                    try:
+                        future.result()
+                        cleanup.push(manager)
+                    except BaseException as error:
+                        failures.append(error)
+                if failures:
+                    raise failures[0]
+        yield
+
+
+def parallel_reconnections(reconnect, roles):
+    roles = list(roles)
+    if roles:
+        with ThreadPoolExecutor(max_workers=min(4, len(roles)), thread_name_prefix="client-reconnect") as executor:
+            list(executor.map(reconnect, roles))
 
 
 def read_client_link(container: str, bssid: str, band: str, target: str) -> dict | None:

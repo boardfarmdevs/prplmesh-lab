@@ -44,7 +44,7 @@ func TestTransformDualSSIDTriBandTopology(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(snapshot.Topology.Nodes) != 2 || len(snapshot.Topology.Edges) != 1 {
+	if len(snapshot.Topology.Nodes) != 3 || len(snapshot.Topology.Edges) != 2 {
 		t.Fatalf("topology=%+v", snapshot.Topology)
 	}
 	if len(snapshot.Clients) != 2 {

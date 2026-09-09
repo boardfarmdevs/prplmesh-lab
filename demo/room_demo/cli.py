@@ -5,7 +5,6 @@ import datetime as dt
 import fcntl
 import hashlib
 import json
-import secrets
 import signal
 import shutil
 import sys
@@ -266,6 +265,8 @@ def _run(args) -> int:
 
 
 def _interactive(args) -> int:
+    if args.model_backhaul and (not args.profiling or args.mode != "stimulus"):
+        raise ActuatorError("--model-backhaul requires --profiling --mode stimulus: no external client or parent steering")
     if args.mode == "act" and not args.yes_act:
         raise ActuatorError("interactive act mode requires --yes-act")
     if args.max_actions is not None and args.max_actions < 1:
@@ -277,17 +278,18 @@ def _interactive(args) -> int:
     timestamp = dt.datetime.now(dt.timezone.utc).strftime("%Y%m%dT%H%M%SZ")
     run_id = f"{timestamp}-{manifest['name']}-interactive"
     runner = Runner(plan, args.socket, args.output_root, run_id=run_id)
-    store = EventStore(run_id, runtime_world, runner.run_dir / "live-events.jsonl")
-    operator_token = secrets.token_urlsafe(32)
+    store = EventStore(run_id, runtime_world, runner.run_dir / "live-events.jsonl", asynchronous=True)
     recovery = RecoveryJournal(args.recovery_file, run_id, _hash(inventory))
     interactions = RoomEngine(
         InteractiveMediumSession(
             store, world, layout, plan, args.socket,
             lease_seconds=args.lease_seconds,
+            traffic_probe_role=manifest["hero"]["role"],
             worlds=BoundWorlds(world, layout, CONFIGURATOR / "worlds"),
             disconnect_client=lambda role: disconnected_client(plan, role, recovery),
             reconnect_client=lambda role: resume_bound_client(plan, role, recovery),
             recovery=recovery,
+            model_backhaul=args.model_backhaul,
         )
     )
     # Interactive act mode is a continuously running reconciler. Keep a
@@ -299,7 +301,8 @@ def _interactive(args) -> int:
     conductor = LiveConductor(
         store, plan, manifest, mode=args.mode, repo_root=REPO_ROOT,
         base_url=args.base_url, room_state=interactions.snapshot,
-        interactive=True, maximum_actions=maximum_actions,
+        room_projection=interactions.projection_snapshot,
+        interactive=True, profiling=args.profiling, maximum_actions=maximum_actions,
         steering_transaction=interactions.steering_action,
     )
     server = RoomDemoServer(
@@ -307,7 +310,6 @@ def _interactive(args) -> int:
         store,
         DEFAULT_VIEWER,
         interactions,
-        operator_token=operator_token,
     )
     stop_event = threading.Event()
     clock_thread: threading.Thread | None = None
@@ -334,9 +336,6 @@ def _interactive(args) -> int:
         lock_stream.truncate()
         lock_stream.write(run_id + "\n")
         lock_stream.flush()
-        args.operator_token_file.parent.mkdir(parents=True, exist_ok=True)
-        args.operator_token_file.write_text(operator_token + "\n", encoding="utf-8")
-        args.operator_token_file.chmod(0o600)
         for signum in (signal.SIGINT, signal.SIGTERM):
             old_handlers[signum] = signal.signal(signum, stop_requested)
 
@@ -383,14 +382,9 @@ def _interactive(args) -> int:
         display_host = "127.0.0.1" if host == "0.0.0.0" else host
         print(
             f"room-demo: interactive viewer "
-            f"http://{display_host}:{port}/viewer/?mode=interactive"
+            f"http://{display_host}:{port}/viewer/"
         )
-        print(
-            f"room-demo: operator viewer "
-            f"http://{display_host}:{port}/viewer/?mode=interactive"
-            f"#operator={operator_token}"
-        )
-        print(f"room-demo: operator capability {args.operator_token_file}")
+        print("room-demo: interactive control has no authentication; restrict access to a trusted lab or authenticated gateway")
         print(
             f"room-demo: run {run_id}; authority={args.mode}; "
             "RF writer=interactive wmdcfg session; Ctrl-C restores the exact baseline"
@@ -483,6 +477,16 @@ def _interactive(args) -> int:
             {"outcome": outcome, "restored": restored, "error": error_text},
             producer="interaction",
         )
+        store.close()
+        summary["evidence_storage"] = store.storage_status()
+        if not summary["evidence_storage"]["journal"]["complete"]:
+            outcome = "failed"
+            error_text = summary["evidence_storage"]["journal"]["error"]
+            summary.update(outcome=outcome, error=error_text)
+        (runner.run_dir / "interactive-summary.json").write_text(
+            json.dumps(summary, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+        (runner.run_dir / "storage-summary.json").write_text(
+            json.dumps(store.storage_status(), indent=2, sort_keys=True) + "\n", encoding="utf-8")
         (runner.run_dir / "evidence-index.json").write_text(
             json.dumps(_file_index(runner.run_dir), indent=2, sort_keys=True) + "\n",
             encoding="utf-8",
@@ -490,15 +494,6 @@ def _interactive(args) -> int:
         if lock_stream is not None:
             fcntl.flock(lock_stream, fcntl.LOCK_UN)
             lock_stream.close()
-        try:
-            if (
-                args.operator_token_file.exists()
-                and args.operator_token_file.read_text(encoding="utf-8").strip()
-                == operator_token
-            ):
-                args.operator_token_file.unlink()
-        except OSError:
-            pass
     print(f"room-demo: outcome={outcome} restored={str(restored).lower()}")
     print(f"room-demo: evidence {runner.run_dir}")
     return 0 if outcome == "passed" else 1
@@ -506,11 +501,11 @@ def _interactive(args) -> int:
 
 def _replay(args) -> int:
     store = EventStore.from_evidence(args.run_directory.resolve())
-    server = RoomDemoServer(args.listen, store, DEFAULT_VIEWER)
+    server = RoomDemoServer(args.listen, store, DEFAULT_VIEWER, replay=True)
     server.start()
     host, port = server.address
     display_host = "127.0.0.1" if host == "0.0.0.0" else host
-    print(f"room-demo: replay http://{display_host}:{port}/viewer/?mode=replay")
+    print(f"room-demo: replay http://{display_host}:{port}/viewer/")
     print(f"room-demo: evidence {args.run_directory.resolve()}")
     try:
         if args.serve_seconds > 0:
@@ -577,6 +572,10 @@ def parser() -> argparse.ArgumentParser:
         help="optimizer authority (default: recommend)",
     )
     interactive.add_argument("--yes-act", action="store_true")
+    interactive.add_argument("--profiling", action="store_true",
+                             help="unassisted native BTM; no RF steering boost, forced scans, escalation or RF-stability gate")
+    interactive.add_argument("--model-backhaul", action="store_true",
+                             help="model backhaul RF without choosing parents (profiling stimulus only)")
     interactive.add_argument(
         "--max-actions", type=int,
         help="automatic BTM circuit breaker in act mode (default: 100)",
@@ -601,12 +600,6 @@ def parser() -> argparse.ArgumentParser:
         type=Path,
         default=Path("/run/prplmesh-room-demo/recovery.json"),
         help="checksummed crash-recovery record",
-    )
-    interactive.add_argument(
-        "--operator-token-file",
-        type=Path,
-        default=Path("/run/prplmesh-room-demo/operator.token"),
-        help="run-scoped browser write capability (mode 0600)",
     )
     recover = commands.add_parser(
         "recover", help="restore the RF baseline retained by an interrupted session"

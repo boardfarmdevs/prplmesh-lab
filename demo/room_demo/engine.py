@@ -27,8 +27,8 @@ class RoomEngine:
 
     HTTP handlers, controller workers and server-owned movement clocks call
     this facade. Only its worker thread enters mutable session methods. Reads
-    also pass through the actor so lease expiry and state snapshots cannot race
-    a medium transaction.
+    that expire leases also pass through the actor. Display projections use a
+    nonblocking read and never queue behind a medium transaction.
     """
 
     def __init__(self, session: InteractiveMediumSession) -> None:
@@ -168,11 +168,19 @@ class RoomEngine:
             return copy.deepcopy(self._final_snapshot)
         return self._call("snapshot")
 
+    def projection_snapshot(self) -> dict[str, Any] | None:
+        if self._closed:
+            return copy.deepcopy(self._final_snapshot)
+        return self._session.projection_snapshot()
+
     def acquire(self, owner: str, *, command_id: str) -> dict[str, Any]:
         return self._mutation("lease.acquire", command_id, "acquire", owner)
 
     def world_catalog(self) -> dict[str, Any]:
         return self._call("world_catalog")
+
+    def select_traffic_probe(self, role: str, *, command_id: str, **kwargs: Any) -> dict[str, Any]:
+        return self._mutation("traffic.probe.select", command_id, "select_traffic_probe", role, **kwargs)
 
     def apply_world(self, selection: Any, *, command_id: str, **kwargs: Any) -> dict[str, Any]:
         return self._mutation("world.apply", command_id, "apply_world", selection, **kwargs)
@@ -234,6 +242,9 @@ class RoomEngine:
 
     def recorded_world(self) -> dict[str, Any]:
         return self._call("recorded_world")
+
+    def backhaul_action(self, action: Callable[[], Any], *, expected_epoch: int) -> Any:
+        return self._call("backhaul_action", action, expected_epoch=expected_epoch)
 
     def steering_action(
         self,

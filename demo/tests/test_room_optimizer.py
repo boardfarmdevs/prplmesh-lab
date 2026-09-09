@@ -13,7 +13,8 @@ from room_demo.events import EventStore
 
 
 class RoomOptimizerTests(unittest.TestCase):
-    def _evaluate(self, expected_counts, actual_counts=None, devices=5, missing_metric=False):
+    def _evaluate(self, expected_counts, actual_counts=None, devices=5, missing_metric=False, movement_active=False,
+                  unexpected_clients=False):
         actual_counts = actual_counts or expected_counts
         timestamp = "2026-09-05T23:00:00Z"
         roles = [f"sta_static_{index:02d}" for index in range(1, 21)]
@@ -33,6 +34,7 @@ class RoomOptimizerTests(unittest.TestCase):
             metric_observed_at=timestamp, measurement_source="candidate", band="5",
         ) for client in clients)
         rooms = [{
+            "movement_active": movement_active,
             "revision": index, "environment_epoch": index, "stable_for_seconds": 10,
             "daemon": {"instance_id": "medium", "generation": index},
             "expected_online_clients": expected,
@@ -45,6 +47,11 @@ class RoomOptimizerTests(unittest.TestCase):
             observed_at=timestamp, health=MeshHealth(devices, actual),
             clients=clients[:actual], candidates=candidates[:actual],
         ) for index, actual in enumerate(actual_counts)]
+        if unexpected_clients:
+            snapshots = [replace(sample, clients=tuple(
+                replace(client, sta_mac="02:00:ff:00:" + client.sta_mac[-5:])
+                if ordinal >= expected_counts[index] else client
+                for ordinal, client in enumerate(sample.clients))) for index, sample in enumerate(snapshots)]
         policy_config = PolicyConfig(expected_clients=20, condition_hold_seconds=0)
         policy = ThresholdPolicy(replace(policy_config, current_rcpi_below=220,
                                          minimum_target_gain_rcpi=1))
@@ -54,7 +61,7 @@ class RoomOptimizerTests(unittest.TestCase):
             store = EventStore("test", world, Path(directory) / "events.jsonl")
             plan = {"bindings": {role: {
                 "role_type": "station", "radio_permanent_mac": client.sta_mac,
-                "container": f"prpl-client-{index:02d}",
+                "container": f"wlan-client-{index:03d}",
             } for index, (role, client) in enumerate(zip(roles, clients))}}
             manifest = {"hero": {"role": roles[0]}, "policy": "policy.yaml",
                         "optimizer": {"allow_simulated_candidates": True, "request_only": True,
@@ -66,21 +73,29 @@ class RoomOptimizerTests(unittest.TestCase):
             store.emit("demo.state", 0, {"state": "running"})
             observer = Mock(last_raw={"topology": {"nodes": []}})
             observer.observe.side_effect = snapshots
-            provider = Mock(last_raw=[], last_selected_sta_macs={client.sta_mac for client in clients})
+            provider = Mock(last_raw=[], last_selected_sta_macs={client.sta_mac for client in clients}, last_selection={})
             actuator = Mock()
             with patch("room_demo.conductor.load_policy", return_value=policy_config), \
+                 patch("room_demo.conductor._simulated_bss_channels", return_value={}), \
                  patch("room_demo.conductor.ThresholdPolicy", return_value=policy), \
                  patch("room_demo.conductor.PrplMeshCandidateProvider", return_value=provider), \
-                 patch("room_demo.conductor.PrplMeshObserver", side_effect=[observer, Mock()]), \
+                 patch("room_demo.conductor.PrplMeshObserver", side_effect=[observer, Mock()]) as observers, \
                  patch("room_demo.conductor.SteerActuator", return_value=actuator), \
-                 patch.object(conductor, "_sleep", side_effect=[False] * (len(rooms) - 1) + [True]):
+                 patch.object(conductor, "_network_payload", side_effect=AssertionError("optimizer must not overwrite current network telemetry")), \
+                 patch.object(conductor, "_optimizer_wait", side_effect=[False] * (len(rooms) - 1) + [True]):
                 conductor._run_worker("optimizer", conductor._optimizer_worker)
             self.assertEqual(conductor.errors, [])
             actuator.execute.assert_not_called()
             evaluations = [event["payload"] for event in store.all()
                            if event["kind"] == "optimizer.evaluation"]
             self.assertEqual(len(evaluations), len(rooms))
+            floor = observers.call_args_list[0].kwargs['current_metric_floor']
+            self.assertEqual(floor(clients[0]), rooms[-1]['last_rf_applied_at'])
             return evaluations, policy_config
+
+    def test_playing_does_not_block_an_unchanged_rf_generation(self):
+        evaluations, _original = self._evaluate([12], movement_active=True)
+        self.assertEqual(len(evaluations), 1)
 
     def test_steering_policy_follows_selected_online_roster_and_default_restore(self):
         counts = [20, 12, 10, 19, 20]
@@ -93,10 +108,21 @@ class RoomOptimizerTests(unittest.TestCase):
                 self.assertEqual(evaluation["expected_online_clients"], expected)
 
     def test_observed_count_is_not_rewritten_to_bypass_health_guard(self):
-        evaluations, _config = self._evaluate([12, 10], [10, 12])
+        evaluations, _config = self._evaluate([12, 10], [10, 9])
         for evaluation in evaluations:
             self.assertEqual(evaluation["decision"]["reason"], "client_count_mismatch")
             self.assertEqual(evaluation["fleet"]["actionable_clients"], 0)
+
+    def test_known_offline_native_ghosts_do_not_block_available_clients(self):
+        evaluations, _config = self._evaluate([10], [12])
+        self.assertEqual(evaluations[0]["native_roster_clients"], 12)
+        self.assertEqual(evaluations[0]["decision"]["action"], "steer")
+        self.assertEqual(evaluations[0]["fleet"]["actionable_clients"], 10)
+
+    def test_unexpected_native_clients_are_not_disguised_as_known_offline_pool(self):
+        evaluations, _config = self._evaluate([10], [12], unexpected_clients=True)
+        self.assertEqual(evaluations[0]["native_roster_clients"], 12)
+        self.assertEqual(evaluations[0]["decision"]["reason"], "client_count_mismatch")
 
     def test_missing_mesh_device_still_blocks_steering_in_smaller_room(self):
         evaluations, _config = self._evaluate([10], devices=4)

@@ -1,0 +1,30 @@
+Subject: [PATCH] controller: do not clear unassociated measurements on the link timer
+
+An empty Unassociated STA Link Metrics Query clears the agents' measurement
+registrations. Sending one every link-metrics interval races explicit NBAPI
+candidate requests, especially with a one-second reporting policy. Keep the
+periodic neighbor link query and AP reporting interval, but leave unassociated
+queries to the explicit request path with its actual station/channel list.
+
+Upstream-Status: Pending
+
+--- a/controller/src/beerocks/master/tasks/link_metrics_task.cpp
++++ b/controller/src/beerocks/master/tasks/link_metrics_task.cpp
+@@ -65,17 +65,6 @@ void LinkMetricsTask::work()
+             son_actions::send_cmdu_to_agent(agent->al_mac, cmdu_tx, database);
+         }
+ 
+-        // TODO: is the unassociated station request interval the same as the link metric ? or shall we consider a different one ?
+-        if (!cmdu_tx.create(
+-                0, ieee1905_1::eMessageType::UNASSOCIATED_STA_LINK_METRICS_QUERY_MESSAGE)) {
+-            LOG(ERROR) << "Failed building message UNASSOCIATED_STA_LINK_METRICS_QUERY_MESSAGE!";
+-            return;
+-        }
+-        cmdu_tx.addClass<wfa_map::tlvUnassociatedStaLinkMetricsQuery>();
+-        for (const auto &agent : database.get_all_connected_agents()) {
+-            son_actions::send_cmdu_to_agent(agent->al_mac, cmdu_tx, database);
+-        }
+-
+         last_query_request = std::chrono::steady_clock::now();
+     }
+     return;

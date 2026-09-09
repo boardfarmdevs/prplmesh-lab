@@ -141,7 +141,7 @@ func Transform(source model.PrplTopology, networks []model.Network, observed tim
 						Channel: radio.Channel, BSSID: normalizeMAC(bss.BSSID), SSID: bss.SSID,
 					})
 					connected := observed.Add(-time.Duration(station.LastConnectSeconds) * time.Second)
-					metricObserved := observed
+					metricObserved := time.Time{}
 					if parsed, err := time.Parse(time.RFC3339Nano, station.SignalUpdatedAt); err == nil {
 						metricObserved = parsed
 					}
@@ -210,6 +210,21 @@ func Transform(source model.PrplTopology, networks []model.Network, observed tim
 			From: normalizeMAC(device.Backhaul.ParentID), To: normalizeMAC(device.ID),
 			Band: location.band, Channel: location.channel,
 			UpstreamBSSID: normalizeMAC(device.Backhaul.MAC), MediaType: mediaType(device.Backhaul.Type),
+		})
+	}
+	for _, device := range devices {
+		if device.Role != "controller" {
+			continue
+		}
+		identity := "controller:" + normalizeMAC(device.ID)
+		position := positions[normalizeMAC(device.ID)]
+		snapshot.Topology.Nodes = append(snapshot.Topology.Nodes, model.TopologyNode{
+			ID: identity, Name: "Controller", HaulTypes: []model.HaulVisual{}, STAList: []model.STAVisual{},
+			X: position[0], Y: position[1] - 50, Fixed: map[string]bool{"x": true, "y": true},
+			BackhaulMedia: "Colocated",
+		})
+		snapshot.Topology.Edges = append(snapshot.Topology.Edges, model.TopologyEdge{
+			From: identity, To: normalizeMAC(device.ID), MediaType: "Colocated",
 		})
 	}
 
@@ -292,7 +307,7 @@ func clientIdentity(client model.PrplClient) (string, string) {
 
 func displayName(device model.PrplDevice) string {
 	if device.Role == "controller" {
-		return "Controller"
+		return "Agent-1"
 	}
 	if strings.HasPrefix(device.Name, "agent-") {
 		return "Extender-" + strings.TrimPrefix(device.Name, "agent-")

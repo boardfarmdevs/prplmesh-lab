@@ -35,7 +35,8 @@ def project_topology(topology: dict[str, Any] | None, roles_by_bssid: dict[str, 
         result["nodes"].append({
             "role": role,
             "device_id": device_id,
-            "name": device.get("name", ""),
+            "name": "Agent-1" if role == "gateway" else "Extender-" + role.rsplit("_", 1)[1],
+            "source_name": device.get("name", ""),
             "backhaul_media": backhaul.get("type") or "",
             "upstream_bssid": str(backhaul.get("mac") or "").lower()
             if str(backhaul.get("mac") or "").lower() in roles_by_bssid else "",

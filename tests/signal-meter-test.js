@@ -39,6 +39,7 @@ const levelSource = html.match(/  function signalLevel\(observed, predicted\) \{
 const now = Date.now();
 const context = {
   signalMeter, liveMode: true, replayMode: false,
+  liveClock: {serverMs: now, receivedMs: 0}, performance: {now: () => 0},
   networkState: {observed_at: new Date(now).toISOString()},
 };
 vm.createContext(context);
@@ -50,6 +51,11 @@ assert.equal(context.signalLevel(null, {snr: 60}), 0);
 assert.equal(context.signalLevel({...observed, metric_observed_at: null}, {snr: 60}), 0);
 assert.equal(context.signalLevel({...observed, metric_observed_at: new Date(now - 21000).toISOString()}, {snr: 60}), 0);
 assert.equal(context.signalLevel({...observed, metric_observed_at: new Date(now + 10000).toISOString()}, {snr: 60}), 0);
+context.Date = class extends Date { static now() { return now + 6 * 60 * 60 * 1000; } };
+assert.equal(context.signalLevel(observed, null), 5, 'a skewed browser clock cannot grey fresh server measurements');
+context.performance.now = () => 21000;
+assert.equal(context.signalLevel(observed, null), 0, 'a disconnected stream still ages out');
+context.performance.now = () => 0;
 context.liveMode = false;
 assert.equal(context.signalLevel(null, {snr: 24}), 5);
 context.replayMode = true;
@@ -58,4 +64,10 @@ assert.equal(context.signalLevel({rssi_dbm: -67, metric_observed_at: '2026-01-01
 assert.doesNotMatch(html, /Private-Laptop/);
 assert.match(html, /Traffic probe/);
 assert.match(html, /signalMeter\.segmentColor\(index, level\)/);
+assert.match(html, /extender: 0xd65f27/);
+assert.match(html, /probeRing\.visible = hero/);
+assert.doesNotMatch(html, /showSta/);
+assert.doesNotMatch(html, /probeSelected/);
+assert.match(html, /Ctrl-click any client/);
+assert.match(html, /n\.tag\.visible = true/);
 console.log('PASS: shared red/yellow/green/grey meter, RSSI/SNR scale, missing/stale/replay readings and ordinary client identity');

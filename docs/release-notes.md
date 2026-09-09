@@ -2,6 +2,21 @@
 
 Release identifiers describe tested lab delivery checkpoints, not upstream prplMesh versions.
 
+## 0908
+
+- Canonical source and deployment move to rev150, branch `codex/0908-clean`;
+  prplMesh build/runtime services on rev140 are retired. RDK remains on rev140.
+- Synchronizes topology layout, labels, shared signal meters, fullscreen,
+  draggable properties, traffic-probe selection, stable optimizer panels,
+  automatic room application and the expanded room catalog with RDK 0908.
+- Ports bounded room events, nonblocking projection and per-radio streaming
+  candidate publication, using prplMesh NBAPI rather than RDK native APIs.
+- Uses clean URLs and trusted-LAN lease control without operator tokens.
+  Unassisted BTM removes the artificial pre-action highlight delay.
+- Refreshes source on the retained qualified native runtime; this is not a
+  native prplMesh rebuild. Package/import acceptance is recorded beside the
+  immutable archive. See [0908 operations](../reference/release-0908.md).
+
 ## 0906
 
 - Adds the interactive room control plane, automatic fixed-pool world loading,

@@ -58,7 +58,7 @@ class ViewerTopologyContractTests(unittest.TestCase):
         source = VIEWER.read_text(encoding="utf-8")
 
         self.assertIn("requestedMode === 'no-connect'", source)
-        self.assertIn("prplMesh room sandbox", source)
+        self.assertIn("EasyMesh room sandbox", source)
         self.assertIn("NO CONNECT", source)
         self.assertNotIn('id="cameraMode"', source)
         self.assertNotIn('id="interactMode"', source)

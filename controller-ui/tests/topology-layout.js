@@ -25,9 +25,12 @@ const colocatedStar = [
 const positions = controller.topologyLandscapeLayout(nodes, colocatedStar, 1600, 900);
 const controllerPosition = positions.get('controller');
 assert.ok(controllerPosition, 'Controller is missing from the hierarchy');
-assert.ok(nodes.slice(1).every(node =>
-  positions.get(node.id).x > controllerPosition.x),
-  'a star satellite was not placed after the Controller');
+const gatewayPosition = positions.get('agent-1');
+const satellites = nodes.slice(2).map(node => positions.get(node.id));
+assert.ok(satellites.some(position => position.x < gatewayPosition.x));
+assert.ok(satellites.some(position => position.x > gatewayPosition.x));
+assert.ok(satellites.some(position => position.y < gatewayPosition.y));
+assert.ok(satellites.some(position => position.y > gatewayPosition.y));
 assert.equal(new Set(nodes.slice(1).map(node => {
   const position = positions.get(node.id);
   return `${position.x.toFixed(3)},${position.y.toFixed(3)}`;

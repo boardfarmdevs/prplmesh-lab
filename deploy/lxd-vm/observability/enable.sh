@@ -68,6 +68,13 @@ if ! lxc config device show "$instance" | grep '^lab-grafana:' >/dev/null; then
     lxc config device add "$instance" lab-grafana proxy nat=true \
         listen="tcp:$host_address:$grafana_port" connect="tcp:$guest_address:3000"
 fi
+if [ -n "${LAB_OUTER_METRICS_ADDRESS:-}" ]; then
+    bash "$source_dir/enable-outer-metrics.sh" "$instance" "$LAB_OUTER_METRICS_ADDRESS" \
+        "${LAB_OUTER_TLS_NAME:?Set LAB_OUTER_TLS_NAME to a DNS SAN in the host LXD certificate}" "$label"
+fi
+lxc exec "$instance" -- docker compose --project-directory /opt/easymesh-observability kill --signal SIGHUP prometheus
 printf '%s\n' "LXD UI: https://$host_address:$ui_port/" "Grafana: https://$host_address:$grafana_port/" \
     "Grafana login: admin; password: lxc exec $instance -- cat /opt/easymesh-observability/secrets/grafana-admin-password" \
-    "LXD browser enrollment token: lxc exec $instance -- lxc --force-local config trust add --name=lab-browser"
+    'LXD 6.9 browser enrollment: verify the admins group/permissions first (see the reference guide).' \
+    "From a terminal: lxc exec $instance --mode=interactive -- lxc auth identity create local:tls/lab-browser --group admins" \
+    'When using SSH, also use ssh -t. Keep the browser token private; it grants administration access.'

@@ -24,6 +24,9 @@
  * Supports Wi-Fi 7, Multi-AP R6, real-time monitoring
  */
 
+const signalMeter = typeof module !== 'undefined' && module.exports
+  ? require('./signal-meter.js') : window.EasyMeshSignalMeter;
+
 class EasyMeshController {
   constructor() {
     this.apiBase = '/api/v1';
@@ -2407,6 +2410,64 @@ async handleWebSocketMessage(data) {
     });
   }
 
+  topologyStarLayout(nodes, edges) {
+    const rendered = Array.isArray(nodes) ? nodes : [];
+    const agent = rendered.find(node => /^agent-1$/i.test(String(node?.name || '')));
+    if (!agent) return null;
+    const controller = rendered.find(node => /^controller$/i.test(String(node?.name || '')));
+    const satellites = rendered.filter(node => node !== agent && node !== controller)
+      .sort((left, right) => String(left.name || left.id)
+        .localeCompare(String(right.name || right.id), undefined, {numeric: true}));
+    if (satellites.length < 2) return null;
+
+    const endpointId = endpoint => String(
+      endpoint && typeof endpoint === 'object' ? endpoint.id : endpoint
+    );
+    const expected = new Set(satellites.map(node =>
+      JSON.stringify([String(agent.id), String(node.id)])));
+    if (controller) expected.add(JSON.stringify([String(controller.id), String(agent.id)]));
+    const actual = new Set((Array.isArray(edges) ? edges : []).map(edge =>
+      JSON.stringify([endpointId(edge?.from ?? edge?.source), endpointId(edge?.to ?? edge?.target)])));
+    if (actual.size !== expected.size || [...actual].some(edge => !expected.has(edge))) return null;
+
+    return this.topologyMeshLayout(rendered);
+  }
+
+  topologyMeshLayout(nodes) {
+    const rendered = Array.isArray(nodes) ? nodes : [];
+    const agent = rendered.find(node => /^agent-1$/i.test(String(node?.name || '')));
+    if (!agent) return null;
+    const controller = rendered.find(node => /^controller$/i.test(String(node?.name || '')));
+    const satellites = rendered.filter(node => node !== agent && node !== controller)
+      .sort((left, right) => String(left.name || left.id)
+        .localeCompare(String(right.name || right.id), undefined, {numeric: true}));
+    if (satellites.length < 2) return null;
+
+    const extentFor = node => Math.max(80, Number(this.topologyNodeExtent(node)) || 80);
+    const gap = 32;
+    const agentExtent = extentFor(agent);
+    const satelliteExtent = Math.max(...satellites.map(extentFor));
+    const rows = Math.ceil(satellites.length / 2);
+    const rowSpacing = satelliteExtent * 2 + gap;
+    const nearestRow = rows % 2 === 0 ? rowSpacing / 2 : 0;
+    const separation = agentExtent + satelliteExtent + gap;
+    const columnOffset = Math.max(satelliteExtent + gap / 2,
+      Math.sqrt(Math.max(0, separation * separation - nearestRow * nearestRow)));
+    const positions = new Map([[String(agent.id), {x: 0, y: 0}]]);
+    satellites.forEach((node, index) => {
+      positions.set(String(node.id), {
+        x: index % 2 === 0 ? -columnOffset : columnOffset,
+        y: (Math.floor(index / 2) - (rows - 1) / 2) * rowSpacing
+      });
+    });
+    if (controller) {
+      positions.set(String(controller.id), {
+        x: 0, y: -(agentExtent + extentFor(controller) + gap)
+      });
+    }
+    return positions;
+  }
+
   /**
    * Build a deterministic left-to-right hierarchy for a landscape viewport.
    * Dense levels wrap into additional columns so a four-extender star uses a
@@ -2414,6 +2475,8 @@ async handleWebSocketMessage(data) {
    * bubbles and their clients, which keeps the fitted result inside the pane.
    */
   topologyLandscapeLayout(nodes, edges, width = 1600, height = 900) {
+    const star = this.topologyStarLayout(nodes, edges);
+    if (star) return star;
     const rendered = Array.isArray(nodes) ? nodes : [];
     const byId = new Map(rendered.map(node => [String(node.id), node]));
     const children = new Map(rendered.map(node => [String(node.id), new Set()]));
@@ -2488,6 +2551,14 @@ async handleWebSocketMessage(data) {
         queue.push(child);
       }
     }
+    const agent = rendered.find(node => /^agent-1$/i.test(String(node?.name || '')));
+    const agentDepth = agent && depth.get(String(agent.id));
+    if (Number.isFinite(agentDepth) && rendered.every(node =>
+      node === agent || /^controller$/i.test(String(node?.name || '')) ||
+      depth.get(String(node.id)) > agentDepth)) {
+      const mesh = this.topologyMeshLayout(rendered);
+      if (mesh) return mesh;
+    }
     let orphanDepth = Math.max(0, ...depth.values()) + 1;
     for (const node of [...rendered].sort(nodeOrder)) {
       const id = String(node.id);
@@ -2534,9 +2605,49 @@ async handleWebSocketMessage(data) {
     return positions;
   }
 
+  separateTopologyNodes(nodes) {
+    const ordered = [...nodes].sort((left, right) => String(left.id).localeCompare(String(right.id)));
+    const anchor = ordered.find(node => /^agent-1$/i.test(String(node?.name || ''))) || ordered[0];
+    const extents = new Map(ordered.map(node => [node.id, this.topologyNodeExtent(node)]));
+    for (const node of ordered) {
+      node.x = Number.isFinite(node.fx) ? node.fx : Number.isFinite(node.x) ? node.x : 0;
+      node.y = Number.isFinite(node.fy) ? node.fy : Number.isFinite(node.y) ? node.y : 0;
+    }
+    for (let pass = 0; pass < 80; pass += 1) {
+      let moved = false;
+      for (let index = 0; index < ordered.length; index += 1) {
+        const left = ordered[index];
+        for (const right of ordered.slice(index + 1)) {
+          const deltaX = right.x - left.x;
+          const deltaY = right.y - left.y;
+          const distance = Math.hypot(deltaX, deltaY);
+          const minimum = extents.get(left.id) + extents.get(right.id) + 24;
+          if (distance >= minimum - 0.01) continue;
+          const directionX = distance > 0.01 ? deltaX / distance : 1;
+          const directionY = distance > 0.01 ? deltaY / distance : 0;
+          const correction = minimum - distance + 0.02;
+          const leftShare = left === anchor ? 0 : right === anchor ? 1 : 0.5;
+          left.x -= directionX * correction * leftShare;
+          left.y -= directionY * correction * leftShare;
+          right.x += directionX * correction * (1 - leftShare);
+          right.y += directionY * correction * (1 - leftShare);
+          moved = true;
+        }
+      }
+      if (!moved) break;
+    }
+    for (const node of ordered) {
+      node.fx = node.x;
+      node.fy = node.y;
+      node.vx = 0;
+      node.vy = 0;
+      this.nodePositionCache.set(node.id, {x: node.x, y: node.y});
+    }
+  }
+
   /**
-   * Arrange only the on-screen graph as a landscape hierarchy. This never
-   * sends an EasyMesh command or changes the actual network.
+   * Separate overlapping groups without replacing the operator arrangement,
+   * then fit the graph. No EasyMesh command or network change is involved.
    */
   optimizeTopologyLayout() {
     const simulation = this.topologySimulation;
@@ -2552,50 +2663,29 @@ async handleWebSocketMessage(data) {
     this.topologyRenderPending = false;
     if (button) button.disabled = true;
 
-    this.nodePositionCache?.clear();
-    this.staPositionCache?.clear();
-    nodes.forEach(node => {
-      node.fx = null;
-      node.fy = null;
-      node.vx = 0;
-      node.vy = 0;
-    });
-
-    this.showNotification('Arranging the topology for this landscape viewport…', 'info');
+    this.showNotification('Separating overlapping groups and fitting the topology…', 'info');
     const paint = simulation.on('tick');
     simulation.stop();
-    const positions = this.topologyLandscapeLayout(
-      nodes,
-      this.topology?.edges || [],
-      this.topologyView?.width || 1600,
-      this.topologyView?.height || 900
-    );
-    nodes.forEach(node => {
-      const position = positions.get(String(node.id));
-      if (!position) return;
-      node.x = position.x;
-      node.y = position.y;
-    });
+    this.separateTopologyNodes(nodes);
     if (typeof paint === 'function') paint();
-
-    nodes.forEach(node => {
-      if (!Number.isFinite(node.x) || !Number.isFinite(node.y)) return;
-      node.fx = node.x;
-      node.fy = node.y;
-      this.nodePositionCache.set(node.id, { x: node.x, y: node.y });
-    });
+    this.layoutTopologyLabels();
 
     this.topologyLayoutInProgress = false;
     this.topologyRenderPending = false;
     this.fitTopologyToView();
     if (button) button.disabled = false;
-    this.showNotification('Topology diagram arranged', 'success');
+    this.showNotification('Topology spaced and fitted; your arrangement is retained', 'success');
   }
 
   /**
    * Fit the rendered graph into the current topology viewport.
    */
   fitTopologyToView() {
+    if ((this.topologyInteractionDepth || 0) > 0) {
+      this.topologyFitPending = true;
+      return;
+    }
+    this.topologyFitPending = false;
     const view = this.topologyView;
     const group = view?.group?.node();
     if (!group || !view.svg || !view.zoom) return;
@@ -2608,13 +2698,14 @@ async handleWebSocketMessage(data) {
       return;
     }
 
-    if (!bounds.width || !bounds.height) return;
-    const padding = 40;
+    if (![bounds.x, bounds.y, bounds.width, bounds.height, view.width, view.height].every(Number.isFinite) ||
+        bounds.width <= 0 || bounds.height <= 0 || view.width <= 0 || view.height <= 0) return;
+    const padding = 6;
     const availableWidth = Math.max(1, view.width - padding * 2);
     const availableHeight = Math.max(1, view.height - padding * 2);
-    const scale = Math.max(0.1, Math.min(1.5,
+    const scale = Math.min(
       availableWidth / bounds.width,
-      availableHeight / bounds.height));
+      availableHeight / bounds.height);
     const centerX = bounds.x + bounds.width / 2;
     const centerY = bounds.y + bounds.height / 2;
     const transform = d3.zoomIdentity
@@ -2652,10 +2743,6 @@ async handleWebSocketMessage(data) {
     });
   }
 
-  /**
-   * Resize only the SVG viewport. Preserve the operator's current pan/zoom,
-   * cached node positions and active pointer interaction.
-   */
   resizeTopologyViewport() {
     const container = document.getElementById('topology-visualization');
     const view = this.topologyView;
@@ -2670,10 +2757,9 @@ async handleWebSocketMessage(data) {
     view.width = width;
     view.height = height;
 
-    // A later Optimize Layout should settle around the resized viewport, but
-    // resizing alone must not restart the simulation or move the graph.
     const center = this.topologySimulation?.force?.('center');
     if (center?.x && center?.y) center.x(width / 2).y(height / 2);
+    this.fitTopologyToView();
     return true;
   }
 
@@ -2980,7 +3066,28 @@ async handleWebSocketMessage(data) {
       updateDatum(edge);
       d3.select(this).select('text').text(self.topologyBackhaulLinkLabel(edge));
     });
+    group.selectAll('g.backhaul-signal-bars').each(function(edge) {
+      updateDatum(edge);
+      self.updateTopologyBackhaulMeter(d3.select(this), edge);
+    });
     return true;
+  }
+
+  updateTopologyBackhaulMeter(selection, edge) {
+    const signal = this.topologyBackhaulSignal(edge);
+    signal.color = signal.available ? signalMeter.rssiColor(signal.rssi) : signalMeter.colors.grey;
+    const parentX = Number(edge?.source?.x);
+    const nodeX = Number(edge?.target?.x);
+    const direction = Number.isFinite(parentX) && Number.isFinite(nodeX) ? parentX - nodeX : -1;
+    this.updateTopologySignalMeter(selection, {
+      signal, iconSize: 35,
+      from: {x: -2.5 + direction, y: -2.5}, to: {x: -2.5, y: -2.5}
+    }, 'backhaul-signal-segment');
+    const description = signal.available ? `${signal.rssi} dBm` :
+      signal.stale ? `stale, last ${signal.rssi} dBm` : 'unknown';
+    const label = `Uplink to ${edge?.source?.name || edge?.from || 'parent AP'}: ${description}`;
+    selection.attr('data-signal-status', signal.status).attr('aria-label', label);
+    selection.select('title').text(label);
   }
 
   topologyClientMetricsSignature(clients = this.clients) {
@@ -3074,8 +3181,7 @@ async handleWebSocketMessage(data) {
     const event = this.topology?.steeringEvent;
     if (!event || !['planned', 'moving'].includes(String(event.phase || '').toLowerCase()) ||
         this.normalizeMac(event.sta_mac) !== this.normalizeMac(sta?.staMAC)) return null;
-    let targetName = String(event.target_name || '');
-    if (/^agent-/i.test(targetName)) targetName = `Extender-${targetName.split('-').pop()}`;
+    const targetName = String(event.target_name || '');
     const targetNode = (nodes || []).find(node =>
       String(node?.name || '').toLowerCase() === targetName.toLowerCase());
     if (!targetNode || String(targetNode.id) === String(nodeId || '')) return null;
@@ -3092,7 +3198,9 @@ async handleWebSocketMessage(data) {
   topologySignalForSTA(sta) {
     const mac = this.normalizeMac(sta?.staMAC);
     const client = this.clients.find(item => this.normalizeMac(item?.mac) === mac);
-    const metrics = client?.client_metrics || {};
+    const servingBSSID = this.normalizeMac(sta?.bssid);
+    const sameAssociation = !servingBSSID || servingBSSID === this.normalizeMac(client?.connected_bssid);
+    const metrics = sameAssociation ? client?.client_metrics || {} : {};
     const rawRSSI = Number(metrics.rssi_dbm);
     const rcpi = Number(metrics.rcpi);
     const hasRSSI = Number.isFinite(rawRSSI) && rawRSSI < 0 && rawRSSI >= -110;
@@ -3102,22 +3210,18 @@ async handleWebSocketMessage(data) {
     const updatedAt = Date.parse(metrics.last_updated || '');
     const ageMs = Number.isFinite(updatedAt) ? Math.max(0, Date.now() - updatedAt) : null;
     const stale = rssi !== null && ageMs !== null && ageMs > 20000;
-    const available = rssi !== null && !stale;
+    const available = rssi !== null && ageMs !== null && !stale && updatedAt - Date.now() <= 5000;
 
     let quality = 'unknown';
-    let color = '#6b7280';
+    const color = available ? signalMeter.rssiColor(rssi) : signalMeter.colors.grey;
     if (available && rssi >= -55) {
       quality = 'strong';
-      color = '#15803d';
     } else if (available && rssi >= -67) {
       quality = 'good';
-      color = '#2563eb';
     } else if (available && rssi >= -75) {
       quality = 'fair';
-      color = '#d97706';
     } else if (available) {
       quality = 'weak';
-      color = '#dc2626';
     }
 
     return {
@@ -3135,17 +3239,7 @@ async handleWebSocketMessage(data) {
 
   /** Convert a live signal snapshot into the ten-level topology meter. */
   topologySignalLevel(signal) {
-    if (!signal?.available || !Number.isFinite(signal.rssi)) return 0;
-    if (signal.rssi >= -45) return 10;
-    if (signal.rssi >= -50) return 9;
-    if (signal.rssi >= -55) return 8;
-    if (signal.rssi >= -60) return 7;
-    if (signal.rssi >= -65) return 6;
-    if (signal.rssi >= -70) return 5;
-    if (signal.rssi >= -75) return 4;
-    if (signal.rssi >= -80) return 3;
-    if (signal.rssi >= -85) return 2;
-    return 1;
+    return signal?.available ? signalMeter.rssiLevel(signal.rssi) : 0;
   }
 
   /** Place a full-height meter on the client side away from its RF link. */
@@ -3162,18 +3256,18 @@ async handleWebSocketMessage(data) {
     return { x, y, width, height: segmentHeight, side: away };
   }
 
-  updateTopologySignalMeter(selection, staData) {
+  updateTopologySignalMeter(selection, staData, segmentClass = 'sta-signal-segment') {
     const level = this.topologySignalLevel(staData.signal);
-    selection.selectAll('rect.sta-signal-segment')
+    selection.selectAll(`rect.${segmentClass}`)
       .attr('x', segmentIndex => this.topologySignalMeterGeometry(staData, segmentIndex).x)
       .attr('y', segmentIndex => this.topologySignalMeterGeometry(staData, segmentIndex).y)
       .attr('width', segmentIndex => this.topologySignalMeterGeometry(staData, segmentIndex).width)
       .attr('height', segmentIndex => this.topologySignalMeterGeometry(staData, segmentIndex).height)
       .attr('rx', 1)
-      .attr('fill', segmentIndex => segmentIndex < level ? staData.signal.color : '#e2e8f0')
+      .attr('fill', segmentIndex => signalMeter.segmentColor(segmentIndex, level))
       .attr('stroke', segmentIndex => segmentIndex < level ? '#ffffff' : '#94a3b8')
       .attr('stroke-width', 0.55)
-      .attr('opacity', segmentIndex => segmentIndex < level ? 1 : 0.42);
+      .attr('opacity', 1);
   }
 
   /**
@@ -3202,17 +3296,26 @@ async handleWebSocketMessage(data) {
   }
 
   async refreshTopologyData() {
-    const topologyRequest = this.apiCall('/topology');
-    const clientsRequest = this.apiCall('/clients').catch(error => {
-      console.warn('Keeping the previous topology signal snapshot:', error);
-      return null;
-    });
-    const [topology, clientsResponse] = await Promise.all([topologyRequest, clientsRequest]);
-    const metricsChanged = clientsResponse
-      ? this.updateTopologyClients(clientsResponse.clients)
-      : false;
-    const topologyChanged = this.applyTopologyRefresh(topology);
-    if (metricsChanged && !topologyChanged) this.refreshTopologySignalVisuals();
+    if (!this.topologySnapshotRequest) {
+      this.topologySnapshotRequest = this.apiCall('/topology').then(topology => {
+        const changed = this.applyTopologyRefresh(topology);
+        if (!changed) this.refreshTopologySignalVisuals();
+      }).finally(() => {
+        this.topologySnapshotRequest = null;
+      });
+    }
+    if (!this.topologyMetricsRequest && Date.now() >= (this.topologyMetricsNextAt || 0)) {
+      this.topologyMetricsNextAt = Date.now() + 250;
+      this.topologyMetricsRequest = this.apiCall('/clients').then(response => {
+        this.updateTopologyClients(response.clients);
+        this.refreshTopologySignalVisuals();
+      }).catch(error => {
+        console.warn('Keeping the previous topology signal snapshot:', error);
+      }).finally(() => {
+        this.topologyMetricsRequest = null;
+      });
+    }
+    await this.topologySnapshotRequest;
   }
 
   /**
@@ -3269,6 +3372,7 @@ async handleWebSocketMessage(data) {
     if (!refreshed && renderPending && !this.topologyLayoutInProgress) {
       this.updateTopologyVisualization();
     }
+    if (this.topologyFitPending) this.fitTopologyToView();
   }
 
   /**
@@ -3308,6 +3412,10 @@ async handleWebSocketMessage(data) {
     if (!this.topology?.nodes?.length) return;
 
     const renderTopology = this.topologyRenderSnapshot(this.topology);
+    const initialPositions = this.topologyLandscapeLayout(renderTopology.nodes, renderTopology.edges, width, height);
+    for (const [id, position] of initialPositions) {
+      if (!this.nodePositionCache.has(id)) this.nodePositionCache.set(id, position);
+    }
     const currentNodeIds = new Set(renderTopology.nodes.map(n => String(n.id)));
     for (const key of this.nodePositionCache.keys()) {
       if (!currentNodeIds.has(key)) {
@@ -3381,7 +3489,6 @@ async handleWebSocketMessage(data) {
     svg.call(zoom);
     svg.call(zoom.transform, this.zoomTransformCache);
     this.topologyView = { svg, group: svgGroup, zoom, width, height };
-    this.drawTopologySignalLegend(svg);
 
     // Normalize node and edge IDs to strings
     renderTopology.nodes.forEach(n => n.id = String(n.id));
@@ -3432,29 +3539,16 @@ async handleWebSocketMessage(data) {
       'default': 20
     };
 
-    const minX = d3.min(renderTopology.nodes, d => d.x);
-    const maxX = d3.max(renderTopology.nodes, d => d.x);
-    const minY = d3.min(renderTopology.nodes, d => d.y);
-    const maxY = d3.max(renderTopology.nodes, d => d.y);
-    const graphWidth = maxX - minX;
-    const graphHeight = maxY - minY;
-    const offsetX = (width - graphWidth) / 2 - minX -250;
-    const offsetY = (height - graphHeight) / 2 - minY;
-
     renderTopology.nodes.forEach(node => {
       const saved = this.nodePositionCache.get(node.id);
-      if (saved) {
-        node.x = saved.x;
-        node.y = saved.y;
-      } else {
-        node.x = node.x + offsetX;
-        node.y = node.y + offsetY;
-      }
+      node.x = saved?.x ?? 0;
+      node.y = saved?.y ?? 0;
 
       // Keep nodes fixed after positioning
       node.fx = node.x;
       node.fy = node.y;
     });
+    this.separateTopologyNodes(renderTopology.nodes);
 
     // Create simulation
     const simulation = d3.forceSimulation(renderTopology.nodes)
@@ -3464,7 +3558,7 @@ async handleWebSocketMessage(data) {
     .force('charge', d3.forceManyBody().strength(-2200))
     .force('collision', d3.forceCollide().radius(d => self.topologyNodeExtent(d) + 15).strength(1).iterations(2))
     .force('center', d3.forceCenter(width / 2, height / 2))
-    .alphaDecay(0.08);
+    .alphaDecay(0.08).stop();
     this.topologySimulation = simulation;
 
     const edgeGroup = svgGroup.append('g').attr('class', 'edges');
@@ -3497,7 +3591,7 @@ async handleWebSocketMessage(data) {
         // SSID heading inside the each circle
         const type = haul.name || 'Unknown';
         const ssid = haul?.ssid || 'SSID N/A';
-        const vlanId = haul?.vlanConfigured ? haul.VlanId : 'untagged';
+        const vlanId = haul?.VlanId ?? 'N/A';
         const mldMap = new Map();
 
         // Extract BSS-band details
@@ -3550,15 +3644,21 @@ async handleWebSocketMessage(data) {
             tooltip.style('display', 'none');
           });
 
+        const label = self.topologySSIDLabel(item);
         g.append('text')
-          .attr('x', offset.x)
-          .attr('y', offset.y)
+          .attr('class', 'ssid-label')
+          .attr('data-ssid', ssid)
+          .attr('aria-label', ssid)
+          .attr('x', label.x)
+          .attr('y', label.y)
           .attr('text-anchor', 'middle')
           .attr('dominant-baseline', 'middle')
-          .attr('font-size', '16px')
-          .attr('fill', '#9b9a9aff')
+          .attr('font-size', `${label.fontSize}px`)
+          .attr('fill', label.color)
           .attr('font-weight', 'bold')
-          .text(ssid);
+          .attr('stroke', '#fff').attr('stroke-width', 2).attr('paint-order', 'stroke')
+          .style('pointer-events', 'none')
+          .text(label.text);
       });
 
       // STA Placement
@@ -3612,7 +3712,7 @@ async handleWebSocketMessage(data) {
 
           const signalGlyph = staElement.append('g')
             .attr('class', 'sta-signal-bars')
-            .attr('opacity', moveEffect ? 0 : 1)
+            .attr('opacity', 1)
             .style('pointer-events', 'none');
           signalGlyph.selectAll('rect.sta-signal-segment')
             .data([0, 1, 2, 3, 4, 5, 6, 7, 8, 9])
@@ -3676,10 +3776,10 @@ async handleWebSocketMessage(data) {
             pulse.append('animate')
               .attr('attributeName', 'r')
               .attr('values', `${data.iconSize / 2 + 7};${data.iconSize / 2 + 20}`)
-              .attr('begin', '1.25s').attr('dur', '0.9s').attr('repeatCount', '4');
+              .attr('begin', '0s').attr('dur', '0.9s').attr('repeatCount', '4');
             pulse.append('animate')
               .attr('attributeName', 'opacity')
-              .attr('values', '1;0').attr('begin', '1.25s')
+              .attr('values', '1;0').attr('begin', '0s')
               .attr('dur', '0.9s').attr('repeatCount', '4');
 
             const sourceNode = renderTopology.nodes.find(nodeItem =>
@@ -3702,40 +3802,6 @@ async handleWebSocketMessage(data) {
                 .attr('dur', `${moveEffect.remainingMs}ms`)
                 .attr('fill', 'freeze');
 
-              const startX = Number.isFinite(moveEffect.fromX)
-                ? moveEffect.fromX : (sourceNode.fx ?? sourceNode.x ?? 0);
-              const startY = Number.isFinite(moveEffect.fromY)
-                ? moveEffect.fromY : (sourceNode.fy ?? sourceNode.y ?? 0);
-              const targetX = (d.fx ?? d.x ?? 0) + to.x;
-              const targetY = (d.fy ?? d.y ?? 0) + to.y;
-              const midX = (startX + targetX) / 2;
-              const midY = (startY + targetY) / 2 - 35;
-              const motionPath = document.createElementNS('http://www.w3.org/2000/svg', 'path');
-              motionPath.setAttribute('d', `M${startX},${startY} Q${midX},${midY} ${targetX},${targetY}`);
-              const motionLength = motionPath.getTotalLength();
-              const movingClient = steeringEffectGroup.append('g')
-                .attr('class', 'sta-moving-client')
-                .attr('transform', `translate(${startX},${startY})`)
-                .style('pointer-events', 'none');
-              movingClient.append('circle')
-                .attr('r', data.iconSize / 2 + 7).attr('fill', '#ede9fe')
-                .attr('stroke', '#7c3aed').attr('stroke-width', 4);
-              movingClient.append('image')
-                .attr('xlink:href', iconUrl)
-                .attr('x', -data.iconSize / 2).attr('y', -data.iconSize / 2)
-                .attr('width', data.iconSize).attr('height', data.iconSize);
-              movingClient.append('text')
-                .attr('y', data.iconSize / 2 + 13).attr('text-anchor', 'middle')
-                .attr('font-size', '11px').attr('font-weight', '800')
-                .attr('fill', '#5b21b6').attr('stroke', '#fff').attr('stroke-width', 3)
-                .attr('paint-order', 'stroke')
-                .text(`${moveEffect.clientName || staIdentity} moving`);
-              movingClient.transition().duration(1400).ease(d3.easeCubicInOut)
-                .attrTween('transform', () => t => {
-                  const point = motionPath.getPointAtLength(t * motionLength);
-                  return `translate(${point.x},${point.y})`;
-                })
-                .on('end', () => movingClient.remove());
             }
           }
 
@@ -3746,7 +3812,7 @@ async handleWebSocketMessage(data) {
            .attr('y', to.y - data.iconSize / 2)
            .attr('width', data.iconSize)
            .attr('height', data.iconSize)
-           .attr('opacity', moveEffect ? 0 : 1)
+           .attr('opacity', 1)
            .on('mouseover', function(event) {
               let mldInfo = '';
               if (sta.MLDAddr && sta.MLDAddr !== '') {
@@ -3775,38 +3841,18 @@ async handleWebSocketMessage(data) {
           staElement.append('text')
             .attr('class', 'sta-identity-label')
             .attr('x', to.x)
-            .attr('y', to.y + data.iconSize / 2 + 11)
+            .attr('y', to.y + data.iconSize / 2 + 24)
             .attr('text-anchor', 'middle')
-            .attr('font-size', '10px')
+            .attr('font-size', '22px')
             .attr('font-weight', '600')
             .attr('fill', '#333')
             .attr('stroke', '#fff')
             .attr('stroke-width', 3)
             .attr('paint-order', 'stroke')
             .style('pointer-events', 'none')
-            .attr('opacity', moveEffect ? 0 : 1)
+            .attr('opacity', 1)
             .text(staIdentity);
 
-          staElement.append('text')
-            .attr('class', 'sta-channel-label')
-            .attr('x', to.x)
-            .attr('y', to.y + data.iconSize / 2 + 23)
-            .attr('text-anchor', 'middle')
-            .attr('font-size', '9px')
-            .attr('font-weight', '600')
-            .attr('fill', '#475569')
-            .attr('stroke', '#fff')
-            .attr('stroke-width', 3)
-            .attr('paint-order', 'stroke')
-            .style('pointer-events', 'none')
-            .attr('opacity', moveEffect ? 0 : 1)
-            .text(Number(sta.channel) > 0
-              ? `${self.topologyBandLabel(sta.band)} ch ${sta.channel}` : '');
-
-          if (moveEffect) {
-            staElement.selectAll('.sta-icon,.sta-identity-label,.sta-channel-label,.sta-signal-bars')
-              .transition().delay(1250).duration(250).attr('opacity', 1);
-          }
 
         });
 
@@ -3816,6 +3862,16 @@ async handleWebSocketMessage(data) {
       let isController = false;
       if (d.name?.toLowerCase().includes('controller')) {
         isController = true;
+      }
+
+      const uplink = edges.find(item => String(item.to) === String(d.id));
+      if (uplink && self.topologyIsWirelessBackhaul(uplink)) {
+        const meter = g.append('g').attr('class', 'backhaul-signal-bars')
+          .attr('role', 'img').style('pointer-events', 'none').datum(uplink);
+        meter.append('title');
+        meter.selectAll('rect').data(Array.from({length: 10}, (_value, index) => index))
+          .enter().append('rect').attr('class', 'backhaul-signal-segment');
+        self.updateTopologyBackhaulMeter(meter, uplink);
       }
 
       g.append('image')
@@ -3851,10 +3907,11 @@ async handleWebSocketMessage(data) {
         });
 
       g.append('text')
+        .attr('class', 'mesh-identity-label')
         .attr('x', 0)
-        .attr('y', isController ? 36 : 32)
+        .attr('y', isController ? 48 : 42)
         .attr('text-anchor', 'middle')
-        .attr('font-size', '13px')
+        .attr('font-size', '22px')
         .attr('fill', '#333')
         .attr('font-weight', 'bold')
         .attr('stroke', '#fff')
@@ -3923,6 +3980,9 @@ async handleWebSocketMessage(data) {
 
     simulation.on('tick', () => {
       node.attr('transform', d => `translate(${d.x},${d.y})`);
+      node.selectAll('g.backhaul-signal-bars').each(function(uplink) {
+        self.updateTopologyBackhaulMeter(d3.select(this), uplink);
+      });
 
       edge.attr('d', d => {
         const from = d.source;
@@ -3988,9 +4048,12 @@ async handleWebSocketMessage(data) {
         });
     });
 
+    simulation.on('tick')();
+    this.layoutTopologyLabels();
+    this.fitTopologyToView();
+
     function dragstarted(event, d) {
       self.beginTopologyInteraction();
-      if (!event.active) simulation.alphaTarget(0.3).restart();
     }
 
     function updateSTAVisual(selection, d) {
@@ -4007,10 +4070,7 @@ async handleWebSocketMessage(data) {
         .attr('y', d.to.y - d.iconSize / 2);
       selection.select('text.sta-identity-label')
         .attr('x', d.to.x)
-        .attr('y', d.to.y + d.iconSize / 2 + 11);
-      selection.select('text.sta-channel-label')
-        .attr('x', d.to.x)
-        .attr('y', d.to.y + d.iconSize / 2 + 23);
+        .attr('y', d.to.y + d.iconSize / 2 + 24);
     }
 
     function staDragStarted(event) {
@@ -4037,16 +4097,19 @@ async handleWebSocketMessage(data) {
         y: d.to.y
       });
       d3.select(this).style('cursor', 'grab');
+      self.layoutTopologyLabels();
       self.endTopologyInteraction();
+      self.fitTopologyToView();
     }
 
     function dragged(event, d) {
-      d.fx = event.x;
-      d.fy = event.y;
+      d.x = d.fx = event.x;
+      d.y = d.fy = event.y;
+      simulation.on('tick')();
     }
 
     function dragended(event, d) {
-      if (!event.active) simulation.alphaTarget(0);
+      simulation.stop();
       self.nodePositionCache.set(d.id, {
         x: d.fx,
         y: d.fy
@@ -4055,7 +4118,10 @@ async handleWebSocketMessage(data) {
       // Lock at new position
       d.x = d.fx;
       d.y = d.fy;
+      simulation.on('tick')();
+      self.layoutTopologyLabels();
       self.endTopologyInteraction();
+      self.fitTopologyToView();
     }
   }
 
@@ -4066,7 +4132,7 @@ async handleWebSocketMessage(data) {
   topologyHaulGeometry(haulTypes, staList = []) {
     const items = Array.isArray(haulTypes) ? haulTypes : [];
     const stations = Array.isArray(staList) ? staList : [];
-    const layoutRadius = items.length > 1 ? 140 : 0;
+    const layoutRadius = items.length > 1 ? 150 : 0;
 
     return items.map((haul, index) => {
       const ssid = String(haul?.ssid || '');
@@ -4075,7 +4141,7 @@ async handleWebSocketMessage(data) {
       // Preserve a clear current-lab minimum and grow gently for denser future
       // cohorts without letting one group consume the entire graph.
       const radius = isClientCohort
-        ? Math.min(145, Math.max(110, 100 + stationCount * 2))
+        ? Math.min(155, Math.max(120, 110 + stationCount * 2))
         : 80;
       const angle = items.length > 0 ? (2 * Math.PI / items.length) * index : 0;
       return {
@@ -4098,6 +4164,19 @@ async handleWebSocketMessage(data) {
     ), 80);
   }
 
+  topologySSIDLabel(geometry) {
+    const cohort = geometry.ssid === 'private_ssid' ? 'private'
+      : geometry.ssid === 'iot_ssid' ? 'iot' : null;
+    const backhaul = geometry.ssid === 'mesh_backhaul';
+    return {
+      x: geometry.offset.x + geometry.radius * (cohort === 'private' ? 0.48 : cohort === 'iot' ? 0.38 : 0),
+      y: geometry.offset.y,
+      text: cohort ? `"${cohort}"` : backhaul ? '"backhaul"' : geometry.ssid,
+      fontSize: cohort ? 26 : 22,
+      color: cohort === 'private' ? '#1e3a8a' : cohort === 'iot' ? '#374151' : backhaul ? '#8b1e24' : '#9b9a9aff'
+    };
+  }
+
   /** Place one station on the inner edge of its authoritative SSID bubble. */
   topologySTAPlacement(sta, staList, haulGeometry, nodeId = '') {
     const ssid = String(sta?.ssid || '');
@@ -4116,7 +4195,10 @@ async handleWebSocketMessage(data) {
     const cacheKey = this.normalizeMac(sta?.staMAC);
     const ownerId = String(nodeId || '');
     const cached = this.staPositionCache.get(cacheKey);
-    const angle = -Math.PI / 2 + (2 * Math.PI * cohortIndex) / cohortCount;
+    const titledCohort = ssid === 'private_ssid' || ssid === 'iot_ssid';
+    const angle = titledCohort && cohortCount > 1
+      ? 2 * Math.PI / 5 + (6 * Math.PI / 5) * cohortIndex / (cohortCount - 1)
+      : -Math.PI / 2 + (2 * Math.PI * cohortIndex) / cohortCount;
     let to = {
       x: target.offset.x + edgeRadius * Math.cos(angle),
       y: target.offset.y + edgeRadius * Math.sin(angle)
@@ -4134,42 +4216,63 @@ async handleWebSocketMessage(data) {
       ownerId,
       ssid,
       edgeRadius,
-      from: { x: target.offset.x, y: target.offset.y },
+      from: { x: target.offset.x - (titledCohort ? target.radius * 0.2 : 0), y: target.offset.y },
       to
     };
   }
 
-  drawTopologySignalLegend(svg) {
-    const entries = [
-      { label: 'Strong >=-55', color: '#15803d' },
-      { label: 'Good -56..-67', color: '#2563eb' },
-      { label: 'Fair -68..-75', color: '#d97706' },
-      { label: 'Weak <-75', color: '#dc2626' }
-    ];
-    const legend = svg.append('g')
-      .attr('class', 'topology-signal-legend')
-      .attr('transform', 'translate(14,18)');
-    legend.append('rect')
-      .attr('x', -8).attr('y', -14)
-      .attr('width', 452).attr('height', 34)
-      .attr('rx', 6)
-      .attr('fill', '#fff').attr('opacity', 0.88)
-      .attr('stroke', '#d1d5db');
-    legend.append('text')
-      .attr('x', 0).attr('y', 8)
-      .attr('font-size', '10px').attr('font-weight', '700')
-      .attr('fill', '#374151').text('Signal');
-    const item = legend.selectAll('g.signal-quality')
-      .data(entries).enter().append('g')
-      .attr('class', 'signal-quality')
-      .attr('transform', (_entry, index) => `translate(${52 + index * 100},0)`);
-    item.append('circle')
-      .attr('cx', 0).attr('cy', 4).attr('r', 4)
-      .attr('fill', entry => entry.color);
-    item.append('text')
-      .attr('x', 8).attr('y', 8)
-      .attr('font-size', '9px').attr('fill', '#374151')
-      .text(entry => entry.label);
+  topologyClientLabelPosition(center, iconSize, size, obstacles) {
+    let best = null;
+    let bestScore = Infinity;
+    for (const gap of [6, 18, 36, 60, 96]) {
+      const horizontal = iconSize / 2 + gap + size.width / 2;
+      const vertical = iconSize / 2 + gap + size.height / 2;
+      for (const [offsetX, offsetY] of [[0, vertical], [0, -vertical],
+        [horizontal, 0], [-horizontal, 0], [horizontal, vertical],
+        [-horizontal, vertical], [horizontal, -vertical], [-horizontal, -vertical]]) {
+        const candidate = {x: center.x + offsetX - size.width / 2,
+          y: center.y + offsetY - size.height / 2, ...size};
+        const overlap = obstacles.reduce((total, box) => total +
+          Math.max(0, Math.min(candidate.x + candidate.width + 4, box.x + box.width) - Math.max(candidate.x - 4, box.x)) *
+          Math.max(0, Math.min(candidate.y + candidate.height + 4, box.y + box.height) - Math.max(candidate.y - 4, box.y)), 0);
+        const score = overlap * 10000 + Math.hypot(offsetX, offsetY);
+        if (score < bestScore) {
+          best = candidate;
+          bestScore = score;
+        }
+      }
+    }
+    return best;
+  }
+
+  layoutTopologyLabels() {
+    const root = this.topologyView?.group?.node();
+    const matrix = root?.getScreenCTM();
+    if (!matrix || matrix.a <= 0 || matrix.d <= 0) return;
+    const localBox = element => {
+      const box = element.getBoundingClientRect();
+      return {x: (box.left - matrix.e) / matrix.a, y: (box.top - matrix.f) / matrix.d,
+        width: box.width / matrix.a, height: box.height / matrix.d};
+    };
+    const obstacles = Array.from(root.querySelectorAll(
+      '.node image, .ssid-label, .sta-icon, .sta-signal-bars, .backhaul-signal-bars, .channel-label'
+    ), localBox);
+    for (const label of root.querySelectorAll('.mesh-identity-label, .sta-identity-label')) {
+      const data = d3.select(label.parentNode).datum();
+      const isClient = label.classList.contains('sta-identity-label');
+      const nodeRef = isClient ? data.nodeRef : data;
+      const nodeX = nodeRef.fx ?? nodeRef.x ?? 0;
+      const nodeY = nodeRef.fy ?? nodeRef.y ?? 0;
+      const center = {x: nodeX + (isClient ? data.to.x : 0), y: nodeY + (isClient ? data.to.y : 0)};
+      const iconSize = isClient ? data.iconSize : Number(label.parentNode.querySelector('image').getAttribute('width'));
+      const bounds = label.getBBox();
+      const baseline = Number(label.getAttribute('y')) - bounds.y;
+      const placement = this.topologyClientLabelPosition(
+        center, iconSize, {width: bounds.width, height: bounds.height}, obstacles);
+      label.setAttribute('x', placement.x + placement.width / 2 - nodeX);
+      label.setAttribute('y', placement.y + baseline - nodeY);
+      obstacles.push(placement);
+    }
   }
 
   /**
@@ -4377,7 +4480,15 @@ async handleWebSocketMessage(data) {
         await this.loadSystemSettings();
         break;
       case 'wireless':
-        await this.loadNetworkInventory();
+        // hydrate wireless tab when it’s opened
+        if (window.WirelessSettings) {
+          try {
+            await window.WirelessSettings.loadWirelessSettings();
+            window.WirelessSettings.updateAllDisplays();
+          } catch (e) {
+            this.showNotification('Failed to load wireless settings', 'error');
+          }
+        }
         break;
       case 'policy':
         await this.loadPolicySettings();
@@ -4895,7 +5006,7 @@ async handleWebSocketMessage(data) {
           this.topologyRefreshInFlight = false;
         }
       }
-    }, 2000);
+    }, 250);
   }
 
   cleanup() {

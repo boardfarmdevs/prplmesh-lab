@@ -40,14 +40,17 @@ def main():
     parser.add_argument("--yes-act", action="store_true")
     parser.add_argument("--base-url", default="http://127.0.0.1:8891")
     parser.add_argument("--controller-url", default="http://127.0.0.1:8092")
-    parser.add_argument("--operator-token-file", type=Path, default=Path("/run/prplmesh-room-demo/operator.token"))
     parser.add_argument("--timeout", type=float, default=600)
     parser.add_argument("--all-worlds", action="store_true", help="test every compatible installed room")
+    parser.add_argument("--world", action="append", help="test only these room IDs, then restore default")
+    parser.add_argument("--roster-only", action="store_true", help="check membership and health without claiming optimizer convergence")
+    parser.add_argument("--skip-presence", action="store_true", help="omit the additional disappear/reappear cycle")
     parser.add_argument("--output", type=Path, required=True)
     args = parser.parse_args()
     if not args.yes_act:
         parser.error("--yes-act is required: this changes live room RF")
-    operator = args.operator_token_file.read_text().strip()
+    if args.all_worlds and args.world:
+        parser.error("choose --all-worlds or --world, not both")
     lease = None
     lease_renewed = 0.0
     report = {"worlds": [], "restored_default": False, "passed": False}
@@ -55,7 +58,6 @@ def main():
     def request(path, body=None, *, controller=False, revision=None, method=None):
         headers = {"Content-Type": "application/json"}
         if body is not None:
-            headers["Authorization"] = "Bearer " + operator
             body = {**body, "command_id": "smoke-" + uuid.uuid4().hex}
         if revision is not None:
             headers["If-Match"] = f'"world-revision-{revision}"'
@@ -165,12 +167,12 @@ def main():
     try:
         lease = request("/api/demo/interactions/lease", {"owner": "prplmesh-world-switch-acceptance"})["token"]
         lease_renewed = time.monotonic()
-        names = ([world["id"] for world in request("/api/demo/worlds")["worlds"]] if args.all_worlds else
+        names = args.world or ([world["id"] for world in request("/api/demo/worlds")["worlds"]] if args.all_worlds else
                  ["home-a-border-hover", "home-a-stationary", "home-b-slow-walk-ten", "home-a-flash-crowd"])
         for name in [*names, "default"]:
             expected = apply(name)["expected_online_clients"]
             try:
-                result = wait_for_world(name, expected)
+                result = wait_for_world(name, expected, require_convergence=not args.roster_only)
             except RuntimeError as error:
                 if not args.all_worlds:
                     raise
@@ -183,12 +185,13 @@ def main():
             report["worlds"].append(result)
             args.output.parent.mkdir(parents=True, exist_ok=True)
             args.output.write_text(json.dumps(report, indent=2) + "\n")
-        for present, expected in ((False, 19), (True, 20)):
+        for present, expected in (() if args.skip_presence else ((False, 19), (True, 20))):
             renew()
             snapshot = request("/api/demo/interactions")
             request("/api/demo/roles/sta_mobile_01/presence", {"token": lease, "present": present},
                     revision=snapshot["revision"], method="PUT")
-            report["worlds"].append(wait_for_world("client-reappear" if present else "client-disappear", expected))
+            report["worlds"].append(wait_for_world("client-reappear" if present else "client-disappear", expected,
+                                                  require_convergence=not args.roster_only))
         report["containers_and_services_unchanged"] = identities() == before
         if not report["containers_and_services_unchanged"]:
             raise RuntimeError("container, service or medium process identity changed")
@@ -210,7 +213,7 @@ def main():
                 report["restored_default"] = True
                 query = urllib.request.Request(args.base_url + "/api/demo/interactions/lease", method="DELETE",
                     data=json.dumps({"token": lease, "command_id": "release-" + uuid.uuid4().hex}).encode(),
-                    headers={"Content-Type": "application/json", "Authorization": "Bearer " + operator})
+                    headers={"Content-Type": "application/json"})
                 with urllib.request.urlopen(query, timeout=20):
                     pass
         except Exception as error:

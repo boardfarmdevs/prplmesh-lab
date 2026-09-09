@@ -392,7 +392,9 @@ def test_failed_query_records_agent_radio_and_failed_transaction():
         list(provider(
             (client(),), (inventory(),), bsses(), "2026-08-21T20:00:01.000Z"
         ))
-    assert provider.last_raw == [{
+    assert [{key: value for key, value in transaction.items()
+             if key not in {"requested_at", "finished_at", "elapsed_ms"}}
+            for transaction in provider.last_raw] == [{
         "request": {
             "AlMac": AGENT,
             "UnassocStaQueryList": [{

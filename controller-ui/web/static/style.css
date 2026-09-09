@@ -937,6 +937,25 @@ body {
     outline: none;
 }
 
+#topology:fullscreen {
+    display: flex;
+    flex-direction: column;
+    width: 100vw;
+    height: 100dvh;
+    padding: 6px;
+    overflow: hidden;
+    background: var(--bg-primary, #f8fafc);
+}
+
+#topology:fullscreen > .page-header {
+    flex-shrink: 0;
+    margin-bottom: 6px;
+    padding-bottom: 6px;
+}
+
+#topologyFullscreenStatus:empty { display: none; }
+#topologyFullscreenStatus { flex-shrink: 0; padding: 4px; color: #b91c1c; }
+
 .topology-container {
     display: flex;
     flex: 1;

@@ -128,6 +128,7 @@ class ConductorProjectionTests(unittest.TestCase):
         )
         payload = conductor._network_payload(snapshot)
         self.assertEqual(payload["hero"]["role"], "sta_mobile_01")
+        self.assertEqual(payload["hero"]["display_name"], "sta-02")
         self.assertEqual(payload["hero"]["connected_role"], "extender_1")
         self.assertEqual(payload["hero"]["connected_world_name"], "Extender-1")
         self.assertEqual(payload["hero"]["rssi_dbm"], -41)

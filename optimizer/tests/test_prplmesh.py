@@ -181,11 +181,17 @@ def test_candidate_provider_registers_updates_and_returns_standard_metric():
         "channel": 36,
         "opclass": 115,
     }
+    published = []
+    provider.result_ready = lambda measurements, rejected, transaction: published.append(
+        (measurements, rejected, transaction))
     measured = list(provider((client,), (candidate,), [bss], STAMP))
     assert len(measured) == 1
     assert measured[0].rcpi == 122
     assert measured[0].metric_observed_at == STAMP
     assert measured[0].measurement_source.endswith(":simulated")
+    assert published[0][0] == measured
+    assert published[0][1] == set()
+    assert published[0][2]["operation"] == "published"
     assert any(method == "AddUnassociatedStation" for _, method, _ in provider.calls)
     assert any(method == "UpdateUnassociatedStationsStats" for _, method, _ in provider.calls)
 

@@ -28,10 +28,13 @@ class PolicyConfig:
     maximum_band_upgrade_loss_rcpi: int = 8
     expected_devices: int = 5
     expected_clients: int = 10
+    require_complete_client_roster: bool = True
 
     def __post_init__(self) -> None:
         if self.policy_version != 1:
             raise ValueError("only policy_version 1 is supported")
+        if not isinstance(self.require_complete_client_roster, bool):
+            raise ValueError("require_complete_client_roster must be boolean")
         for name, value in asdict(self).items():
             if name == "policy_version":
                 continue
@@ -142,7 +145,7 @@ class ThresholdPolicy:
         health_reason = None
         if snapshot.health.devices != self.config.expected_devices:
             health_reason = "mesh_device_count_mismatch"
-        elif snapshot.health.clients != self.config.expected_clients:
+        elif self.config.require_complete_client_roster and snapshot.health.clients != self.config.expected_clients:
             health_reason = "client_count_mismatch"
 
         for client in snapshot.clients:

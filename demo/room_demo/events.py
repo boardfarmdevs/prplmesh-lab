@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import copy
+from bisect import bisect_right
 import datetime as dt
 import hashlib
 import json
@@ -8,6 +9,12 @@ import threading
 import time
 from pathlib import Path
 from typing import Any
+
+from .journal import BoundedJournal
+
+
+class EventHistoryGap(ValueError):
+    pass
 
 
 class EventStore:
@@ -20,6 +27,10 @@ class EventStore:
         event_path: Path,
         *,
         persist: bool = True,
+        asynchronous: bool = False,
+        history_events: int | None = 4096,
+        history_bytes: int | None = 16 * 1024 * 1024,
+        journal_options: dict | None = None,
     ):
         self.run_id = run_id
         self.world = world
@@ -27,6 +38,17 @@ class EventStore:
         self.event_path = event_path
         self.persist = persist
         self._events: list[dict[str, Any]] = []
+        self._sequences: list[int] = []
+        self._event_sizes: list[int] = []
+        self._retained_bytes = 0
+        self._history_discarded = 0
+        self._history_events = history_events
+        self._history_bytes = history_bytes
+        self._last_sequence = 0
+        self._last_event_hash = None
+        if any(value is not None and value < 1 for value in (history_events, history_bytes)):
+            raise ValueError("history bounds must be positive")
+        self._journal = BoundedJournal(event_path, **(journal_options or {})) if persist and asynchronous else None
         self._condition = threading.Condition()
         self._started_monotonic = time.monotonic()
         first = world.get("generations", [{}])[0]
@@ -49,6 +71,7 @@ class EventStore:
             "clocks": {"run_elapsed_ms": 0, "scenario_time_ms": 0},
             "sequence": 0,
             "world_revision": 0,
+            "world_epoch": 0,
             "environment_epoch": 0,
             "medium": {},
             "roles": {
@@ -66,6 +89,7 @@ class EventStore:
             "recording": {},
             "optimizer": {},
             "network": {},
+            "traffic_probe": {},
             "health": {},
             "outcome": None,
             "restored": False,
@@ -113,6 +137,7 @@ class EventStore:
                 self._state["environment_epoch"], int(payload["environment_epoch"])
             )
         if kind == "room.world.committed":
+            self._state["world_epoch"] += 1
             self.world = copy.deepcopy(payload["world"])
             self._state.update({"scenario": self.world["name"],
                                 "duration_ms": self.world["duration_ms"],
@@ -147,6 +172,10 @@ class EventStore:
             role = movement.get("role")
             if movement_id:
                 self._state["movements"][movement_id] = movement
+                completed = [identity for identity, value in self._state["movements"].items()
+                             if value.get("status") not in {"running", "paused"}]
+                for identity in completed[:-128]:
+                    del self._state["movements"][identity]
             if role in self._state["roles"]:
                 if movement.get("position") is not None:
                     self._state["roles"][role]["authoritative_position"] = copy.deepcopy(
@@ -184,10 +213,41 @@ class EventStore:
             })
         elif kind in {"optimizer.evaluation", "optimizer.measurement.unavailable"}:
             self._state["optimizer"] = copy.deepcopy(payload)
+        elif kind == "optimizer.verification" and payload.get("policy_state"):
+            optimizer = self._state["optimizer"]
+            optimizer["last_verification"] = copy.deepcopy(payload)
+            if optimizer.get("subject_role") == payload.get("subject_role"):
+                optimizer["policy_state"] = copy.deepcopy(payload["policy_state"])
+                optimizer["decision"] = {**optimizer.get("decision", {}), "action": "none",
+                                         "reason": "target_association_observed" if payload["success"] else "steer_failure_backoff"}
+        elif kind in {"optimizer.progress", "optimizer.measurement.waiting", "optimizer.environment.changed", "observation.inconsistent_rf_epoch"}:
+            self._state["optimizer"]["progress"] = {
+                **copy.deepcopy(payload), "kind": kind, "recorded_at": event["recorded_at"],
+            }
+            if kind != "optimizer.progress":
+                self._state["optimizer"]["automatic_actuation_ready"] = False
+                self._state["optimizer"]["fleet"] = {}
+                self._state["optimizer"]["client_decisions"] = []
+        elif kind == "traffic.probe.selected":
+            self._state["traffic_probe"] = copy.deepcopy(payload["traffic_probe"])
+            self._state["latest"].pop("traffic.sample", None)
+        elif kind == "traffic.sample":
+            probe = payload.get("traffic_probe") or {}
+            selected = self._state["traffic_probe"]
+            if selected and probe and (probe.get("role"), probe.get("selection")) != (selected.get("role"), selected.get("selection")):
+                self._state["latest"].pop("traffic.sample", None)
         elif kind == "network.snapshot":
             self._state["network"] = copy.deepcopy(payload)
+            probe = payload.get("traffic_probe") or {}
+            if probe and probe.get("selection", 0) >= self._state["traffic_probe"].get("selection", 0):
+                self._state["traffic_probe"] = copy.deepcopy(probe)
         elif kind == "health.sample":
             self._state["health"] = copy.deepcopy(payload)
+        if kind in {"traffic.probe.selected", "network.snapshot"} and self._state["traffic_probe"]:
+            network = self._state["network"]
+            network["traffic_probe"] = copy.deepcopy(self._state["traffic_probe"])
+            network["hero"] = next((client for client in network.get("clients", [])
+                                    if client.get("role") == self._state["traffic_probe"].get("role")), None)
 
     def _publish(self, event: dict[str, Any]) -> dict[str, Any]:
         if event.get("schema") != "easymesh.room-demo.event.v1":
@@ -195,17 +255,27 @@ class EventStore:
         if event.get("run_id") != self.run_id:
             raise ValueError("event run_id does not match the active run")
         with self._condition:
-            if self._events and event["sequence"] <= self._events[-1]["sequence"]:
+            if event["sequence"] <= self._last_sequence:
                 raise ValueError("event sequence is not strictly increasing")
             if event.get("event_hash"):
                 if event["event_hash"] != self._event_hash(event):
                     raise ValueError("event hash does not match event contents")
-                expected_previous = (
-                    self._events[-1].get("event_hash") if self._events else None
-                )
+                expected_previous = self._last_event_hash
                 if event.get("previous_event_hash") != expected_previous:
                     raise ValueError("event hash chain is discontinuous")
             self._events.append(event)
+            self._sequences.append(event["sequence"])
+            encoded = (json.dumps(event, sort_keys=True, separators=(",", ":")) + "\n").encode()
+            self._event_sizes.append(len(encoded))
+            self._retained_bytes += len(encoded)
+            self._last_sequence = event["sequence"]
+            self._last_event_hash = event.get("event_hash")
+            while ((self._history_events is not None and len(self._events) > self._history_events)
+                   or (self._history_bytes is not None and self._retained_bytes > self._history_bytes)):
+                self._retained_bytes -= self._event_sizes.pop(0)
+                self._events.pop(0)
+                self._sequences.pop(0)
+                self._history_discarded += 1
             kind = event["kind"]
             self._state["sequence"] = event["sequence"]
             self._state["latest"][kind] = event
@@ -249,10 +319,12 @@ class EventStore:
                 self._state["scenario_clock_state"] = "stopped"
             self._state["evidence_digest"] = event.get("event_hash")
             self._state["state_digest"] = self._state_hash()
-            if self.persist:
+            if self._journal is not None:
+                self._journal.append(event, encoded)
+            elif self.persist:
                 self.event_path.parent.mkdir(parents=True, exist_ok=True)
                 with self.event_path.open("a", encoding="utf-8") as stream:
-                    stream.write(json.dumps(event, sort_keys=True) + "\n")
+                    stream.write(encoded.decode())
             self._condition.notify_all()
             return dict(event)
 
@@ -274,7 +346,7 @@ class EventStore:
     ) -> dict[str, Any]:
         """Create and publish one centrally sequenced live event."""
         with self._condition:
-            sequence = self._events[-1]["sequence"] + 1 if self._events else 1
+            sequence = self._last_sequence + 1
             event = {
                 "schema": "easymesh.room-demo.event.v1",
                 "run_id": self.run_id,
@@ -288,9 +360,7 @@ class EventStore:
                 "kind": kind,
                 "producer": producer,
                 "payload": payload or {},
-                "previous_event_hash": (
-                    self._events[-1].get("event_hash") if self._events else None
-                ),
+                "previous_event_hash": self._last_event_hash,
             }
             event["event_hash"] = self._event_hash(event)
             return self._publish(event)
@@ -314,6 +384,33 @@ class EventStore:
         with self._condition:
             return copy.deepcopy(self._state)
 
+    def environment_epoch(self) -> int:
+        with self._condition:
+            return self._state["environment_epoch"]
+
+    def clock_state(self) -> tuple[int, str]:
+        with self._condition:
+            return self._state["world_time_ms"], self._state["state"]
+
+    def world_epoch(self) -> int:
+        with self._condition:
+            return self._state["world_epoch"]
+
+    def role_present(self, role: str) -> bool:
+        with self._condition:
+            return bool(self._state["roles"].get(role, {}).get("present"))
+
+    def wait_environment(self, epoch: int, timeout: float, stop: threading.Event) -> bool:
+        with self._condition:
+            self._condition.wait_for(
+                lambda: self._state["environment_epoch"] != epoch or stop.is_set(), timeout
+            )
+            return stop.is_set()
+
+    def wake(self) -> None:
+        with self._condition:
+            self._condition.notify_all()
+
     def current_world(self) -> dict[str, Any]:
         with self._condition:
             return copy.deepcopy(self.world)
@@ -322,31 +419,61 @@ class EventStore:
         with self._condition:
             return [dict(event) for event in self._events]
 
+    def storage_status(self) -> dict:
+        with self._condition:
+            return {"history": {"retained_events": len(self._events), "retained_bytes": self._retained_bytes,
+                    "maximum_events": self._history_events, "maximum_bytes": self._history_bytes,
+                    "discarded_events": self._history_discarded,
+                    "first_sequence": self._sequences[0] if self._sequences else self._last_sequence + 1,
+                    "last_sequence": self._last_sequence, "truncated": self._history_discarded > 0},
+                    "journal": self._journal.status() if self._journal is not None else
+                    {"mode": "synchronous" if self.persist else "replay", "complete": True}}
+
+    def close(self) -> None:
+        if self._journal is not None:
+            self._journal.close()
+
+    def _after(self, sequence: int) -> list[dict[str, Any]]:
+        first = self._sequences[0] if self._sequences else self._last_sequence + 1
+        if self._history_discarded and sequence < first - 1:
+            raise EventHistoryGap("requested event history expired; resynchronize from current state")
+        return self._events[bisect_right(self._sequences, sequence):]
+
     def after(self, sequence: int) -> list[dict[str, Any]]:
         with self._condition:
-            return [event for event in self._events if event["sequence"] > sequence]
+            return self._after(sequence)
 
     def wait_after(self, sequence: int, timeout: float) -> list[dict[str, Any]]:
         with self._condition:
-            events = [event for event in self._events if event["sequence"] > sequence]
+            events = self._after(sequence)
             if events:
                 return events
             self._condition.wait(timeout)
-            return [event for event in self._events if event["sequence"] > sequence]
+            return self._after(sequence)
 
     @classmethod
     def from_evidence(cls, run_dir: Path) -> "EventStore":
         """Load a completed run without contacting the live lab."""
         world = json.loads((run_dir / "world.json").read_text(encoding="utf-8"))
         path = run_dir / "live-events.jsonl"
+        index_path = run_dir / "journal-index.json"
+        paths = [path]
+        if index_path.exists():
+            index = json.loads(index_path.read_text(encoding="utf-8"))
+            if not index.get("complete") or index.get("retained_from_sequence", 1) != 1:
+                raise ValueError("full replay unavailable: journal is incomplete or its beginning has expired")
+            names = [entry["file"] for entry in index["segments"]]
+            if any(Path(name).name != name for name in names):
+                raise ValueError("invalid journal segment path")
+            paths = [run_dir / name for name in names]
         rows = [
             json.loads(line)
-            for line in path.read_text(encoding="utf-8").splitlines()
+            for segment in paths for line in segment.read_text(encoding="utf-8").splitlines()
             if line.strip()
         ]
         if not rows:
             raise ValueError(f"{path} contains no events")
-        store = cls(str(rows[0]["run_id"]), world, path, persist=False)
+        store = cls(str(rows[0]["run_id"]), world, path, persist=False, history_events=None, history_bytes=None)
         for event in rows:
             store.publish(event)
         return store

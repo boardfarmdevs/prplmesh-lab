@@ -62,8 +62,8 @@ class PlaybackTests(unittest.TestCase):
         writes = len(self.client.applied)
         self.tick()
         after = self.engine.snapshot()
-        self.assertGreaterEqual(after.pop("stable_for_seconds"), before.pop("stable_for_seconds"))
-        self.assertEqual(after, before)
+        for field in ("roles", "revision", "daemon", "playback"):
+            self.assertEqual(after[field], before[field])
         self.assertEqual(len(self.client.applied), writes)
         self.control("play")
         self.tick()
@@ -73,6 +73,52 @@ class PlaybackTests(unittest.TestCase):
         self.assertEqual(state["roles"]["sta_01"]["position"], [2, 4])
         self.assertFalse(state["movement_active"])
         self.assertEqual(self.store.current()["playback"], state["playback"])
+
+    def test_checkpoints_freeze_after_committed_rf_and_resume_once(self):
+        self.session._playback_world["pause_at_ms"] = [1000, 2000]
+        for expected_time in (1000, 2000):
+            self.control("play")
+            self.tick()
+            state = self.engine.snapshot()
+            self.assertEqual(state["playback"]["status"], "paused")
+            self.assertEqual(state["playback"]["checkpoint_ms"], expected_time)
+            self.assertEqual(state["roles"]["sta_01"]["position"], [2 + expected_time // 1000, 2])
+            self.assertFalse(state["movement_active"])
+            writes = len(self.client.applied)
+            self.tick()
+            self.assertEqual(len(self.client.applied), writes)
+            self.assertEqual(self.engine.snapshot()["playback"]["time_ms"], expected_time)
+            self.assertEqual(self.store.current()["playback"], state["playback"])
+        self.control("play")
+        self.tick()
+        self.assertEqual(self.engine.snapshot()["playback"]["status"], "completed")
+        self.assertIsNone(self.engine.snapshot()["playback"]["checkpoint_ms"])
+        self.control("play")
+        self.tick()
+        self.tick()
+        self.assertEqual(self.engine.snapshot()["playback"]["checkpoint_ms"], 1000)
+
+    def test_checkpoint_and_presence_boundaries_are_not_skipped(self):
+        self.session._playback_world["pause_at_ms"] = [500, 1250]
+        self.session._playback_world["generations"][1]["present"]["sta_01"] = False
+        self.control("play")
+        self.tick()
+        self.assertEqual(self.engine.snapshot()["playback"]["checkpoint_ms"], 500)
+        self.control("play")
+        self.tick()
+        self.assertEqual(self.engine.snapshot()["playback"]["time_ms"], 1000)
+        self.assertFalse(self.engine.snapshot()["roles"]["sta_01"]["present"])
+        self.tick()
+        self.assertEqual(self.engine.snapshot()["playback"]["checkpoint_ms"], 1250)
+
+    def test_invalid_checkpoints_are_rejected_before_rf_writes(self):
+        for pauses in (None, True, "1000", [0], [3000], [1000, 1000], [2000, 1000], [True], [1.5]):
+            with self.subTest(pauses=pauses):
+                self.session._playback_world["pause_at_ms"] = pauses
+                writes = len(self.client.applied)
+                with self.assertRaises(InteractionError):
+                    self.control("play")
+                self.assertEqual(len(self.client.applied), writes)
 
     def test_presence_changes_use_real_rf_and_update_online_expectation(self):
         self.session._playback_world["generations"][1]["present"]["sta_01"] = False
@@ -120,10 +166,21 @@ class PlaybackTests(unittest.TestCase):
     def test_failed_rf_tick_stops_and_keeps_last_accepted_role(self):
         self.control("play")
         before = self.engine.snapshot()["roles"]
-        with mock.patch.object(self.session, "_apply_role", side_effect=ActuatorError("readback failed")):
+        with mock.patch.object(self.session, "_apply_roles", side_effect=ActuatorError("readback failed")):
             self.tick()
         self.assertEqual(self.engine.snapshot()["roles"], before)
         self.assertEqual(self.engine.snapshot()["playback"]["status"], "paused")
+
+    def test_simultaneous_motion_commits_one_atomic_generation(self):
+        self.control("play")
+        before = len(self.client.applied)
+        epoch = self.session._environment_epoch
+        self.tick()
+        self.assertEqual(len(self.client.applied) - before, 1)
+        self.assertEqual(self.session._environment_epoch - epoch, 1)
+        commits = [event for event in self.store.all() if event["kind"] == "room.position.committed"]
+        self.assertEqual(len({event["payload"]["daemon_generation"] for event in commits}), 1)
+        self.assertEqual({event["payload"]["role"] for event in commits}, {"sta_01", "extender_1"})
 
     def test_authorization_revision_and_idempotency(self):
         with self.assertRaises(InteractionError):

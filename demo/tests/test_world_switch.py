@@ -4,6 +4,7 @@ import copy
 from contextlib import contextmanager
 import json
 import tempfile
+import threading
 from pathlib import Path
 import unittest
 from unittest import mock
@@ -60,6 +61,43 @@ class WorldSwitchTests(unittest.TestCase):
         self.addCleanup(self.engine.close)
         self.token = self.engine.acquire("test", command_id="lease-command")["token"]
 
+    def test_adaptive_worlds_apply_mesh_geometry_and_report_verified_snr(self):
+        self.engine.close()
+        self.session = InteractiveMediumSession(
+            self.store, self.world, self.layout, self.plan, "unused",
+            client_factory=lambda _: self.client, worlds=self.worlds, adaptive_backhaul=True,
+        )
+        self.engine = RoomEngine(self.session)
+        self.engine.start()
+        self.addCleanup(self.engine.close)
+        self.token = self.engine.acquire("adaptive-test", command_id="adaptive-lease")["token"]
+        initial = self.engine.snapshot()["backhaul_links"]
+        self.assertEqual(len(initial), 60)
+        self.assertEqual(self.session._protected_backhaul, {})
+        self.assertEqual(self.engine.snapshot()["backhaul_policy"], "adaptive-rdk")
+        self.engine.position("extender_1", position=[10, 6], final=True,
+                             token=self.token, expected_revision=0, command_id="mesh-move")
+        moved = self.engine.snapshot()["backhaul_links"]
+        self.assertNotEqual(initial, moved)
+        self.engine.presence("extender_1", present=False, token=self.token,
+                             expected_revision=1, command_id="fronthaul-off")
+        self.assertEqual(self.engine.snapshot()["backhaul_links"], moved)
+        epoch = self.engine.snapshot()["environment_epoch"]
+        with self.assertRaises(InteractionError):
+            self.engine.backhaul_action(lambda: self.fail("stale action ran"), expected_epoch=epoch - 1)
+        self.assertEqual(self.engine.backhaul_action(lambda: "verified", expected_epoch=epoch), "verified")
+        self.assertGreater(self.engine.snapshot()["environment_epoch"], epoch)
+        for name in ("home-a-border-hover", "home-a-stationary", "home-b-slow-walk-ten", "default"):
+            self.apply(name)
+            snapshot = self.engine.snapshot()
+            self.assertEqual(snapshot["backhaul_policy"], "adaptive-rdk")
+            self.assertEqual(len(snapshot["backhaul_links"]), 60)
+            for link in snapshot["backhaul_links"]:
+                source = self.plan["bindings"][link["source_role"]]["band_radios"][link["band"]]["tx_mac"]
+                destination = self.plan["bindings"][link["destination_role"]]["band_radios"][link["band"]]["tx_mac"]
+                self.assertEqual(self.client.values[(source, destination, link["frequency_mhz"])], (link["snr_db"], True))
+        self.assertEqual(self.engine.snapshot()["backhaul_links"], initial)
+
     def apply(self, world, command_id=None, revision=None):
         current = self.engine.snapshot()["revision"]
         return self.engine.apply_world(
@@ -68,12 +106,14 @@ class WorldSwitchTests(unittest.TestCase):
         )
 
     def test_catalog_and_multiple_worlds_use_fixed_pool_and_restore(self):
-        self.assertEqual(len(self.worlds.catalog()["worlds"]), 11)
+        self.assertEqual(len(self.worlds.catalog()["worlds"]), 14)
         bindings = copy.deepcopy(self.plan)
         backhaul = dict(self.session._protected_backhaul)
         self.assertEqual(len(backhaul), 60)
         for name, online in (("home-a-border-hover", 12), ("home-a-stationary", 10),
-                             ("home-b-slow-walk-ten", 20), ("default", 20)):
+                             ("home-b-slow-walk-ten", 20), ("home-a-one-client-handover", 11),
+                             ("large-room-perimeter-counter-roam", 12),
+                             ("large-room-extender-evacuation", 12), ("default", 20)):
             result = self.apply(name)
             self.assertEqual(result["expected_online_clients"], online)
             snapshot = self.engine.snapshot()
@@ -92,6 +132,28 @@ class WorldSwitchTests(unittest.TestCase):
         self.assertTrue(self.engine.close())
         self.assertFalse(self.client.values)
         self.assertEqual(load_recovery(self.recovery)["state"], "restored")
+
+    def test_perimeter_checkpoints_commit_rf_and_preserve_the_fixed_pool(self):
+        self.session._playback_thread = mock.Mock()
+        self.apply("large-room-perimeter-counter-roam")
+        for expected_time in (14000, 28000, 42000, 60000):
+            revision = self.engine.snapshot()["revision"]
+            self.engine.playback_control("play", token=self.token, expected_revision=revision,
+                                         command_id=f"perimeter-play-{expected_time}")
+            for step in range(20):
+                self.engine._call("_playback_tick")
+                state = self.engine.snapshot()
+                if state["playback"]["status"] != "playing":
+                    break
+            self.assertEqual(state["playback"]["time_ms"], expected_time)
+            self.assertEqual(state["expected_online_clients"], 12)
+            self.assertEqual(state["pool_clients"], 20)
+            self.assertEqual(len(state["roles"]), 25)
+            self.assertFalse(state["movement_active"])
+            checkpoint = expected_time if expected_time < 60000 else None
+            self.assertEqual(state["playback"]["checkpoint_ms"], checkpoint)
+        self.apply("default")
+        self.assertIsNone(self.engine.snapshot()["playback"]["checkpoint_ms"])
 
     def test_switch_stops_playback_clears_pins_and_retains_backhaul(self):
         self.session._playback_thread = mock.Mock()
@@ -155,25 +217,45 @@ class WorldSwitchTests(unittest.TestCase):
         self.apply("default")
         self.assertIn("sta_mobile_10", self.engine.snapshot()["presence_roles"])
 
-    def test_disconnect_precedes_each_client_isolation_without_persistent_pause(self):
+    def test_parallel_disconnects_precede_one_atomic_world_isolation(self):
         disconnected = []
+        barrier = threading.Barrier(4)
+        baseline_generation = self.client.generation
 
         @contextmanager
         def disconnect(role):
-            if disconnected:
-                previous_mac = self.plan["bindings"][disconnected[-1]]["radio_tx_mac"]
-                self.assertEqual({value for key, value in self.client.values.items()
-                                  if previous_mac in key[:2]}, {(-20, True)})
             mac = self.plan["bindings"][role]["radio_tx_mac"]
             self.assertTrue(any(value[0] > -20 for key, value in self.client.values.items() if mac in key[:2]))
             disconnected.append(role)
+            barrier.wait(timeout=2)
             yield
+            self.assertEqual({value for key, value in self.client.values.items()
+                              if mac in key[:2]}, {(-20, True)})
 
         self.session.disconnect_client = disconnect
         self.apply("home-a-border-hover")
         self.assertEqual(len(disconnected), 8)
+        self.assertEqual(self.client.generation, baseline_generation + 1)
         self.apply("default")
         self.assertEqual(len(disconnected), 8)
+
+    def test_modeled_backhaul_does_not_create_an_external_parent_manager(self):
+        self.engine.close()
+        self.session = InteractiveMediumSession(
+            self.store, self.world, self.layout, self.plan, "unused",
+            client_factory=lambda _: self.client, worlds=self.worlds, model_backhaul=True,
+        )
+        self.engine = RoomEngine(self.session)
+        self.engine.start()
+        self.addCleanup(self.engine.close)
+        self.token = self.engine.acquire("modeled", command_id="modeled-lease")["token"]
+        self.assertEqual(self.engine.snapshot()["backhaul_policy"], "modeled")
+        self.assertFalse(self.session.adaptive_backhaul)
+        self.assertEqual(self.session._protected_backhaul, {})
+        initial = self.engine.snapshot()["backhaul_links"]
+        self.engine.position("extender_1", position=[10, 6], final=True,
+                             token=self.token, expected_revision=0, command_id="modeled-move")
+        self.assertNotEqual(initial, self.engine.snapshot()["backhaul_links"])
 
     def test_partial_disconnect_failure_rolls_back_all_applied_isolation(self):
         before = copy.deepcopy(self.client.values)

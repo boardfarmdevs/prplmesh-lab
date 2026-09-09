@@ -13,7 +13,7 @@ fi
 client_name=${1:?client: sta-NN, iot-NN or STA MAC}
 target_name=${2:?target: controller, agent-N, extender-N or BSSID}
 steering_ui=${PRPL_STEERING_UI:-http://127.0.0.1:8091/api/v1/steering-event}
-preview_seconds=${PRPL_STEERING_PREVIEW_SECONDS:-3}
+preview_seconds=${PRPL_STEERING_PREVIEW_SECONDS:-${EASYMESH_STEERING_PREVIEW_SECONDS:-0}}
 
 if [[ "$client_name" =~ ^([[:xdigit:]]{2}:){5}[[:xdigit:]]{2}$ ]]; then
     mac=${client_name,,}
