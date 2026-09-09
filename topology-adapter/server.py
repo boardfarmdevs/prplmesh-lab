@@ -6,6 +6,7 @@ import datetime as dt
 import json
 import re
 import subprocess
+from concurrent.futures import ThreadPoolExecutor
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
@@ -14,7 +15,7 @@ ROOT = "Device.WiFi.DataElements.Network"
 
 def ubus(path, method, arguments):
     result = subprocess.run(
-        ["ubus", "call", path, method, json.dumps(arguments)],
+        ["ubus", "-t", "5", "call", path, method, json.dumps(arguments)],
         check=True,
         capture_output=True,
         text=True,
@@ -90,18 +91,28 @@ def device_name(device_id, role, fallback_ordinal):
 
 def topology(objects=None):
     if objects is None:
-        objects = ubus(ROOT, "_get", {"rel_path": "", "depth": 10})
+        device_paths = instances("Device.")
+        with ThreadPoolExecutor(max_workers=8) as executor:
+            snapshots = executor.map(
+                lambda device: ubus(device, "_get", {"rel_path": "", "depth": 6}),
+                device_paths,
+            )
+            objects = {}
+            for snapshot in snapshots:
+                if not isinstance(snapshot, dict):
+                    raise ValueError("NBAPI device snapshot is not an object map")
+                objects.update(snapshot)
     if not isinstance(objects, dict):
         raise ValueError("NBAPI snapshot is not an object map")
 
-    def instances(relative_path, depth=1):
+    def snapshot_instances(relative_path, depth=1):
         prefix = ROOT + "." + relative_path
         return [key.rstrip(".") for key in objects if key.startswith(prefix)]
 
     def parameters(object_path):
         return objects.get(object_path + ".", {})
 
-    device_paths = indexed(instances("Device.", 1), rf"{re.escape(ROOT)}\.Device\.(\d+)")
+    device_paths = indexed(snapshot_instances("Device.", 1), rf"{re.escape(ROOT)}\.Device\.(\d+)")
     devices = []
     for display_index, device_path in enumerate(device_paths, 1):
         device_index = int(device_path.rsplit(".", 1)[1])
@@ -125,14 +136,14 @@ def topology(objects=None):
         }
 
         radio_paths = indexed(
-            instances(f"Device.{device_index}.Radio.", 1),
+            snapshot_instances(f"Device.{device_index}.Radio.", 1),
             rf"{re.escape(device_path)}\.Radio\.(\d+)",
         )
         for radio_path in radio_paths:
             radio_index = int(radio_path.rsplit(".", 1)[1])
             radio_data = parameters(radio_path)
             profiles = indexed(
-                instances(relative(radio_path) + ".CurrentOperatingClassProfile.", 1),
+                snapshot_instances(relative(radio_path) + ".CurrentOperatingClassProfile.", 1),
                 rf"{re.escape(radio_path)}\.CurrentOperatingClassProfile\.(\d+)",
             )
             active = {}
@@ -154,7 +165,7 @@ def topology(objects=None):
             }
 
             bss_paths = indexed(
-                instances(f"Device.{device_index}.Radio.{radio_index}.BSS.", 1),
+                snapshot_instances(f"Device.{device_index}.Radio.{radio_index}.BSS.", 1),
                 rf"{re.escape(radio_path)}\.BSS\.(\d+)",
             )
             for bss_path in bss_paths:
@@ -174,7 +185,7 @@ def topology(objects=None):
                     radio["bsses"].append(bss)
                     continue
                 sta_paths = indexed(
-                    instances(relative(bss_path) + ".STA.", 1),
+                    snapshot_instances(relative(bss_path) + ".STA.", 1),
                     rf"{re.escape(bss_path)}\.STA\.(\d+)",
                 )
                 for sta_path in sta_paths:
