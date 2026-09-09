@@ -143,5 +143,6 @@ The room is also wanted by the lab service so an explicit lab start brings
 its viewer up after native readiness.
 
 Candidate archives preceding these fixes are diagnostic inputs,
-not qualified deliveries. Final qualification still requires another fresh
-import of the packaged committed source and the bounded checks above.
+not qualified deliveries. The final archive has now passed a fresh import
+and bounded live checks on rev150; see the exact identities, results and
+limitations in [0908 deployed release acceptance](release-0908-acceptance.md).
