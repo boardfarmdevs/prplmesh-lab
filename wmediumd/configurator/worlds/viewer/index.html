@@ -1329,9 +1329,7 @@
         setSpriteLabel(n.tag, meshNode && meshNode.name
           ? meshNode.name : displayRole(role), '#' + new THREE.Color(n.color).getHexString());
       } else if (observed) {
-        const suffix = observed.sta_mac.split(':')[4];
-        const label = (observed.cohort === 'iot' ? 'iot-' : 'sta-') + suffix;
-        setSpriteLabel(n.tag, label, observed.cohort === 'iot' ? '#256f3f' : '#225ca8');
+        setSpriteLabel(n.tag, displayRole(role), observed.cohort === 'iot' ? '#256f3f' : '#225ca8');
       }
       n.tag.visible = true;
       n.tag.material.opacity = present ? 1 : 0.4;
@@ -1931,7 +1929,7 @@
         const controllerName = hero.connected_device_name && hero.connected_device_name !== servingName
           ? ' <span class="sub">(controller label ' + esc(hero.connected_device_name) + ')</span>' : '';
         $('#heroMetrics').innerHTML =
-          '<div class="hero-name">' + (hero.cohort === 'iot' ? 'iot-' : 'sta-') + esc(hero.sta_mac.split(':')[4]) +
+          '<div class="hero-name">' + esc(displayRole(hero.role)) +
           ' <span class="phase">traffic probe · ' + esc(hero.band) + ' GHz</span></div>' +
           '<div class="hero-line">' + esc(servingName) + controllerName + ' · ' + esc(hero.connected_bssid) + '</div>' +
           '<div class="metric-grid"><span>Signal</span><b>' + (hero.rssi_dbm == null ? 'N/A' : esc(hero.rssi_dbm) + ' dBm / RCPI ' + esc(hero.rcpi)) + '</b>' +
