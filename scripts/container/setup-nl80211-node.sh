@@ -28,6 +28,10 @@ tar -C /usr/local -xzf "$project/artifacts/hostap-runtime-2.10.tar.gz"
 
 "$install/scripts/prplmesh_utils.sh" stop >/dev/null 2>&1 || true
 tar -C /opt -xzf "$project/artifacts/prpl-install-nl80211-6.0.0.tar.gz"
+if [ "$role" = controller ]; then
+    python3 "$project/scripts/container/configure-metrics.py" \
+        --defaults "$install/config/controller/odl/defaults.d/99_lab_metrics.odl"
+fi
 # Upstream hostapd does not emit prplMesh's raw association-frame event. The
 # lab's wpa_supplicant is built with WNM/802.11v, so allow the agent to issue
 # BTM requests even though the missing frame leaves supports_11v unknown.

@@ -284,7 +284,7 @@ class PrplMeshCandidateProvider:
         try:
             completed = subprocess.run(
                 [
-                    "lxc", "exec", self.controller, "--", "ubus", "call",
+                    "lxc", "exec", self.controller, "--", "ubus", "-t", "5", "call",
                     obj, method, json.dumps(payload, separators=(",", ":")),
                 ],
                 check=True,

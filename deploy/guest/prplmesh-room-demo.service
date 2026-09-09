@@ -17,4 +17,4 @@ Restart=on-failure
 RestartSec=15
 
 [Install]
-WantedBy=multi-user.target
+WantedBy=multi-user.target prplmesh-lab.service
