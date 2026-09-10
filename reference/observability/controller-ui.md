@@ -1,5 +1,7 @@
 # Host EasyMesh Controller UI
 
+[Subsystem index](README.md)
+
 The host controller UI reuses the RDK EM CLI Web application and its topology
 renderer while replacing the embedded RDK backend with a standalone Go
 adapter. It runs on the radio host rather than inside an EasyMesh node.

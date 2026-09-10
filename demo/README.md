@@ -10,4 +10,4 @@ confirmed `act` modes separate presentation from network mutation. The
 optimizer's act path is request-only so the scenario runner remains the sole RF
 writer.
 
-See [the full operator manual](../docs/live-room-demo/manual.md).
+See [the full operator manual](../docs/live-room-demo/README.md).

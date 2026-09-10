@@ -1,6 +1,9 @@
 # prplMesh lab acceptance tests
 
-## Interactive 0906 room
+Documentation-only check (no lab access): `python3 tests/test_documentation.py`.
+This checks local files/anchors, navigation, guide sizes and packaged manual inputs.
+
+## Interactive room
 
 With the default 20-client room service already running, inside the appliance:
 
@@ -33,7 +36,7 @@ client containers. Enter the selected VM as root from its outer host, then load
 the immutable profile before running tests:
 
 ```sh
-VM=prplmesh-50-0904
+VM=prplmesh-20-0908
 lxc exec "$VM" -- bash
 
 cd /opt/prplmesh-lab
@@ -49,8 +52,8 @@ The first two commands run on the outer host. Commands after the blank line run
 inside the VM. Root is needed for the snap-packaged nested LXD client. Never
 run an acceptance test against the outer host's LXD inventory by mistake.
 
-The audience-facing sequence and lifecycle commands are collected in
-[`docs/demonstrations.md`](../docs/demonstrations.md).
+Use [operations](../docs/operations.md) for lifecycle and the
+[room catalog](../reference/rooms/catalog.md) for browser demonstrations.
 
 ## Observer-facing status
 
@@ -75,8 +78,9 @@ The tests compare three independent views instead of accepting a Web UI alone:
 
 `wmediumd-performance.py` separately measures daemon CPU/RSS and drives
 concurrent WLAN traffic from active clients. Its JSON output is intended for
-build and affinity comparisons; `docs/wmediumd-performance.md` records the
-accepted release measurements.
+build and affinity comparisons; the
+[performance guide](../reference/testing/performance.md) explains the measurement
+boundaries. Keep accepted measurements with the corresponding run evidence.
 
 Run the complete currently active profile from the radio-lab VM:
 
@@ -122,7 +126,7 @@ to agree.
 
 `steering-demo.sh` performs the same representative two-SSID/tri-band movement
 at observer speed. It pauses eight seconds between clients by default so every
-move is visible in the Web UI, which refreshes every two seconds. One cycle
+move is visible in the Web UI, which reports native ownership. One cycle
 takes roughly four minutes with four agents:
 
 ```sh

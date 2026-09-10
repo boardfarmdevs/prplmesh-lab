@@ -1,5 +1,7 @@
 # prplMesh software architecture
 
+[Subsystem index](README.md)
+
 This document describes the prplMesh 6.0.0 native Linux software used by this
 experiment and the internal read-only topology adapter layered over NBAPI.
 
@@ -248,9 +250,9 @@ the separate Controller UI on port 8091. The adapter has no public page and is
 not exposed outside the appliance. This keeps Web concerns out of prplMesh
 while the Controller UI can share the RDK topology presentation.
 
-Dynamic instances must be discovered through the DataElements
-`_get_instances` method. `ubus list` describes registered object endpoints but
-is not a reliable inventory of moved STA instances.
+Use exact native object identity and complete discovery results. Candidate
+and station lookups use bounded bulk/wildcard reads where supported; partial
+or duplicate results must not become authoritative cached inventory.
 
 ### prplMesh CLI and UCC
 
@@ -291,8 +293,8 @@ delivers them within their frequency context, applies the configured SNR/PER
 model, and returns transmit status. The normal prplMesh profile uses a complete
 static 40-radio roster. The RCPI acceptance test replaces only the global SNR
 configuration and restarts wmediumd, proving that all telemetry follows the
-medium without restarting containers. Dynamic scenario-control and observer
-sockets remain future shared-lab integration work.
+medium without restarting containers. Dynamic scenario-control, metrics/readback and observer sockets are implemented;
+the room uses atomic live RF updates rather than restarting the medium per step.
 
 This boundary is deliberately below prplMesh: the controller and agent see
 normal hostapd, wpa_supplicant and NL80211 behavior and should not need to know

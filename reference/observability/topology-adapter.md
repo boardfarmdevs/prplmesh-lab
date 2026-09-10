@@ -1,5 +1,7 @@
 # Internal prplMesh topology adapter
 
+[Subsystem index](README.md)
+
 The adapter is a separate read-only process over the existing
 `Device.WiFi.DataElements` NBAPI model. It does not scrape prplMesh logs, use
 BML text output as an API, maintain a second topology database, or alter

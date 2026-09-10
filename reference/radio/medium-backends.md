@@ -1,5 +1,7 @@
 # Medium backends
 
+[Subsystem index](README.md)
+
 The lab supports two interchangeable RF data paths. Scenario source, compiled
 event plans, prplMesh telemetry, steering, stable hwsim identities and the
 operator workflow remain the same.
@@ -74,46 +76,5 @@ Agent container boots with controller setup. Radio mutation and EasyMesh Agent
 onboarding remain serialized because parallel NL80211 setup previously exposed
 an attach race and produced layer-2 associations without controller ownership.
 
-Starting every container without gates is deliberately unsupported. In the
-corresponding 55-container RDK experiment, all LXC instances launched in about
-14 seconds, but only 44 of 50 clients supplied telemetry and the formal cold
-acceptance failed. Concurrency is useful only when protocol dependencies stay
-explicit.
-
-## Measured 0829 profile
-
-The current rev140 LXD-VM profile contains one controller, four Agents and 20
-clients (25 nested containers). Both measurements start from stopped
-containers, use `star` backhaul, admit clients in batches of ten, and finish
-only after both Web endpoints pass health checks. The table records the earlier
-bounded-overlap experiment; controller-first gated startup is the release
-default.
-
-| Backend | Mesh gate | Client gate | UI gate | Total cold start | Clean stop |
-|---|---:|---:|---:|---:|---:|
-| userspace | 167 s | 31 s | 1 s | 199 s | 15 s |
-| kernel | 165 s | 20 s | 4 s | 189 s | 15 s |
-
-The roughly ten-second cold-start difference is not a throughput benchmark;
-onboarding timing has normal run-to-run variation. The important result is
-functional parity:
-
-- both backends passed 5 devices, 4 Agents, 20 clients and all 20 associated
-  metrics;
-- both passed representative 5 GHz and 6 GHz BTM steering and 20/20 data-plane
-  reachability;
-- userspace passed the dynamic NBAPI candidate-metric recommendation scenario;
-- kernel passed both recommendation and acting scenarios, including BTM
-  convergence and exact medium restoration; and
-- process cardinality stayed fixed. Userspace wmediumd used 4.0 MiB RSS; the
-  current kernel compatibility metrics proxy used 18.8 MiB RSS.
-
-Userspace remains the release default because it has the complete observer
-telemetry and established behavior. Kernel mode is a controlled experiment,
-not yet a general replacement.
-
-Build outputs carry provenance. The prplMesh runtime archive records the
-upstream commit and complete prplMesh patch digest. The wmediumd binary has a
-matching sidecar containing its upstream commit and patch digest. Startup and
-acceptance fail closed when either artifact does not match the checked-out
-patch series.
+Starting every container without gates is unsupported. Concurrency is useful
+only when radio and protocol dependencies remain explicit.

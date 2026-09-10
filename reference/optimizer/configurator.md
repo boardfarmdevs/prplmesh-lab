@@ -1,5 +1,7 @@
 # Dynamic medium and optimizer guide
 
+[Subsystem index](README.md)
+
 This lab separates RF stimulus, EasyMesh telemetry, policy decisions and
 actuation. That separation is the main research contract: the optimizer may
 observe only facts reported by prplMesh and may steer only through a normal
@@ -60,7 +62,7 @@ writable configurator socket.
 
 The optional kernel medium exposes the same read-only metrics ABI through a
 compatibility proxy, while scenario mutations use an atomic debugfs actuator.
-See [Medium backends](medium-backends.md) for selection and boundaries.
+See [Medium backends](../radio/medium-backends.md) for selection and boundaries.
 
 ## Scenario language
 

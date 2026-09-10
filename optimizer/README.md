@@ -61,6 +61,6 @@ deterministic world simulation, experiment matrices, and recommendation-only
 backhaul/channel-width planning. Run `python3 -m optimizer.cli --help` for the
 complete interface.
 
-See [the dynamic medium and optimizer guide](../docs/optimizer-configurator.md)
+See [the dynamic medium and optimizer guide](../reference/optimizer/configurator.md)
 for architecture, scenario operation, extension rules, evidence, and the
 future two-lab partition.

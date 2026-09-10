@@ -53,4 +53,4 @@ wmediumd/configurator/run-rcpi-monitor.sh prpl-client-01
 
 Use `tests/optimizer-dynamic.sh` for the closed loop from scenario through
 prplMesh telemetry, policy, optional BTM action, verification, and restore.
-See [the full guide](../../docs/optimizer-configurator.md).
+See [the full guide](../../reference/optimizer/configurator.md).

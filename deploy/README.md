@@ -1,47 +1,22 @@
-# prplMesh lab deployment
+# prplMesh deployment
 
-The current release supports one controller, four Agents, and immutable 20-,
-50-, or 100-client profiles in two execution models. The EasyMesh processes
-always run in LXD containers; the only choice is whether those containers run
-directly on the host or inside a portable LXD virtual machine.
+[Operations](../docs/operations.md) owns daily lifecycle and recovery;
+[current state](../docs/current-state.md) owns deployed URLs and release names.
 
-| Model | Artifact or input | Normal entry point | Use when |
-|---|---|---|---|
-| Bare metal | source release plus runtime archives | `scripts/install-from-artifacts.sh` | Linux 7 is already installed on a dedicated host |
-| LXD VM | portable LXD backup | `deploy/lxd-vm/import.sh` | the outer host already uses LXD |
+| Deployment | Procedure |
+| --- | --- |
+| Portable LXD VM | [Import, profile selection and packaging](lxd-vm/README.md) |
+| Dedicated Linux radio host | [Bare-metal installation](bare-metal/README.md) |
+| Native source build | [From scratch](../docs/from-scratch.md) |
+| Inner LXD UI and inner/outer-VM Grafana | [Monitoring bundle](lxd-vm/observability/README.md) |
 
-Both require x86-64 hardware virtualization. Bare metal and the guest images
-use Ubuntu 24.04 and Linux 7.0. Portable profiles allocate 6/8/12 vCPUs and
-8/12/20 GiB RAM for 20/50/100 clients respectively. All use a 160 GiB sparse
-disk; sparse capacity is not download size or immediate physical allocation.
+The VM owns Ubuntu/Linux, nested LXD, radio inventory, wmediumd, native prplMesh,
+Controller UI, Console and the live room. It needs no source-host mount.
+Normal room deployments use twenty clients; larger immutable profiles have
+separate resource and acceptance requirements. VirtualBox is RDK-only.
 
-The appliance guest owns its complete repository at `/opt/prplmesh-lab` and
-starts `prplmesh-lab.service` at boot. That service reconstructs the radio
-pool, wmediumd, controller, Agents, clients, internal NBAPI adapter, common
-wmediumd Console and Controller UI. It does not rely on a directory mounted from the packaging
-host.
-
-The two browser surfaces are:
-
-- `8090`: wmediumd Console, identical to the RDK lab;
-- `8091`: EasyMesh Controller UI.
-
-The NBAPI normalization adapter listens only on guest loopback port `8092`.
-
-Host bind addresses and host ports are deployment settings, not image
-identity. They are selected during LXD import.
-
-See the model-specific procedures:
-
-- [bare metal](bare-metal/README.md)
-- [LXD VM](lxd-vm/README.md)
-
-Release engineering uses `package-source.sh`, `lxd-vm/build.sh`, and
-`lxd-vm/package.sh`. Every
-emitted artifact has the current `0902` release tag, source commit, and a sibling
-SHA-256 file.
-
-Userspace wmediumd and controller-first startup are the appliance defaults.
-The experimental kernel medium and overlap mode are described in
-[Medium backends](../docs/medium-backends.md). Backend selection belongs in
-`/etc/default/prplmesh-lab`; it does not require a different appliance image.
+A stopped VM stays stopped after an outer-host reboot. Manually starting it
+starts the lab and twenty-client room automatically. Persistent LXD proxies
+expose the configured browser ports; the NBAPI adapter remains guest-loopback
+only. Source builds need network access; normal thin first boot uses local
+artifacts. Optional monitoring may download dependencies.

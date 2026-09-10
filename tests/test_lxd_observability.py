@@ -13,7 +13,7 @@ import pytest
 
 ROOT = Path(__file__).resolve().parents[1]
 BUNDLE = ROOT / "deploy/lxd-vm/observability"
-GUIDE = ROOT / "reference/lxd-ui-and-monitoring.md"
+GUIDE = ROOT / "reference/observability/monitoring.md"
 
 
 @pytest.fixture(scope="module")
