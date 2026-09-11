@@ -9,6 +9,10 @@ belongs in its owning subsystem contract, not in an indefinitely growing plan.
   illustration from the supplied archive; discovery/contention fidelity levels,
   external AP actors and scenario acceptance gates. **Proposed, not implemented.**
 
+The [virtual RF assessment](../radio/virtual-rf-assessment.md) owns the current
+radio-capability audit and phased common/RDK/prpl implementation work. Consult
+it before relying on older implementation observations in the neighbor design.
+
 ## Priorities to carry forward
 
 | Owner | Work | Completion evidence |

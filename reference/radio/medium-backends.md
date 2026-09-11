@@ -64,6 +64,10 @@ userspace for release baselines, detailed observer telemetry and behavior not
 covered by the kernel model. Backend comparisons must use the same topology,
 traffic and scenario plans.
 
+Neither backend currently supplies qualified live channel-utilization surveys.
+The [virtual RF assessment](virtual-rf-assessment.md) distinguishes implemented
+signal control from airtime, PHY-rate and receiver-observation limitations.
+
 ## Startup concurrency
 
 `PRPL_START_MODE=gated` is the default. It starts and configures the controller,
