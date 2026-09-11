@@ -27,6 +27,7 @@ install -m 0644 "$TARGET/deploy/guest/prplmesh-room-demo.service" \
 
 PRPL_UI_USER=root "$TARGET/controller-ui/install.sh"
 "$TARGET/wmediumd/observer/install-prplmesh.sh"
+"$TARGET/wmediumd/install-survey-bridge.sh" /run/prpl-wmediumd/metrics.sock prplmesh-lab.service
 systemctl daemon-reload
 systemctl enable prplmesh-lab.service
 systemctl enable prplmesh-room-demo.service

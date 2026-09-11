@@ -1,0 +1,281 @@
+nl80211: report current-channel deltas, suppress unavailable load, preserve real zero
+
+--- a/common/beerocks/bwl/common/nl80211_client.cpp
++++ b/common/beerocks/bwl/common/nl80211_client.cpp
+@@ -12,8 +12,6 @@
+ 
+ bool nl80211_client::SurveyInfo::get_channel_utilization(uint8_t &channel_utilization) const
+ {
+-    channel_utilization = 0;
+-
+     /**
+      * TODO: Calculate channel utilization for the primary channel #1312
+      *
+@@ -27,7 +25,8 @@
+      */
+     auto it =
+         std::find_if(data.begin(), data.end(), [](const sChannelSurveyInfo &channel_survey_info) {
+-            return channel_survey_info.in_use;
++            return channel_survey_info.in_use && channel_survey_info.time_on_valid &&
++                   channel_survey_info.time_busy_valid;
+         });
+ 
+     /**
+@@ -57,7 +56,9 @@
+      * The channel utilization is defined as the percentage of time, linearly scaled with 255
+      * representing 100%, that the AP sensed the medium was busy.
+      */
+-    channel_utilization = (survey_info.time_busy_ms * UINT8_MAX) / survey_info.time_on_ms;
++    channel_utilization = static_cast<uint8_t>(
++        static_cast<long double>(survey_info.time_busy_ms) * UINT8_MAX / survey_info.time_on_ms +
++        0.5L);
+ 
+     return true;
+ }
+--- a/common/beerocks/bwl/include/bwl/base_wlan_hal.h
++++ b/common/beerocks/bwl/include/bwl/base_wlan_hal.h
+@@ -144,6 +144,7 @@
+      * @return True on success and false otherwise.
+      */
+     virtual bool get_channel_utilization(uint8_t &channel_utilization) = 0;
++    virtual bool channel_utilization_available() const { return true; }
+ 
+     /**
+      * @brief Converts a string-based radio state to an eRadioState.
+--- a/common/beerocks/bwl/include/bwl/nl80211_client.h
++++ b/common/beerocks/bwl/include/bwl/nl80211_client.h
+@@ -386,6 +386,8 @@
+      * See NL80211_SURVEY_INFO* in <linux/nl80211.h> for a description of each field.
+      */
+     struct sChannelSurveyInfo {
++        bool time_on_valid   = false;
++        bool time_busy_valid = false;
+         /**
+          * Center frequency of channel.
+          */
+--- a/common/beerocks/bwl/unit_tests/nl80211_client_test.cpp
++++ b/common/beerocks/bwl/unit_tests/nl80211_client_test.cpp
+@@ -25,7 +25,7 @@
+ /**
+  * 50% channel utilization value
+  */
+-constexpr uint8_t channel_utilization_50_percent = UINT8_MAX / 2;
++constexpr uint8_t channel_utilization_50_percent = (UINT8_MAX + 1) / 2;
+ 
+ /**
+  * 0% channel utilization value
+@@ -35,6 +35,8 @@
+ TEST(nl80211_client_test, get_channel_utilization_should_succeed_with_100_percent)
+ {
+     bwl::nl80211_client::sChannelSurveyInfo channel_survey_info;
++    channel_survey_info.time_on_valid = true;
++    channel_survey_info.time_busy_valid = true;
+     channel_survey_info.in_use       = true;
+     channel_survey_info.time_on_ms   = test_time_on_ms;
+     channel_survey_info.time_busy_ms = test_time_on_ms;
+@@ -49,6 +51,8 @@
+ TEST(nl80211_client_test, get_channel_utilization_should_succeed_with_50_percent)
+ {
+     bwl::nl80211_client::sChannelSurveyInfo channel_survey_info;
++    channel_survey_info.time_on_valid = true;
++    channel_survey_info.time_busy_valid = true;
+     channel_survey_info.in_use       = true;
+     channel_survey_info.time_on_ms   = test_time_on_ms;
+     channel_survey_info.time_busy_ms = test_time_on_ms / 2;
+@@ -63,6 +67,8 @@
+ TEST(nl80211_client_test, get_channel_utilization_should_succeed_with_0_percent)
+ {
+     bwl::nl80211_client::sChannelSurveyInfo channel_survey_info;
++    channel_survey_info.time_on_valid = true;
++    channel_survey_info.time_busy_valid = true;
+     channel_survey_info.in_use       = true;
+     channel_survey_info.time_on_ms   = test_time_on_ms;
+     channel_survey_info.time_busy_ms = 0;
+@@ -77,6 +83,8 @@
+ TEST(nl80211_client_test, get_channel_utilization_should_fail_if_no_channel_in_use)
+ {
+     bwl::nl80211_client::sChannelSurveyInfo channel_survey_info;
++    channel_survey_info.time_on_valid = true;
++    channel_survey_info.time_busy_valid = true;
+     channel_survey_info.in_use       = false;
+     channel_survey_info.time_on_ms   = test_time_on_ms;
+     channel_survey_info.time_busy_ms = 0;
+@@ -90,6 +98,8 @@
+ TEST(nl80211_client_test, get_channel_utilization_should_fail_if_time_on_is_zero)
+ {
+     bwl::nl80211_client::sChannelSurveyInfo channel_survey_info;
++    channel_survey_info.time_on_valid = true;
++    channel_survey_info.time_busy_valid = true;
+     channel_survey_info.in_use       = true;
+     channel_survey_info.time_on_ms   = 0;
+     channel_survey_info.time_busy_ms = 0;
+@@ -103,6 +113,8 @@
+ TEST(nl80211_client_test, get_channel_utilization_should_fail_if_time_busy_is_greater_than_time_on)
+ {
+     bwl::nl80211_client::sChannelSurveyInfo channel_survey_info;
++    channel_survey_info.time_on_valid = true;
++    channel_survey_info.time_busy_valid = true;
+     channel_survey_info.in_use       = true;
+     channel_survey_info.time_on_ms   = test_time_on_ms;
+     channel_survey_info.time_busy_ms = test_time_on_ms + 1;
+@@ -112,4 +124,15 @@
+     uint8_t channel_utilization;
+     ASSERT_FALSE(survey_info.get_channel_utilization(channel_utilization));
+ }
++TEST(nl80211_client_test, missing_support_is_not_zero)
++{
++    bwl::nl80211_client::sChannelSurveyInfo sample;
++    sample.in_use = true;
++    sample.time_on_ms = 100;
++    sample.time_on_valid = true;
++    bwl::nl80211_client::SurveyInfo survey{{sample}};
++    uint8_t utilization = 123;
++    ASSERT_FALSE(survey.get_channel_utilization(utilization));
++    ASSERT_EQ(123, utilization);
++}
+ } // namespace
+--- a/common/beerocks/bwl/nl80211/base_wlan_hal_nl80211.h
++++ b/common/beerocks/bwl/nl80211/base_wlan_hal_nl80211.h
+@@ -79,6 +79,11 @@
+      * @return True on success and false otherwise.
+      */
+     bool get_channel_utilization(uint8_t &channel_utilization) override;
++    bool channel_utilization_available() const override
++    {
++        return m_utilization_available &&
++               std::chrono::steady_clock::now() - m_utilization_sampled_at < std::chrono::seconds(2);
++    }
+ 
+     // Protected methods
+ protected:
+@@ -125,6 +130,11 @@
+ 
+     // Private data-members:
+ private:
++    nl80211_client::sChannelSurveyInfo m_previous_survey;
++    bool m_previous_survey_valid = false;
++    bool m_utilization_available = false;
++    std::chrono::steady_clock::time_point m_utilization_sampled_at;
++
+     bool fsm_setup();
+ 
+     // FSM State and Timeout
+--- a/common/beerocks/bwl/nl80211/mon_wlan_hal_nl80211.cpp
++++ b/common/beerocks/bwl/nl80211/mon_wlan_hal_nl80211.cpp
+@@ -111,6 +111,7 @@
+     radio_stats.errors_sent     = iface_stats.tx_errors;
+     radio_stats.errors_received = iface_stats.rx_errors;
+     radio_stats.noise           = 0;
++    get_channel_utilization(radio_stats.utilization);
+ 
+     return true;
+ }
+--- a/common/beerocks/bwl/nl80211/base_wlan_hal_nl80211.cpp
++++ b/common/beerocks/bwl/nl80211/base_wlan_hal_nl80211.cpp
+@@ -1099,19 +1099,44 @@
+ 
+ bool base_wlan_hal_nl80211::get_channel_utilization(uint8_t &channel_utilization)
+ {
++    m_utilization_available = false;
+     nl80211_client::SurveyInfo survey_info;
+-    if (!m_nl80211_client->get_survey_info(get_iface_name(), survey_info)) {
+-        LOG(ERROR) << "Failed to get survey information for interface " << get_iface_name();
++    nl80211_client::interface_info interface_info;
++    if (!m_nl80211_client->get_interface_info(get_iface_name(), interface_info) ||
++        !m_nl80211_client->get_survey_info(get_iface_name(), survey_info)) {
++        m_previous_survey_valid = false;
+         return false;
+     }
+ 
+-    if (!survey_info.get_channel_utilization(channel_utilization)) {
+-        LOG(ERROR) << "Survey information contains no channel utilization data for interface "
+-                   << get_iface_name();
++    auto current = std::find_if(survey_info.data.begin(), survey_info.data.end(),
++                                [&](const nl80211_client::sChannelSurveyInfo &sample) {
++                                    return sample.in_use && sample.time_on_valid &&
++                                           sample.time_busy_valid &&
++                                           sample.frequency_mhz == interface_info.frequency;
++                                });
++    if (current == survey_info.data.end() || current->time_busy_ms > current->time_on_ms) {
++        m_previous_survey_valid = false;
+         return false;
+     }
+-
+-    return true;
++    auto previous = m_previous_survey;
++    bool baseline_valid = m_previous_survey_valid && previous.frequency_mhz == current->frequency_mhz &&
++                          current->time_on_ms >= previous.time_on_ms &&
++                          current->time_busy_ms >= previous.time_busy_ms;
++    m_previous_survey = *current;
++    m_previous_survey_valid = true;
++    if (!baseline_valid) {
++        return false;
++    }
++    auto delta = *current;
++    delta.time_on_ms -= previous.time_on_ms;
++    delta.time_busy_ms -= previous.time_busy_ms;
++    nl80211_client::SurveyInfo window;
++    window.data.push_back(delta);
++    m_utilization_available = window.get_channel_utilization(channel_utilization);
++    if (m_utilization_available) {
++        m_utilization_sampled_at = std::chrono::steady_clock::now();
++    }
++    return m_utilization_available;
+ }
+ 
+ bool base_wlan_hal_nl80211::register_wpa_ctrl_interface(const std::string &interface)
+--- a/common/beerocks/bwl/shared/nl80211_client_impl.cpp
++++ b/common/beerocks/bwl/shared/nl80211_client_impl.cpp
+@@ -944,11 +944,13 @@
+             }
+ 
+             if (sinfo[NL80211_SURVEY_INFO_CHANNEL_TIME]) {
++                channel_survey_info.time_on_valid = true;
+                 channel_survey_info.time_on_ms =
+                     nla_get_u64(sinfo[NL80211_SURVEY_INFO_CHANNEL_TIME]);
+             }
+ 
+             if (sinfo[NL80211_SURVEY_INFO_CHANNEL_TIME_BUSY]) {
++                channel_survey_info.time_busy_valid = true;
+                 channel_survey_info.time_busy_ms =
+                     nla_get_u64(sinfo[NL80211_SURVEY_INFO_CHANNEL_TIME_BUSY]);
+             }
+--- a/agent/src/beerocks/slave/tasks/channel_scan_task.cpp
++++ b/agent/src/beerocks/slave/tasks/channel_scan_task.cpp
+@@ -1676,12 +1676,6 @@
+         scan_result->noise()       = noise;
+         scan_result->utilization() = utilization;
+ 
+-        // WFA R2 test script has a bug that checks utilization for non zero value.
+-        // Setting the utilization to a non zero value is a W/A that needs to be
+-        // deleted once WFA fixes the issue.
+-        if (scan_result->utilization() == 0) {
+-            scan_result->utilization() = 10;
+-        }
+         scan_result->aggregate_scan_duration() = dwell_time;
+         results_tlv->add_scan_result(scan_result);
+ 
+--- a/agent/src/beerocks/fronthaul_manager/monitor/monitor.cpp
++++ b/agent/src/beerocks/fronthaul_manager/monitor/monitor.cpp
+@@ -709,6 +709,9 @@
+ 
+ void Monitor::on_channel_utilization_measurement_period_elapsed()
+ {
++    if (!mon_wlan_hal->channel_utilization_available()) {
++        return;
++    }
+     /**
+      * If previous channel utilization was lower than the threshold and now it is higher than the
+      * threshold, report it.
+--- a/agent/src/beerocks/fronthaul_manager/monitor/monitor_stats.cpp
++++ b/agent/src/beerocks/fronthaul_manager/monitor/monitor_stats.cpp
+@@ -448,6 +448,9 @@
+                                    const monitor_radio_node &radio_node,
+                                    std::shared_ptr<bwl::mon_wlan_hal> &mon_wlan_hal) const
+ {
++    if (!mon_wlan_hal->channel_utilization_available()) {
++        return true;
++    }
+     auto ap_metrics_response_tlv = cmdu_tx.addClass<wfa_map::tlvApMetrics>();
+ 
+     if (!ap_metrics_response_tlv) {

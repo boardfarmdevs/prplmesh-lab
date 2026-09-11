@@ -242,7 +242,12 @@ sed "s/0908/${RELEASE_ID}/g" "$ROOT/deploy/lxd-vm/README.md" \
     > "$BUNDLE/README.md"
 chmod 0644 "$BUNDLE/README.md"
 install -m 0644 "$ROOT/docs/release-notes.md" "$BUNDLE/RELEASE-NOTES.md"
-install -m 0644 "$ROOT/reference/release-0908.md" "$BUNDLE/INTERACTIVE-0908.md"
+DOCS_URL="https://github.com/boardfarmdevs/prplmesh-lab/blob/$(git -C "$ROOT" rev-parse HEAD)"
+sed -e "s#](../README.md)#]($DOCS_URL/docs/README.md)#g" \
+    -e "s#](../current-state.md)#]($DOCS_URL/docs/current-state.md)#g" \
+    -e "s#](../../reference/#]($DOCS_URL/reference/#g" \
+    "$ROOT/docs/live-room-demo/README.md" > "$BUNDLE/INTERACTIVE.md"
+chmod 0644 "$BUNDLE/INTERACTIVE.md"
 cat > "$BUNDLE/release.env" <<EOF
 LAB_STACK=prplmesh
 LAB_RELEASE_ID=$RELEASE_ID
@@ -281,7 +286,7 @@ jq -n \
 (
     cd "$BUNDLE"
     sha256sum "$(basename "$OUTPUT")" import.sh install-host.sh \
-        package-release.sh README.md RELEASE-NOTES.md INTERACTIVE-0908.md release.env release.json trim-report.txt \
+        package-release.sh README.md RELEASE-NOTES.md INTERACTIVE.md release.env release.json trim-report.txt \
         > SHA256SUMS
     find observability -type f -print0 | sort -z | xargs -0 sha256sum >> SHA256SUMS
 )

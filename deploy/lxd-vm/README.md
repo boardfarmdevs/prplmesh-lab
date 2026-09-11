@@ -5,8 +5,9 @@ nested containers, hwsim/wmediumd, prplMesh services, and UIs within one VM.
 
 ## Use the universal appliance
 
-Start with `prplmesh-0908-thin.tar` and its adjacent checksum in an empty
-directory:
+Use the selected release tar and adjacent checksum in an empty directory.
+The 0908 names below are template examples; use the actual downloaded release
+name (packaging substitutes it in this guide):
 
 ```sh
 sha256sum -c prplmesh-0908-thin.tar.sha256
@@ -47,7 +48,7 @@ PRPLMESH_LXD_STORAGE=bpi-lab \
 PRPLMESH_UI_HOST_IP=192.168.2.150 \
 PRPLMESH_WMEDIUMD_CONSOLE_HOST_PORT=18090 \
 PRPLMESH_UI_HOST_PORT=18091 \
-PRPLMESH_ROOM_DEMO_HOST_PORT=18892 \
+PRPLMESH_ROOM_DEMO_HOST_PORT=18894 \
 PRPLMESH_VM_NAME=my-prplmesh-lab \
   ./import.sh --profile 50
 ```
@@ -73,7 +74,7 @@ started by `prplmesh-room-demo.service` for the 20-client profile; stop that
 service before starting a manual `demo/room-demo` session. The NBAPI adapter
 is internal on guest loopback port `8092`. Open
 `http://HOST_IP:18891/` for the live room and its
-built-in manual. The release's `INTERACTIVE-0908.md` covers trusted-network access,
+built-in manual. The release's `INTERACTIVE.md` covers trusted-network access,
 automatic world loading, fixed-pool presence and RF recovery.
 Normal lifecycle is:
 
@@ -134,6 +135,6 @@ dashboard on HTTPS ports 18892 and 18893. Authentication is required, Prometheus
 stays private, and VM autostart is unchanged. Omit the flag for the original
 offline/no-monitoring import. Existing immutable release archives are unchanged.
 See [first login and resource limits](observability/README.md) and the
-[detailed reference](../../reference/lxd-ui-and-monitoring.md).
-This source support is shared with RDK; runtime deployment/testing for this
-earlier release was RDK on rev140 only. Enable prplMesh monitoring on rev150 explicitly.
+[detailed reference](../../reference/observability/monitoring.md).
+Both backend installers support inner-container and outer-VM monitoring.
+See current state for enabled deployments; browser authentication is still required.
