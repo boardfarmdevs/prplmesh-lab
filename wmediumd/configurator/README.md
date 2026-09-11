@@ -20,8 +20,24 @@ python3 -m wmdcfg.cli status
 python3 -m wmdcfg.cli inventory -o /tmp/prpl-inventory.json
 ```
 
-The current suite has 27 passing tests and one live-socket test that skips when
-no compatible daemon is present.
+Live protocol tests skip unless `WMDC_TEST_DAEMON` names a compatible binary;
+they use isolated vhost sockets, not the running lab medium.
+
+`python3 -m wmdcfg.cli rf-capabilities` shows the offline fidelity contract;
+live `status` negotiates the actual medium capabilities. A capability is not
+a fresh native measurement. For modeled survey/BSS Load setup, supported
+legacy20 profile, disruptive acceptance and results, see the
+[RF operation guide](../../reference/radio/virtual-rf-assessment.md#124-implemented-phases-12-survey-and-native-bss-load).
+
+With the lab and survey bridge running, inspect fresh native contexts as root
+inside the outer VM, from this directory:
+
+```sh
+python3 -m wmdcfg.rf_survey --socket /run/prpl-wmediumd/metrics.sock --seconds 10 --output /tmp/rf-survey.json
+```
+
+The earlier `rf_audit` remains a signal-only truthfulness/provenance check;
+it does not qualify the new modeled-airtime provider.
 
 ## Compile and run
 

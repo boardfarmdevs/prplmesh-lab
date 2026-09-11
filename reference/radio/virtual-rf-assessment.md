@@ -2,22 +2,27 @@
 
 [Radio reference](README.md) · [Neighbor-room design](../proposals/neighbor-rooms/design.md)
 
-**Status: assessment complete; the enhancements below are proposed, not implemented.**
+**Status: Phases 0–2 implemented and short-tested on both labs.**
+See [operation, supported profile and acceptance](#124-implemented-phases-12-survey-and-native-bss-load).
+Phase 2 measures the existing legacy-rate, 20 MHz virtual medium; it does not
+qualify physical capacity, modern PHY rates or spatial reuse.
 This is the shared RF assessment for the RDK EasyMesh and prplMesh labs on
 `codex/0908-clean`. It is mirrored in each repository's radio reference so
 either repository remains independently useful. Maintain the common text
 together; do not create a second backlog for the same RF work.
 
-The evidence baseline is 2026-09-10 Pacific / 2026-09-11 UTC. Inspection was
-read-only: source, running configuration, module identity, survey queries and
-existing logs. No room, radio, reporting policy or medium was changed; no
-congestion, throughput, capture or soak experiment was run for this assessment.
+The evidence baseline and short acceptance are 2026-09-10 Pacific /
+2026-09-11 UTC. The initial read-only audit identified the gaps in the evidence
+register. Subsequent Phases 1–2 rebuilt and deployed the module, daemon and
+native providers, then exercised fixed fields, real traffic, channel changes,
+failure and recovery. No long soak or physical-capacity qualification was run.
 
 ## Navigation
 
 - [Conclusions](#1-conclusions)
 - [Evidence and deployed architecture](#2-evidence-and-deployed-architecture)
 - [Available RF attributes](#3-available-rf-attributes)
+- [Phases 1–2: operation and results](#124-implemented-phases-12-survey-and-native-bss-load)
 - [Important implementation gaps](#4-important-implementation-gaps)
 - [Required measurement contract](#5-required-measurement-contract)
 - [Common implementation work](#6-common-implementation-work)
@@ -45,9 +50,10 @@ The highest-value findings are:
 1. Directed, frequency-qualified SNR control already exists in both systems.
    It affects delivery, reported signal and loss. It is not necessary to
    invent this capability again.
-2. hwsim survey records are scan-oriented dummy data, not continuously
-   measured operating-channel occupancy. RDK additionally has successful
-   no-op HAL survey functions; prpl's existing survey consumer lacks useful input.
+2. A context-qualified hwsim survey cache now replaces dummy scan records
+   when enabled. A bounded bridge publishes modeled occupancy through native
+   nl80211, both HALs, BSS Load advertisements and native AP metrics. Missing
+   data is not idle; unsupported noise/rate/capacity fields remain unqualified.
 3. Candidate RCPI is deliberately synthesized from the configured link matrix
    at the HAL boundary. That is useful for controlled experiments, but it is
    not proof that a radio actually heard an unassociated station.
@@ -63,24 +69,23 @@ The highest-value findings are:
 7. Current shared optimizer snapshots are RCPI/band/association oriented.
    Adding load to an AP report alone would not make that optimizer load-aware.
 
-**Recommendation:** preserve the working signal baseline, fix truthful
-availability/reporting first, then add bounded per-radio/channel airtime
-accounting and qualify one 20 MHz contention domain. Integrate both native
-stacks before adding load-aware policy. Visibility-aware contention, reverse
+**Recommendation:** preserve the working signal baseline and the implemented
+bounded survey/native-reporting path. Keep its declared model restrictions
+visible before adding load-aware policy. Visibility-aware contention, reverse
 ACK modeling and calibrated PHY service time are the next fidelity gates,
 not optional details when claiming realistic capacity or hidden-node behavior.
 
 ## 2. Evidence and deployed architecture
 
-### 2.1 Inspected baseline
+### 2.1 Deployed architecture
 
 | Item | RDK on rev140 | prpl on rev150 |
 | --- | --- | --- |
 | Running VM | `rdkeasymesh-20-0908` | `prplmesh-20-0908` |
 | Canonical repository | `/home/rev/yocto/rdkb-bpi-nosrc-vcpe-0908-clean/meta-cmf-bananapi-vcpe` | `/home/rev/git/prplmesh-lab` |
-| Repository revision before this assessment | `a272288680d798d8d9567e93709dd95a0a744a7d` | `61e01d207c7d225af8db8aaff47b92e2aa0667d3` |
+| Repository HEAD before Phases 1–2 working changes | `e48e002b116b615c65081989c69d6fbe578e8e51` | `6e2cecac4dfeb865d35588243eaddcff15730da9` |
 | Guest kernel | `7.0.0-30-generic` | `7.0.0-30-generic` |
-| Loaded/on-disk hwsim srcversion | `1D5C2CF6D5C83BD61935792`, matching | Same, matching |
+| Loaded/on-disk hwsim srcversion after Phases 1–2 | `787E6C52AFFB528353585A5`, matching | Same, matching |
 | Configured radio pool / channel contexts | 32 / 3 | 40 / 3 |
 | Mesh radio ownership | One wiphy per mesh container, concurrent band-specific VAPs | Three wiphys per mesh container |
 | Default active radio requirement | 5 mesh + 20 client = 25 | 15 mesh + 20 client = 35 |
@@ -105,14 +110,16 @@ RDK's canonical Yocto source trees identify Wi-Fi HAL
 `1ef3cfd3014296defd2c5b575584e5f1d8195e0f`, plus the lab patches.
 prpl's manifest pins release 6.0.0 at
 `2e153c7e00cbcab6b8ee35082f494a364e23f018`, plus its lab patches.
-Source inspection is not a new reproducible-build comparison of every installed
-native binary; deployment provenance should remain part of later qualification.
+Phase 1–2 acceptance rebuilt the affected native providers from these pins and
+the checked-in patches. See the deployment and artifact details in section 12.4;
+this is not a byte-for-byte rebuild comparison of every appliance component.
 
-### 2.2 Evidence register
+### 2.2 Initial audit evidence register
 
-**Live** means observed in the running VM. **Source** means an inspected
-implementation or patch. **Documented** means an existing limitation not
-remeasured here. **Proposed** always means future work.
+This register records the pre-implementation audit, not current survey output.
+E02–E06 and the E09 zero rewrite motivated the now-implemented fixes in section 4.
+**Live** means observed in that audit; **Source** means inspected source;
+**Documented** means an existing limitation not remeasured then.
 
 | ID | Evidence | Finding |
 | --- | --- | --- |
@@ -182,7 +189,7 @@ radio identity, learned transmitting VIF, BSSID, STA address and namespace.
 | RSSI on received frames | Medium signal derived from SNR with fixed -91 dBm noise reference | Drives kernel/native associated signal; new samples depend on received traffic |
 | RCPI | HAL/controller conversion of signal; candidate provider conversion | Useful for signal steering; retain conversion, source and observation time |
 | Candidate signal | HAL reads matrix for requested direction/frequency | Idealized synthetic availability, not reception-backed scanning |
-| Noise floor | Fixed medium reference; hwsim dummy survey -92 dBm; native placeholders | No trustworthy independently varied/measured noise floor today |
+| Noise floor | Fixed medium reference and native placeholders; new survey deliberately omits noise | No trustworthy independently varied/measured noise floor today |
 | Distance and walls | World compiler's logarithmic loss, wall-crossing loss, per-band reference | Repeatable geometry-to-SNR abstraction, not ray tracing |
 | Transmit gain/power | World `tx_gain_db_by_band`; native power configuration also exists | Scenario gain affects SNR; native power changes are not proven to update that matrix |
 | Shadowing/fading | Seeded world shadow term; upstream medium fading option | World term is repeatable but not temporally correlated fading; medium fading not enabled in baseline |
@@ -190,10 +197,10 @@ radio identity, learned transmitting VIF, BSSID, STA address and namespace.
 | Retries and TX success/failure | Medium retry series and TX status; kernel station counters | Available diagnostics, subject to ACK/delivery limitations |
 | TX/RX bytes and packets | Real software traffic and native station/interface statistics | Useful demand/goodput inputs after units, wrap and ownership validation |
 | TX/RX PHY-rate fields | Kernel rate control and HAL parsing | TX model approximated; RX-rate injection fixed; do not treat as measured capacity |
-| Airtime/service delay | Medium scheduler calculates durations and queue completion | Internal model exists, but no trustworthy per-observer busy survey |
-| Channel utilization | Dummy/empty hwsim survey and incomplete adapters | Not qualified in either lab |
+| Airtime/service delay | Bounded union of modeled data and successful ACK intervals, separate from queue/backoff waits | Implemented per frequency and exported to eligible contexts; legacy20, one contention domain, not local visibility |
+| Channel utilization | Fresh hwsim TIME/BUSY deltas through both native HALs | Tested in both labs for the declared legacy20 model; missing/stale/unsupported contexts are unavailable |
 | BSS station count | hostapd/native association tables | Available independently of channel load; filter stale and AP/VLAN duplicates |
-| Beacon/probe BSS Load | hostapd feature and scan parsers | Reporting support exists; dynamic measured advertisement is not established |
+| Beacon/probe BSS Load | Qualified hostapd survey integration and actual BSS association count | Beacon/scan/native AP metric round-trip tested at bytes 0, 128 and 255; measured-mode traffic response tested separately |
 | Estimated Service Parameters | EasyMesh structures; prpl nl80211 setter is a no-op | Do not use as qualified service-capacity input |
 | Neighbor BSS discovery | Real beacons/probes and native scan mechanisms | Available protocol substrate; fresh off-channel end-to-end coverage still needs qualification |
 | CCA / carrier sensing | Coarse receive cutoff and queue/interference approximations | Not a per-radio, visibility-aware CCA/NAV model |
@@ -242,60 +249,60 @@ adaptive backhaul and stimulus-only operation are distinct experiment modes.
 
 ## 4. Important implementation gaps
 
-### 4.1 Survey counters are not traffic counters
+### 4.1 Operating-context survey replaces scan dummy data
 
-E05 retains hwsim's scan-oriented dummy survey implementation: the busy time
-is one eighth of the recorded channel time, with fixed noise. It does not
-integrate transmissions sensed by each operating radio. Empty output is also
-possible when no survey record exists. The upstream implementation documents
-the values as dummy data.
-[Upstream hwsim survey implementation](https://linux.googlesource.com/linux/kernel/git/torvalds/linux/+/441c63ff42c4e666304cdd32d23b5fc6bc1ea3cc/drivers/net/wireless/virtual/mac80211_hwsim.c)
+With `survey_cache=Y`, hwsim returns only fresh, eligible current-context
+TIME/BUSY counters. It never falls back to scan dummy values while enabled.
+The bridge derives those counters from the medium's actual modeled occupied
+intervals, not byte totals. Frequency, width, context epoch, provider and
+observation time prevent stale/retuned data from becoming a new measurement.
 
-Neither packet counts nor sums of bytes are substitutes. Airtime depends on
-rate, preamble, retransmissions and other transmitters. A receiver can sense
-busy medium without successfully decoding a packet. Overlapping energy must
-not be counted twice in total busy time.
+This remains a **global contention domain per frequency**, not an audibility-
+qualified observer model. Noise, TX/RX airtime breakdown, interference energy,
+spatial reuse and calibrated service capacity are not supplied by this cache.
+Disabling it restores the old signal-only driver behavior, including its
+unqualified scan-survey fallback.
 
-### 4.2 RDK has successful no-op reporting interfaces
+### 4.2 RDK native reporting path is implemented
 
-At E06, `platform/banana-pi/platform.c` implements
-`wifi_getRadioChannelStats()` as success without output. In
-`src/wifi_hal_nl80211.c`, `wifi_drv_get_survey()` does the same.
-Zero-initialized callers can consequently publish zero without a measurement.
-[Baseline Banana Pi HAL source](https://github.com/rdkcentral/rdk-wifi-hal/blob/ce3170c9c8710a44b4627248e1443c31a9f7ad43/platform/banana-pi/platform.c)
+HAL patches `0035-nl80211-channel-survey-provider.patch` and
+`0036-hwsim-channel-survey-stats.patch` replace the Banana Pi success/no-output
+paths. They select the actual requested operating channel, require supported
+survey fields, deliver hostapd survey events, and return channel time in the
+**microseconds expected by OneWifi**. Unsupported requests fail instead of
+returning untouched output.
 
-The hostapd integration conditionally sets `bss_load_update_period=360000`
-under `CONFIG_BSS_LOAD`, with a driver-update assumption. That source setting
-does not prove that the deployed build advertises fresh load; audit the build
-flag, callback and actual beacon together. Changing only the period cannot
-repair a no-op survey callback.
+The hwsim hostapd configuration uses a BSS-load update period of 10 beacon
+intervals. This assignment is deliberately outside the HAL's
+`CONFIG_BSS_LOAD` guard: that guard is absent in the deployed HAL build.
+Libhostap patch `0005-qualified-bss-load-survey.patch` handles resets, failure,
+true zero and full-busy 255, withdrawing the element when unavailable while
+keeping the timer alive for recovery.
 
-OneWifi already has channel-statistics collection, encoding and translation
-paths. Complete those paths rather than inserting invented values into the
-EasyMesh controller.
+Existing OneWifi translation and EasyMesh reporting carry the result. Native
+AP-metric packet captures confirm the field; no controller database injection
+is used. Unsupported noise and TX/RX subfields are still not qualified.
 
-### 4.3 prpl has native consumers but additional placeholders
+### 4.3 prpl native monitor now actually consumes survey data
 
-The pinned nl80211 `get_channel_utilization()` requests a survey and converts
-it, returning failure when usable data is absent. The data source is therefore
-the first missing dependency, not the topology adapter.
-[prpl survey consumer](https://gitlab.com/prpl-foundation/prplmesh/prplMesh/-/raw/2e153c7e00cbcab6b8ee35082f494a364e23f018/common/beerocks/bwl/nl80211/base_wlan_hal_nl80211.cpp)
+Native patch `0014-qualified-channel-utilization.patch` preserves nl80211
+field presence, chooses the interface's current frequency and differences a
+per-context baseline. Crucially, `update_radio_stats()` now calls the survey
+helper: fixing an otherwise unused helper alone did not populate AP reports.
 
-Additional source findings:
+Missing/reset/stale data no longer becomes a fabricated zero AP metric.
+Unavailable utilization omits that AP metric rather than blocking independent
+station/traffic reporting. The scan zero-to-10 rewrite is removed; zero is a
+valid measured byte. Other HAL backends keep their existing behavior.
 
-- `update_radio_stats()` assigns noise zero.
-- Associated station SNR is not supplied by this backend.
-- `set_estimated_service_parameters()` returns success without implementation.
-- The scan task supports optional neighbor BSS Load, but separately rewrites a
-  zero local scan-utilization byte to `10`, citing an old certification-script
-  workaround. This is present in the pinned source, not just an older proposal.
-  Its execution on the current lab was not exercised in this audit.
+Hostap patch `0001-qualified-bss-load-survey.patch` supplies the same availability
+and recovery rules as RDK; all three BSSs in each band configuration enable
+updates. Tests cover remote-agent IEEE 1905 reports and the colocated agent's
+native NBAPI path, which uses local IPC rather than a separate Ethernet CMDU.
 
-The last item can turn an idle/placeholder value into misleading nonzero data.
-Do not “correct” it by subtracting 10 in the viewer. Review/remove the native
-workaround under a regression test and applicable test-plan review.
-[prpl monitor HAL](https://gitlab.com/prpl-foundation/prplmesh/prplMesh/-/raw/2e153c7e00cbcab6b8ee35082f494a364e23f018/common/beerocks/bwl/nl80211/mon_wlan_hal_nl80211.cpp),
-[prpl scan report construction](https://gitlab.com/prpl-foundation/prplmesh/prplMesh/-/raw/2e153c7e00cbcab6b8ee35082f494a364e23f018/agent/src/beerocks/slave/tasks/channel_scan_task.cpp)
+Radio noise, associated SNR, ESP and RX-rate placeholders remain separate
+unfinished work. Existing controller fields may retain their last report;
+an omitted AP metric is not a promise that every legacy UI displays freshness.
 
 ### 4.4 Synthetic candidate metrics bypass physical availability
 
@@ -440,7 +447,9 @@ silently become an optimizer input.
 
 ### 5.2 Proposed radio/channel record
 
-The following is a design contract, not an existing API:
+The full producer/driver record below remains a design contract, not an
+existing driver API. Phase 0 implements its per-field validity/unit rules and
+a guarded survey-delta helper without enabling a measured-airtime provider:
 
 | Group | Required fields |
 | --- | --- |
@@ -514,23 +523,24 @@ uninitialized placeholder as a valid measurement.
 
 ## 6. Common implementation work
 
-### 6.1 Recommended architecture
+### 6.1 Implemented architecture and next boundary
 
-Keep one medium event loop and bounded counter tables. Add explicit radio/VIF
-context registration and lifecycle notifications from hwsim, rather than
-relying exclusively on TX learning for quiet radios and scan transitions.
+One medium event loop maintains bounded interval tables. hwsim explicitly
+tracks radio/VIF contexts and lifecycle epochs, including quiet radios, scan,
+retune and availability, rather than relying exclusively on TX learning.
 
 Accumulate per-observer interval counters from the actual modeled transmission
 timeline. Separate PHY occupancy from service/queue duration. A low-overhead
 bounded snapshot export feeds a driver-side cache; nl80211 survey queries read
 that cache without synchronously asking userspace to process traffic.
 
-A possible implementation is a versioned, privileged hwsim netlink batch
-message for completed counter snapshots, plus context/epoch events in the
-opposite direction. This is a proposal requiring kernel API review, not an
-existing hwsim facility. Accept updates only from the registered medium,
-validate lengths/identities/epochs, and expire them on daemon loss. Never block
-the TX path behind an observer or control client.
+The implemented low-complexity transport is root-only, versioned hwsim debugfs
+context records plus a single 100 ms bridge. It queries one read-only medium
+snapshot per distinct operating frequency and writes validated context caches.
+There is no per-frame IPC or per-container collector. Epoch/provider validation
+and a one-second TTL fail closed on loss or retune. Native nl80211 readers do
+not synchronously wait for the medium. A future event/batch transport can
+replace this bridge if measured scale requires it; it is not needed here.
 
 Start with an explicit 20 MHz, single-contending-domain profile. Its measured
 occupancy must reflect its actual model. Do not claim spatial reuse until the
@@ -551,6 +561,11 @@ grow two independent utilization models. No Redis, Kafka, separate database or
 per-container packet collector is needed.
 
 ### 6.3 Common work packages
+
+C01–C04 are implemented for the declared profile. C09 has a bounded ping actor
+and labeled fixed-field fixture, not a general foreign-traffic scheduler.
+C05–C08/C10 remain fidelity or policy work; the table retains their acceptance
+boundaries rather than implying that Phase 2 completed them.
 
 | ID | Work and implementation points | Acceptance |
 | --- | --- | --- |
@@ -575,7 +590,11 @@ do not accumulate overrides for every historical channel indefinitely.
 
 ## 7. RDK implementation work
 
-Repository paths below are relative to the RDK repository root.
+Repository paths below are relative to the RDK repository root. R01/R02 are
+implemented; the existing R03 translation and periodic R04 AP metrics are
+exercised. R04's full reporting-policy matrix and R05–R07 remain separate
+qualification work. R08 build/service integration is in source; no new thin
+release was made for this milestone.
 
 | ID | Location / responsibility | Required work |
 | --- | --- | --- |
@@ -606,7 +625,11 @@ demonstration appear to converge.
 
 ## 8. prpl implementation work
 
-Repository paths below are relative to the prpl lab repository root.
+Repository paths below are relative to the prpl lab repository root. P01,
+P03 and P04 are implemented; periodic P05 wire and native NBAPI reporting are
+exercised. P02, the remaining P05 policy/time semantics, P06 UI availability
+and P07 channel-selection policy are not claimed complete. P08 build/service
+integration is in source; no new thin release was made for this milestone.
 
 | ID | Location / responsibility | Required work |
 | --- | --- | --- |
@@ -705,16 +728,16 @@ unsupported capabilities, not a partly enabled production experiment.
 
 | Phase | Scope and dependencies | Owners | Effort | Exit gate |
 | --- | --- | --- | --- | --- |
-| 0: Truthfulness | Capability/validity contract, reproducible survey audit, failing unit fixtures for stubs/placeholders/rates; no RF behavior change | C01, R01 audit, P01-P03 audit | S-M | Zero/unknown/stale distinguishable; pinned evidence and baseline tests |
-| 1: Reporting-only | Explicit fixed BSS Load test; native beacon/scan/report round-trip; availability and unit fixes | C09, R02-R04, P03-P06 | S-M | F1 field tests pass on both stacks; no congestion claim |
-| 2: Measured airtime | C02-C04; fixed supported 20 MHz PHY, occupancy/wait separation, both HAL paths | Common plus R01-R04/P01-P05 | M-L | Idle/load/channel controls pass within one declared contention domain |
+| 0: Truthfulness — implemented | Capability/validity contract, reproducible survey/source audits, regression fixtures rejecting stubs/placeholders/rates; no RF behavior change | C01 baseline, R01 audit, P01-P03 audit | S-M | Passed on both labs; see Phase 0 acceptance below |
+| 1: Reporting-only — implemented | Explicit fixed BSS Load test; native beacon/scan/report round-trip; availability and unit fixes | C09, R02-R04, P03-P06 | S-M | F1 field tests pass on both stacks; no congestion claim |
+| 2: Modeled airtime — implemented | C02-C04; declared legacy20 surrogate, occupancy/wait separation, both HAL paths | Common plus R01-R04/P01-P05 | M-L | Idle/load/channel controls pass within one declared contention domain |
 | 3: Credible contention | Visibility-aware scheduling, reverse ACK/receiver outcomes, interference power tests, truthful PHY metadata/service time | C05-C07, R05/P02 | L | Same-channel spatial reuse and asymmetric-link tests pass; no transport-error masking |
 | 4: Load-aware policy | Native observations, client demand/backhaul costs, optional neighbor actors, reason reporting | C08-C10, R06-R07/P05-P07 | M-L | Both policies evaluated separately with traceable improvement and no oscillation |
 | 5: Advanced RF | Calibrated HT/VHT/HE/EHT models, correlated fading, width/overlap, non-Wi-Fi energy; kernel-backend parity as separately justified | Common/platform specialists | L | Per-feature conformance and physical-reference comparison |
 
-Phases 1 and the common development portion of phase 2 can proceed in parallel
-after phase 0. Do not gate every small reporting fix on a complete PHY rewrite.
-Conversely, passing phase 1 must never be described as passing phase 3.
+Phases 1–2 passed the scoped reporting, interval accounting, native traffic,
+channel, failure and recovery gates below. This does not pass Phase 3 or
+validate the legacy-rate approximation against hardware.
 
 **Smallest useful implementation:** phase 0, a fixed-value BSS-load round-trip,
 then one AP/client load experiment with real common counters through each
@@ -731,7 +754,8 @@ weaken RF or measurement correctness.
 
 ### 11.1 Short test catalog
 
-These are **proposed tests, not results from this assessment**. Start with
+This is the full qualification catalog, not a claim that every test has run.
+The implemented short Phase 1–2 subset and results are in section 12.4. Start with
 30-60 second observation phases after warm-up and a few repeat runs. Use
 longer tests only when a specific timing/variance question requires them.
 
@@ -880,3 +904,229 @@ When a phase lands, replace the relevant proposed item with its implemented
 contract, source pointer and compact validation summary. Remove superseded
 claims rather than appending another dated report. Update both mirrored copies
 and both radio indexes; preserve independent release/build instructions.
+
+### 12.3 Implemented Phase 0: truthfulness baseline
+
+Phase 0 introduced the shared `rf_contract`: explicit units, source,
+identity, time, and valid/unsupported/missing/warming-up/partial/stale/invalid
+states. Only a qualified, finite, fresh, in-range observation exposes a
+numeric value; raw placeholders remain diagnostic. Its survey converter
+rejects missing flags, mixed epochs, counter resets, impossible deltas and
+stale observations. True zero and the 0–255 encoding have regression fixtures.
+
+`python3 -m wmdcfg.cli rf-capabilities` is offline; live `status`, configurator
+run artifacts and room preflight negotiate the daemon capabilities. A wire
+capability is never itself a fresh native observation.
+
+The original `rf_audit` remains a conservative **signal-only** truthfulness and
+provenance audit. It deduplicates AP contexts and checks loaded/disk module
+identity, running/disk/startup daemon hashes, selected backend and read-only
+protocol without changing the lab. Exit 0 includes explicitly unsupported
+measurements, not proof of measured utilization. For the now-enabled modeled
+provider use `rf_survey` in section 12.4 instead.
+
+Run from the configurator directory as root inside the selected VM:
+
+```sh
+python3 -m wmdcfg.rf_audit --stack rdk --repo-root /home/easymesh/git/meta-cmf-bananapi-vcpe -o /tmp/rdk-rf-audit.json
+```
+
+On prpl use `--stack prplmesh --repo-root /opt/prplmesh-lab`. Defaults select the
+read-only metrics socket; never substitute the writable scenario endpoint.
+
+`rf_source_audit` accepts `--stack`, `--native-source`, optional
+`--hwsim-source`/`--wmediumd-source` and `-o`. Give it assembled patched sources,
+not patch files or another release's checkout. It records hashes and source
+locations for known gaps, not C/C++ semantic proof. Removed gap patterns may
+now return `review_required`; this is not the Phase 2 completion oracle.
+
+The initial Phase 0 acceptance passed both labs before RF behavior changed:
+39 new contract/audit/source tests, module/daemon/context identity checks and
+isolated read-only protocol tests. Raw historical evidence remains in
+`/home/rev/work/rf-phase0-0910/` on rev150; current acceptance is below.
+
+### 12.4 Implemented Phases 1–2: survey and native BSS Load
+
+#### Supported contract
+
+The normal service source is `wmediumd-modeled-airtime`; fixed-value tests use
+`synthetic-field-test`. Both set `physical_capacity_qualified=false`.
+The profile is `single-contention-domain-legacy20`: one global contention
+domain per exact frequency, 20 MHz contexts, existing legacy-rate airtime
+surrogates. This is **measurement of this model**, not hardware RF capacity.
+
+- Medium opcode **15**, capability **bit 12 / channel_survey**, wire version 1.
+  A 4-byte big-endian frequency request returns 40 bytes:
+  `frequency, flags, started_us, observed_us, busy_us, overruns`
+  (`!IIQQQQ`). Flags 1 and 2 mean valid and legacy20 model.
+  It is accepted on the read-only endpoint; old peers lacking the capability
+  cannot enable the new provider.
+- Busy is the union of modeled data and successful ACK intervals. Retries
+  contribute their actual modeled transmissions; DIFS, backoff, queue waits
+  and an unsuccessful ACK timeout do not become transmitted energy.
+  Ring fixtures verify overlap, wait exclusion, channel isolation and overflow.
+- At most **16 subscribed frequencies**, 128 KiB interval storage per frequency,
+  approximately 1.049 s future horizon; overflow invalidates instead of
+  clipping to a plausible load. Queries allocate subscriptions, not scan
+  traffic. Unused subscriptions are reclaimable after 60 seconds.
+- hwsim patch `0009-mac80211_hwsim-context-survey-cache.patch` provides at most
+  **8 contexts per radio** and root-only (0600)
+  `/sys/kernel/debug/ieee80211/phy*/hwsim/rf_survey`.
+  Read header: `v1 radio MAC available 0|1`; each row:
+  `SLOT EPOCH FREQ WIDTH PROVIDER OBSERVED_US ACTIVE_US BUSY_US VALID`.
+  Write: `v1 SLOT EPOCH PROVIDER OBSERVED_US ACTIVE_US BUSY_US`.
+  Epoch, monotonic counters and provider identity are checked in the driver.
+- The single root bridge polls every **100 ms**, once per distinct frequency,
+  then publishes per-context baselines. Scan/ROC, disable, retune, context
+  reuse and provider restart invalidate or reset measurements. Cache TTL is
+  **one second**. Driver queries read the cache, not a synchronous userspace
+  request. Status JSON is published at most once per second.
+- Native nl80211 survey supplies TIME/BUSY/IN_USE in **milliseconds**, without
+  invented noise/TX/RX flags. RDK converts time to **microseconds** for OneWifi.
+  Native utilization is a byte **0–255**, not a percentage. Zero is valid;
+  absent data is not zero. Separate diagnostics retain percent, raw byte,
+  window, identity and freshness.
+- Hostapd updates every 10 beacon intervals (about one second). Invalid data
+  withdraws BSS Load and rearms its timer; recovery needs no AP restart.
+  Station count comes from native association state. Admission-capacity zero
+  is not a measured available-bandwidth assertion.
+
+#### Build, enable and inspect
+
+This deployment is built and tested on **Linux 7.0.0-30-generic**. prpl's
+module builder requires Linux 7.0. RDK retains its earlier 6.8 signal-only
+build path but skips the new cache patch there; do not claim 6.8 survey support.
+The optional kernel medium is still unqualified for this provider.
+
+Rebuild through each repository's module, wmediumd and native build scripts.
+RDK includes the HAL/libhostap patches in its Yocto recipes; prpl includes
+the native and hostap patch series in its artifact builder. Replace a module
+only with the lab stopped, and deploy matching native libraries/binaries as a
+set. A running old module cannot gain this ABI from a file-only update.
+
+Future guest setup calls the installer from RDK
+`gen/vm/scripts/50-runtime-service.sh` or prpl
+`deploy/guest/install-service.sh`. It enables a unit tied to the lab lifecycle.
+To install on an existing, already rebuilt VM, run as root:
+
+RDK:
+
+```sh
+cd /home/easymesh/git/meta-cmf-bananapi-vcpe
+bash gen/wmediumd/install-survey-bridge.sh /run/meta-cmf-wmediumd/metrics/control.sock easymesh-lab.service
+systemctl start wmdcfg-survey-bridge.service
+cd gen/wmediumd/configurator
+python3 -m wmdcfg.rf_survey --socket /run/meta-cmf-wmediumd/metrics/control.sock --seconds 10 --output /tmp/rdk-survey.json
+```
+
+prpl:
+
+```sh
+cd /opt/prplmesh-lab
+bash wmediumd/install-survey-bridge.sh /run/prpl-wmediumd/metrics.sock prplmesh-lab.service
+systemctl start wmdcfg-survey-bridge.service
+cd wmediumd/configurator
+python3 -m wmdcfg.rf_survey --socket /run/prpl-wmediumd/metrics.sock --seconds 10 --output /tmp/prpl-survey.json
+```
+
+Common inspection:
+
+```sh
+systemctl status wmdcfg-survey-bridge.service
+cat /run/wmdcfg-survey.json
+cat /sys/module/mac80211_hwsim/parameters/survey_cache
+```
+
+`rf_survey` is read-only and rejects fixture providers, mismatched identities,
+invalid/stale samples and unsupported capability sets. Its 20 ms diagnostic
+sampling measures cache age and socket round-trip time; it is not another
+permanent collector. No extra VM, database or per-container daemon is added.
+
+For a signal-only rollback, stop and disable the bridge, then disable the
+cache. The previous scan dummy values are again **unqualified**, not measured
+utilization. Do not use them for load policy:
+
+```sh
+systemctl disable --now wmdcfg-survey-bridge.service
+echo N > /sys/module/mac80211_hwsim/parameters/survey_cache
+```
+
+To restore modeled reporting, reenable the unit and start it; its `--enable`
+negotiates the medium API before turning the cache on. Native timers recover
+without restarting every AP. Rollback to old native binaries additionally
+requires their matching hostap/HAL set, not mixing shared-library ABIs.
+
+#### Repeat the short acceptance
+
+Run inside one outer VM, as root, from its configurator directory. These are
+**disruptive** tests: they temporarily stop room movement and the bridge, use
+fixed fixtures, capture beacons/AP metrics, scan/roam one client, send short
+ping traffic and stop/restart the provider. They restore prior room activity,
+normal measured mode, client frequency and monitor-interface state in cleanup.
+Keep the default lab roles running and use a new output directory.
+
+```sh
+python3 -m wmdcfg.rf_validate --stack rdk --output /tmp/rdk-rf-acceptance --yes-change-survey
+```
+
+On prpl substitute `--stack prplmesh` and a prpl output directory. The VM needs
+`tcpdump`, `nsenter`, `iw`, LXD and the existing client supplicant. Native AP
+metric capture uses the outer VM's tcpdump in the AP's network namespace;
+installing a collector in every AP is unnecessary.
+
+Fixtures publish exact 0, 128 and 255 through the same cache/native path, with
+quantized windows to avoid mistaking millisecond rounding for a field bug.
+They test native station counts and actual beacon/scan fields separately from
+modeled traffic. Remote prpl agents use IEEE 1905; its colocated agent is
+checked through native NBAPI because it shares the controller's AL/local IPC.
+
+#### Short acceptance results
+
+Both labs passed on 2026-09-11 UTC; each retained 20 clients and the usual mesh
+roles. Results below are final reruns after fixing missing RDK BSS-load
+configuration, the unused prpl monitor survey path, provider-restart epochs
+and scan-frequency subscription exhaustion.
+
+| Check | RDK / rev140 | prpl / rev150 |
+| --- | --- | --- |
+| Live acceptance checks | **25/25 passed** | **28/28 passed** |
+| Actual beacon/scan/native AP metric bytes | **0 / 128 / 255 exact** | **0 / 128 / 255 exact** |
+| Native AP reporting evidence | Colocated AP IEEE 1905, actual BSSID | 36 remote BSSs over IEEE 1905; colocated native NBAPI |
+| Selected BSS station count in fixture capture | 1 | 2 |
+| Modeled busy, baseline → short ping traffic | **5.00% → 37.94%** | **30.23% → 55.12%** |
+| Native client cross-band roam and return | 5180 → 2437 → 5180 MHz | 2437 → 5180 → 2437 MHz |
+| Retune epoch/provider reset, stale/bad-write rejection | Passed | Passed |
+| Provider loss withdraws survey and BSS Load; recovery without AP restart | Passed | Passed |
+| Read-only 10 s publication audit | 35 contexts; zero errors | 35 contexts; zero errors |
+| Cache age p50 / p95 / p99 | 52.52 / 98.31 / **103.80 ms** | 50.71 / 95.04 / **99.87 ms** |
+| Read-only control round-trip p99 | 3.72 ms | 5.92 ms |
+| Bridge CPU, percent of one core during audit | **4.99%** | **3.30%** |
+| Configurator regression suite | 102 passed | 98 passed |
+| Room orchestration regression suite | 159 passed | 131 passed |
+| Native prpl survey unit suite | Not applicable | 7 passed |
+| Module/native builds and medium self-tests | Passed | Passed |
+
+Baseline busy includes beacons and existing lab traffic; it is not a quiet
+physical channel. The load step is 800 pings with 1200-byte payloads at 5 ms
+spacing to the native WLAN gateway. It proves a modeled busy response, not
+calibrated saturation or a throughput-overhead limit. CPU percentage is also
+not a measurement of throughput impact.
+
+Native reporting cadence remains separate from the bridge: the observed RDK
+periodic AP report is about 5 seconds, prpl periodic reporting about 1 second,
+and prpl's existing threshold-check cadence remains 10 seconds. No claim is
+made that all controller/UI values update within the 100 ms cache period.
+
+Raw JSON, PCAP, scan output, build and regression logs are outside the reference
+tree under `/home/rev/work/rf-phases12-0911/` on rev150. Final live artifacts are
+`rdk-final/rf-phases12-validation-4/` and
+`prpl-final/rf-phases12-validation-3/`, with publication JSON beside each.
+Both loaded/disk module identities match the table in section 2.1; running,
+disk and startup-manifest daemon hashes were checked. The native sources and
+build logs are retained alongside those artifacts. No new thin tar was made.
+
+**Not claimed by this milestone:** all-room live replay, a soak, less-than-5%
+throughput overhead, physical calibration, spatial reuse, reverse-link ACK
+fidelity, measured noise, TX/RX airtime components, calibrated RX rates,
+kernel-medium parity, load-aware optimizer or complete UI freshness semantics.
+Those remain the explicit Phase 3–5/policy qualification boundaries.

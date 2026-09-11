@@ -19,6 +19,7 @@ from wmdcfg.model import ScenarioError
 from wmdcfg.observers import mesh_health
 from wmdcfg.parser import parse
 from wmdcfg.runner import Runner
+from wmdcfg.rf_contract import capability_manifest
 from wmdcfg.world import _hash, export_wmd, load_json, verify_world_plan
 
 from .conductor import LiveConductor, load_manifest
@@ -71,6 +72,7 @@ def _status(socket_path: str) -> dict:
         "generation": status.generation,
         "num_stations": status.num_stations,
         "capabilities": sorted(status.capabilities),
+        "rf_contract": capability_manifest("userspace", status),
     }
 
 

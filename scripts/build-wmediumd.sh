@@ -28,6 +28,7 @@ PATCHES=(
     0018-wmediumd-expose-authoritative-association-ownership.patch
     0019-wmediumd-resolve-association-vifs.patch
     0020-wmediumd-page-configured-link-dumps.patch
+    0021-wmediumd-export-channel-airtime-survey.patch
 )
 
 case "${1:-}" in

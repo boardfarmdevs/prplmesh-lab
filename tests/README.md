@@ -3,6 +3,9 @@
 Documentation-only check (no lab access): `python3 tests/test_documentation.py`.
 This checks local files/anchors, navigation, guide sizes and packaged manual inputs.
 
+Phase 0 RF contract/provenance tests and the short read-only live audit are in
+the [RF assessment](../reference/radio/virtual-rf-assessment.md#123-implemented-phase-0-truthfulness-baseline).
+
 ## Interactive room
 
 With the default 20-client room service already running, inside the appliance:

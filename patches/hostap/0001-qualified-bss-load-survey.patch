@@ -1,0 +1,100 @@
+hostapd: qualify BSS load, handle idle/full/reset, and recover survey polling
+
+--- a/src/ap/hostapd.h
++++ b/src/ap/hostapd.h
+@@ -563,6 +563,7 @@
+ 	u64 last_channel_time;
+ 	u64 last_channel_time_busy;
+ 	u8 channel_utilization;
++	bool channel_utilization_valid;
+ 
+ 	unsigned int chan_util_samples_sum;
+ 	unsigned int chan_util_num_sample_periods;
+--- a/src/ap/beacon.c
++++ b/src/ap/beacon.c
+@@ -50,7 +50,7 @@
+ 		return eid;
+ 	}
+ #endif /* CONFIG_TESTING_OPTIONS */
+-	if (hapd->conf->bss_load_update_period) {
++	if (hapd->conf->bss_load_update_period && hapd->iface->channel_utilization_valid) {
+ 		*eid++ = WLAN_EID_BSS_LOAD;
+ 		*eid++ = 5;
+ 		WPA_PUT_LE16(eid, hapd->num_sta);
+--- a/src/ap/bss_load.c
++++ b/src/ap/bss_load.c
+@@ -52,7 +52,9 @@
+ 	err = hostapd_drv_get_survey(hapd, hapd->iface->freq);
+ 	if (err) {
+ 		wpa_printf(MSG_ERROR, "BSS Load: Failed to get survey data");
+-		return;
++		iface->channel_utilization_valid = false;
++		iface->last_channel_time = 0;
++		iface->last_channel_time_busy = 0;
+ 	}
+ 
+ 	ieee802_11_set_beacon(hapd);
+@@ -60,7 +62,7 @@
+ 	if (get_bss_load_update_timeout(hapd, &sec, &usec) < 0)
+ 		return;
+ 
+-	if (hapd->conf->chan_util_avg_period) {
++	if (hapd->conf->chan_util_avg_period && iface->channel_utilization_valid) {
+ 		iface->chan_util_samples_sum += iface->channel_utilization;
+ 		iface->chan_util_num_sample_periods +=
+ 			hapd->conf->bss_load_update_period;
+--- a/src/ap/drv_callbacks.c
++++ b/src/ap/drv_callbacks.c
+@@ -1612,8 +1612,10 @@
+ 
+ 	survey = dl_list_first(&survey_res->survey_list, struct freq_survey,
+ 			       list);
+-	if (!survey || !survey->freq)
++	if (!survey || !survey->freq) {
++		iface->channel_utilization_valid = false;
+ 		return;
++	}
+ 
+ 	chan = hostapd_get_mode_channel(iface, survey->freq);
+ 	if (!chan || chan->flag & HOSTAPD_CHAN_DISABLED)
+@@ -1625,13 +1627,27 @@
+ 		   (unsigned long int) survey->channel_time,
+ 		   (unsigned long int) survey->channel_time_busy);
+ 
+-	if (survey->channel_time > iface->last_channel_time &&
+-	    survey->channel_time > survey->channel_time_busy) {
++	if (survey->freq != (unsigned int) iface->freq ||
++	    (survey->filled & (SURVEY_HAS_CHAN_TIME | SURVEY_HAS_CHAN_TIME_BUSY)) !=
++	    (SURVEY_HAS_CHAN_TIME | SURVEY_HAS_CHAN_TIME_BUSY)) {
++		iface->channel_utilization_valid = false;
++		iface->last_channel_time = 0;
++		iface->last_channel_time_busy = 0;
++		return;
++	}
++	if (survey->channel_time < iface->last_channel_time ||
++	    survey->channel_time_busy < iface->last_channel_time_busy ||
++	    survey->channel_time_busy > survey->channel_time ||
++	    !iface->last_channel_time) {
++		iface->channel_utilization_valid = false;
++	} else if (survey->channel_time > iface->last_channel_time) {
+ 		dividend = survey->channel_time_busy -
+ 			iface->last_channel_time_busy;
+ 		divisor = survey->channel_time - iface->last_channel_time;
+ 
+-		iface->channel_utilization = dividend * 255 / divisor;
++		iface->channel_utilization_valid = dividend <= divisor;
++		if (iface->channel_utilization_valid)
++			iface->channel_utilization = (double)dividend * 255 / divisor + 0.5;
+ 		wpa_printf(MSG_DEBUG, "Channel Utilization: %d",
+ 			   iface->channel_utilization);
+ 	}
+@@ -1648,6 +1664,9 @@
+ 
+ 	if (dl_list_empty(&survey_results->survey_list)) {
+ 		wpa_printf(MSG_DEBUG, "No survey data received");
++		iface->channel_utilization_valid = false;
++		iface->last_channel_time = 0;
++		iface->last_channel_time_busy = 0;
+ 		return;
+ 	}
+ 

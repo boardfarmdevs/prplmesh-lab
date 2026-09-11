@@ -15,6 +15,11 @@ PRPL_PATCHSET_SHA256=$(
 )
 
 lxc start "$BUILD_CONTAINER" 2>/dev/null || true
+lxc exec "$BUILD_CONTAINER" -- rm -rf /root/hostap-patches
+lxc exec "$BUILD_CONTAINER" -- mkdir -p /root/hostap-patches
+for patch_file in "$ROOT"/patches/hostap/*.patch; do
+    lxc file push "$patch_file" "$BUILD_CONTAINER/root/hostap-patches/$(basename "$patch_file")"
+done
 lxc file push "$ROOT/scripts/container/build-hostap-inside.sh" \
     "$BUILD_CONTAINER/root/build-hostap-inside.sh" --mode=0755
 lxc file push "$ROOT/scripts/container/package-artifacts-inside.sh" \

@@ -6,8 +6,13 @@ test -d "$source_dir/.git"
 : "${HOSTAP_COMMIT:?}"
 
 git -C "$source_dir" clean -fdx
+git -C "$source_dir" reset --hard "$HOSTAP_COMMIT"
 git -C "$source_dir" checkout --detach "$HOSTAP_COMMIT"
 test "$(git -C "$source_dir" rev-parse HEAD)" = "$HOSTAP_COMMIT"
+for patch_file in /root/hostap-patches/*.patch; do
+    git -C "$source_dir" apply --check "$patch_file"
+    git -C "$source_dir" apply "$patch_file"
+done
 
 cp "$source_dir/hostapd/defconfig" "$source_dir/hostapd/.config"
 sed -i \
