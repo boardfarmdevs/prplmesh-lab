@@ -45,9 +45,15 @@ function evaluate(current, interactions, view, world, bindings, now = Date.now()
   const fleet = optimizer.fleet || {};
   const decisions = optimizer.client_decisions || [];
   const currentByMac = new Map(clients.map(client => [lower(client.sta_mac), client]));
-  const sameBandBest = decisions.length === wanted.length && decisions.every(row =>
-    Number.isFinite(row.current_rcpi) && lower(row.source_bssid) === lower(currentByMac.get(lower(row.sta_mac))?.connected_bssid) &&
+  const decisionCoverage = same(decisions.map(row => lower(row.sta_mac)).sort(), wanted) && decisions.every(row =>
+    Number.isFinite(row.current_rcpi) && lower(row.source_bssid) === lower(currentByMac.get(lower(row.sta_mac))?.connected_bssid));
+  const sameBandBest = decisionCoverage && decisions.every(row =>
     (row.scores || []).every(score => score.band !== row.current_band || score.gain_rcpi <= 0));
+  const strongerClientGaps = decisions.flatMap(row => {
+    const stronger = (row.scores || []).filter(score => score.band === row.current_band && score.gain_rcpi > 0);
+    return stronger.length ? [{sta_mac: row.sta_mac, reason: row.reason, phase: row.phase,
+      maximum_gain_rcpi: Math.max(...stronger.map(score => score.gain_rcpi))}] : [];
+  });
   const evaluationAge = (now - Date.parse(optimizer.evaluated_at)) / 1000;
   const metricsFresh = clients.length === wanted.length && clients.every(client => {
     const age = (now - Date.parse(client.metric_observed_at)) / 1000;
@@ -68,16 +74,22 @@ function evaluate(current, interactions, view, world, bindings, now = Date.now()
   const healthy = current.health?.healthy === true && current.health.expected_online_clients === wanted.length;
   const epochMatches = optimizer.environment_epoch === current.environment_epoch && current.environment_epoch === interactions.environment_epoch;
   const complete = fleet.measurement_complete === true && fleet.clients_checked === wanted.length && fleet.clients_evaluated === wanted.length;
-  const converged = roster && viewMatchesRoom && viewMatchesModel && view.meshCount === 6 && meshConnected && meshViewMatches &&
-    healthy && epochMatches && metricsFresh && complete && fleet.converged === true && sameBandBest &&
-    fleet.clients_with_stronger_ap === 0 && evaluationAge >= -2 && evaluationAge <= 30 && scriptErrors.length === 0;
+  const mediumFault = interactions.fault || current.error || null;
+  const qualified = roster && viewMatchesRoom && viewMatchesModel && view.meshCount === 6 && meshConnected && meshViewMatches &&
+    healthy && epochMatches && metricsFresh && complete && decisionCoverage &&
+    evaluationAge >= -2 && evaluationAge <= 30 && scriptErrors.length === 0 && !mediumFault;
+  const policyConverged = qualified && fleet.converged === true;
+  const strongestApConverged = qualified && sameBandBest && fleet.clients_with_stronger_ap === 0;
+  const converged = policyConverged;
   return {converged, roster, viewMatchesRoom, viewMatchesModel, duplicates, scriptErrors, healthy, epochMatches,
     complete, sameBandBest, metricsFresh, evaluationAge, meshConnected, meshViewMatches, meshCount: view.meshCount,
     expectedClients: wanted.length, actualClients: actual.length, candidates: fleet.candidate_measurements,
-    strongerClients: fleet.clients_with_stronger_ap, policyConverged: fleet.converged === true,
+    strongerClients: fleet.clients_with_stronger_ap, policyConverged, strongestApConverged,
+    optimizerPolicySatisfied: fleet.converged === true, decisionCoverage, strongerClientGaps,
+    convergenceCriterion: 'configured-steering-policy',
     parents, wanted, actual, actions: optimizer.actions_used, actionLimit: optimizer.maximum_actions,
     decision: optimizer.decision?.reason, unavailable: optimizer.unavailable_cohort_reason || null,
-    mediumFault: interactions.fault || current.error || null};
+    mediumFault};
 }
 
 function distribution(values) {
@@ -173,7 +185,8 @@ async function run(args) {
   if (fs.existsSync(directory) && fs.readdirSync(directory).length) throw new Error('Use a new, empty output directory to preserve previous evidence');
   fs.mkdirSync(directory, {recursive: true});
   const save = (name, value) => fs.writeFileSync(path.join(directory, name), JSON.stringify(value, null, 2) + '\n');
-  const report = {flavor: args.flavor, started: new Date().toISOString(), rooms: [], errors: [], eventGaps: [], temporaryActionLimit: 2000};
+  const report = {flavor: args.flavor, started: new Date().toISOString(), rooms: [], errors: [], eventGaps: [],
+    convergenceCriterion: 'configured-steering-policy', strongestApReportedSeparately: true, temporaryActionLimit: 2000};
   const browserEnvironment = {...process.env};
   delete browserEnvironment.DISPLAY;
   const browser = await chromium.launch({headless: true, env: browserEnvironment, executablePath: process.env.CHROMIUM_PATH,
@@ -400,6 +413,7 @@ async function run(args) {
       sampleRequestMs: distribution(result.samples.map(sample => sample.requestMs)),
       roomObservationToTopologySeconds: distribution(viewLag), unresolvedViewUpdates: [...pending.keys()],
       motionConvergedSamples: during.filter(sample => sample.converged).length, motionSamples: during.length,
+      motionStrongestApSamples: during.filter(sample => sample.strongestApConverged).length,
       viewMismatchSeconds: agreement.observedBadSpanSeconds, viewAgreement: agreement, visibleAssociationChanges: changes,
       observedClientCounts: [...new Set(during.map(sample => sample.actualClients))].sort((left, right) => left - right),
     };

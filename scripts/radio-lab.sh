@@ -330,6 +330,11 @@ start_userspace_medium()
         -c "$WMEDIUMD_CONFIG"
         -C "$WMEDIUMD_CONTROL" -R "$WMEDIUMD_METRICS"
         -O "$WMEDIUMD_OBSERVER")
+    case "${WMEDIUMD_VISIBILITY_CONTENTION:-0}" in
+        0) ;;
+        1) command+=(-F) ;;
+        *) echo "WMEDIUMD_VISIBILITY_CONTENTION must be 0 or 1" >&2; return 1 ;;
+    esac
     if [ -n "$WMEDIUMD_CPU_AFFINITY" ]; then
         taskset -c "$WMEDIUMD_CPU_AFFINITY" "${command[@]}" \
             > "$WMEDIUMD_LOG" 2>&1 9>&- &

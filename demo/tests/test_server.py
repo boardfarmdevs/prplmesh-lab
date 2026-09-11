@@ -4,6 +4,7 @@ import json
 import socket
 import tempfile
 import unittest
+from unittest.mock import patch
 import urllib.error
 import urllib.request
 from pathlib import Path
@@ -281,6 +282,14 @@ class InteractiveServerTests(unittest.TestCase):
         )
         with urllib.request.urlopen(request, timeout=2) as response:
             return response.status, json.load(response)
+
+    def test_rf_load_is_read_only_projection_without_operator(self):
+        report = {"state": "unavailable", "channels": []}
+        with patch("room_demo.server.load_status", return_value=report) as load:
+            status, result = self._request("/api/demo/rf-load")
+        self.assertEqual(status, 200)
+        self.assertEqual(result, report)
+        load.assert_called_once_with()
 
     def test_world_apply_requires_revision_without_operator(self):
         _, catalog = self._request("/api/demo/worlds")

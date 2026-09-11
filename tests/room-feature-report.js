@@ -11,7 +11,7 @@ function summarize(directory, worlds = path.join(directory, '..', 'goldens')) {
   const report = JSON.parse(fs.readFileSync(path.join(directory, 'report.json')));
   const events = readJsonLines(path.join(directory, 'events.jsonl'));
   const gates = ['roster', 'viewMatchesRoom', 'viewMatchesModel', 'healthy', 'epochMatches', 'complete',
-    'sameBandBest', 'metricsFresh', 'meshConnected', 'meshViewMatches', 'policyConverged'];
+    'sameBandBest', 'metricsFresh', 'meshConnected', 'meshViewMatches', 'policyConverged', 'strongestApConverged'];
   const rooms = report.rooms.map(room => {
     const samples = readJsonLines(path.join(directory, room.id + '-samples.jsonl'));
     const golden = JSON.parse(fs.readFileSync(path.join(worlds, room.id + '.world.json')));
@@ -80,6 +80,7 @@ function summarize(directory, worlds = path.join(directory, '..', 'goldens')) {
   const monitor = fs.existsSync(monitorPath) ? readJsonLines(monitorPath) : [];
   const counters = monitor.filter(row => row.package_throttle_count != null).map(row => Number(row.package_throttle_count)).filter(Number.isFinite);
   return {flavor: report.flavor, started: report.started, finished: report.finished,
+    convergenceCriterion: report.convergenceCriterion || 'absolute-strongest-ap',
     failure: report.failure, errors: report.errors, eventGaps: report.eventGaps,
     catalogCount: report.catalog?.length, tested: rooms.length, passed: rooms.filter(room => room.passed).length,
     nativeIdentitiesUnchanged: report.nativeIdentitiesUnchanged, restoration: report.restoration,

@@ -29,6 +29,9 @@ PATCHES=(
     0019-wmediumd-resolve-association-vifs.patch
     0020-wmediumd-page-configured-link-dumps.patch
     0021-wmediumd-export-channel-airtime-survey.patch
+    0022-wmediumd-phy-metadata-and-airtime.patch
+    0023-wmediumd-independent-reverse-ack.patch
+    0024-wmediumd-observer-surveys-and-spatial-reuse.patch
 )
 
 case "${1:-}" in

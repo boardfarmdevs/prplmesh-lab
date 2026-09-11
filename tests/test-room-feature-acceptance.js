@@ -25,6 +25,20 @@ const station = {mac: 'aa', bssid: 'bb', ssid: 'private'};
 const view = {meshCount: 6, stations: [station], modelStations: [station], edges: parents.map(role => ({to: role, from: 'gateway'}))};
 const check = (snapshot = current, state = interactions, rendered = view) => evaluate(snapshot, state, rendered, world, bindings, now);
 assert.equal(check().converged, true);
+assert.equal(check().strongestApConverged, true);
+const marginHeld = {...current, optimizer: {...current.optimizer,
+  fleet: {...current.optimizer.fleet, clients_with_stronger_ap: 1},
+  client_decisions: [{...current.optimizer.client_decisions[0], reason: 'insufficient_gain',
+    scores: [{band: '5', gain_rcpi: 2}]}]}};
+assert.equal(check(marginHeld).converged, true);
+assert.equal(check(marginHeld).policyConverged, true);
+assert.equal(check(marginHeld).strongestApConverged, false);
+assert.equal(check(marginHeld).strongerClientGaps[0].maximum_gain_rcpi, 2);
+assert.equal(check({...marginHeld, optimizer: {...marginHeld.optimizer,
+  fleet: {...marginHeld.optimizer.fleet, converged: false}}}).converged, false);
+assert.equal(check({...current, optimizer: {...current.optimizer,
+  client_decisions: [{...current.optimizer.client_decisions[0], sta_mac: 'wrong'}]}}).converged, false);
+assert.equal(check(current, {...interactions, fault: 'medium restarted'}).converged, false);
 assert.equal(check(current, interactions, {...view, stations: [station, station]}).converged, false);
 assert.equal(check(current, interactions, {...view, stations: [{...station, bssid: 'wrong'}]}).viewMatchesRoom, false);
 assert.equal(check(current, {...interactions, environment_epoch: 2}).converged, false);

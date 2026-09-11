@@ -25,6 +25,15 @@ samples and selected SSE; its report helper aggregates action/collection
 timings. The [room test plan](room-acceptance.md) owns invocation and gates.
 `tests/room-feature-host-monitor.py` samples physical-host load separately.
 
+During a separately controlled moving-room test, run the read-only
+`tests/controller-render-latency.js --url TOPOLOGY_URL --seconds 90 --output NEW_DIR`
+from the directory containing `tests/` (RDK: `gen/`). It uses the same Playwright
+environment variables as room acceptance. It measures a decoded controller
+response to the changed SVG-bound association identity across two animation frames,
+including removals; it does not measure native commit time, polling wait or
+paint timing or animation completion. Zero transitions are insufficient evidence. Timeouts,
+superseded transitions and pending observations remain in the report.
+
 For deeper attribution, use the guest audit helpers, native journals and
 passive packet/client-control capture. Do not issue reconnect/roam commands
 from an observer. Retain capture drop/truncation counters: incomplete evidence
