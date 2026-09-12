@@ -75,9 +75,12 @@ class NativeLoadProvider:
         if controller is not None:
             state = json.loads(subprocess.check_output(
                 ["lxc", "query", f"/1.0/instances/{controller}/state"], timeout=10, text=True))
+            receiver_args = ["--watch-stdin"]
+            if controller == "prpl-controller":
+                receiver_args += ["--broker-socket", f"/proc/{state['pid']}/root/tmp/beerocks/uds_broker"]
             self.child = subprocess.Popen(
                 ["nsenter", "-t", str(state["pid"]), "-n", sys.executable,
-                 str(Path(__file__).with_name("load_capture.py")), "--watch-stdin"],
+                 str(Path(__file__).with_name("load_capture.py")), *receiver_args],
                 stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
             for stream, target in ((self.child.stdout, self._read), (self.child.stderr, self._errors)):
                 thread = threading.Thread(target=target, args=(stream,), daemon=True)
@@ -114,11 +117,19 @@ class NativeLoadProvider:
             if timestamp < self.floor_ns:
                 return
             for row in report["loads"]:
+                previous = self.loads.get((source, row["bssid"]))
+                if previous and (timestamp <= previous["monotonic_ns"]
+                                 or report["received_at"] <= previous["received_at"]):
+                    continue
                 self.loads[(source, row["bssid"])] = {**row, "source": source,
+                    "transport": report.get("transport", "ieee1905-ethernet"),
                     "monotonic_ns": timestamp, "received_at": report["received_at"]}
             for row in report["traffic"]:
                 key = (source, row["sta_mac"])
                 previous = self.traffic.get(key)
+                if previous and (timestamp <= previous["monotonic_ns"]
+                                 or report["received_at"] <= previous["received_at"]):
+                    continue
                 interval = (timestamp - previous["monotonic_ns"]) / 1e9 if previous else 0
                 rate = None
                 if previous and .05 <= interval <= 10:
@@ -127,6 +138,7 @@ class NativeLoadProvider:
                     if sent < 1 << 31 and received < 1 << 31 and sent + received <= interval * 1000000:
                         rate = (sent + received) / interval
                 self.traffic[key] = {**row, "monotonic_ns": timestamp,
+                                     "transport": report.get("transport", "ieee1905-ethernet"),
                                      "received_at": report["received_at"], "interval": interval, "rate": rate}
             if len(self.loads) > 256 or len(self.traffic) > 1024:
                 self.error = "native load inventory budget exceeded"
@@ -167,7 +179,8 @@ class NativeLoadProvider:
                     continue
                 timestamp = format_time(datetime.fromtimestamp(row["received_at"], timezone.utc))
                 loads.append(BssLoadObservation(bssid, identity[0], identity[1], identity[2],
-                    row["utilization"], row["station_count"], timestamp, epoch, hops.get(identity[0])))
+                    row["utilization"], row["station_count"], timestamp, epoch, hops.get(identity[0]),
+                    transport=row["transport"]))
             available = {row.bssid: row for row in loads}
             for client in snapshot.clients:
                 owner = (client.connected_device_id, client.connected_bssid)
@@ -186,7 +199,7 @@ class NativeLoadProvider:
                     continue
                 timestamp = format_time(datetime.fromtimestamp(row["received_at"], timezone.utc))
                 activity.append(ClientActivityObservation(client.sta_mac, client.connected_bssid,
-                    row["rate"], row["interval"], timestamp, epoch))
+                    row["rate"], row["interval"], timestamp, epoch, transport=row["transport"]))
         return replace(snapshot, schema_version=2, bss_loads=tuple(loads), client_activity=tuple(activity))
 
     def close(self):

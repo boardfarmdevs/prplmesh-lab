@@ -1178,9 +1178,10 @@ Only different-channel, same-band targets with viable RF, fresh matching
 reports and no additional wireless hop qualify. Holds, one-client batching,
 settling and cooldown prevent mass movement; unknown load never means idle.
 Packet activity is not offered demand; hop count is not backhaul capacity.
-The receiver uses bridge metadata only to validate provenance/epoch, never
-as an RF/load oracle. prpl colocated AP telemetry is explicitly unavailable
-on this Ethernet receiver. See the package README for enable/restore steps.
+The receiver uses bridge metadata only for provenance/epoch, never as a load
+oracle. RDK captures Ethernet; prpl subscribes to its native broker, including
+colocated AP reports with conservative native timestamps.
+See [coverage qualification](../testing/room-acceptance.md#native-load-coverage) and the package README.
 
 Channels and client `freq_list` are prerequisites, not policy side effects.
 RDK test retunes use a single-radio South subdoc, never global Apply or an

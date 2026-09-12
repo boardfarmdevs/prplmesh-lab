@@ -121,13 +121,6 @@ def main(argv=None):
     signal.signal(signal.SIGINT, stop)
     probe = BPF(text=program(args.stack))
     try:
-        if args.stack == "rdk":
-            for address in (0xdf948, 0xdf989):
-                probe.attach_uprobe(name=binary, addr=address, fn_name="commit")
-        else:
-            probe.attach_uprobe(name=binary, sym=PRPL_ASSOCIATION, fn_name="enter")
-            probe.attach_uretprobe(name=binary, sym=PRPL_ASSOCIATION, fn_name="commit")
-
         def consume(_cpu, data, _size):
             nonlocal records
             event = probe["events"].event(data)
@@ -143,6 +136,12 @@ def main(argv=None):
             lost += amount
 
         probe["events"].open_perf_buffer(consume, page_cnt=64, lost_cb=dropped)
+        if args.stack == "rdk":
+            for address in (0xdf948, 0xdf989):
+                probe.attach_uprobe(name=binary, addr=address, fn_name="commit")
+        else:
+            probe.attach_uprobe(name=binary, sym=PRPL_ASSOCIATION, fn_name="enter")
+            probe.attach_uretprobe(name=binary, sym=PRPL_ASSOCIATION, fn_name="commit")
         emit({"kind": "identity", "stack": args.stack, "sha256": digest,
                           "binary": binary, "clock": "guest-monotonic",
                           "boundary": "native-model-association-commit"})

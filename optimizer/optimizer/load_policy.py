@@ -25,7 +25,7 @@ class LoadAwarePolicy(ThresholdPolicy):
             return hold("native_load_current_unavailable")
         evidence.update(current_utilization=current.utilization, current_radio=current.radio_id,
                         current_epoch=current.epoch, current_backhaul_hops=current.backhaul_hops,
-                        current_observed_at=current.observed_at)
+                        current_observed_at=current.observed_at, current_transport=current.transport)
         if current.utilization < self.config.load_high_utilization:
             return hold("native_load_current_acceptable")
         activity = next((row for row in snapshot.client_activity if row.sta_mac == client.sta_mac
@@ -61,7 +61,7 @@ class LoadAwarePolicy(ThresholdPolicy):
             row[0].utilization, row[0].backhaul_hops, -row[1].rcpi, row[1].bssid))
         evidence.update(target_utilization=target.utilization, target_radio=target.radio_id,
                         target_backhaul_hops=target.backhaul_hops, target_epoch=target.epoch,
-                        target_observed_at=target.observed_at)
+                        target_observed_at=target.observed_at, target_transport=target.transport)
         return {"target": candidate, "reason": "native_load_margin", "evidence": evidence}
 
     def evaluate(self, snapshot, prior=None):

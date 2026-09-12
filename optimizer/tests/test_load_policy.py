@@ -216,7 +216,7 @@ def test_native_provider_epoch_reset_source_and_context_guards(tmp_path):
             "loads": [{"bssid": SOURCE, "utilization": 200, "station_count": 1}],
             "traffic": [{"sta_mac": STA, "packets_sent": 1, "packets_received": 2}]}
     provider.ingest({**base, "monotonic_ns": 1100000000})
-    provider.ingest({**base, "monotonic_ns": 1600000000, "traffic": [
+    provider.ingest({**base, "received_at": base["received_at"] + .5, "monotonic_ns": 1600000000, "traffic": [
         {"sta_mac": STA, "packets_sent": 51, "packets_received": 52}]})
     result = provider.enrich(value, raw, now_ns=1700000000)
     assert result.bss_loads[0].utilization == 200

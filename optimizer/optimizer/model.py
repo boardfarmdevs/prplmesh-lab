@@ -161,6 +161,7 @@ class BssLoadObservation:
     epoch: str
     backhaul_hops: int | None
     source: str = "native_ap_metrics"
+    transport: str = "ieee1905-ethernet"
 
     def __post_init__(self) -> None:
         for address in (self.bssid, self.device_id, self.radio_id):
@@ -174,6 +175,8 @@ class BssLoadObservation:
             raise ValueError("invalid native station count")
         if not self.epoch or self.source not in {"native_ap_metrics", "fixture"}:
             raise ValueError("load requires an explicit source and epoch")
+        if self.transport not in {"ieee1905-ethernet", "prpl-1905-broker", "prpl-local-broker"}:
+            raise ValueError("unsupported native load transport")
         if self.backhaul_hops is not None and (type(self.backhaul_hops) is not int or self.backhaul_hops < 0):
             raise ValueError("invalid backhaul hop count")
 
@@ -187,6 +190,7 @@ class ClientActivityObservation:
     observed_at: str
     epoch: str
     source: str = "native_sta_traffic"
+    transport: str = "ieee1905-ethernet"
 
     def __post_init__(self) -> None:
         normalize_mac(self.sta_mac)
@@ -198,6 +202,8 @@ class ClientActivityObservation:
             raise ValueError("client traffic requires a bounded counter interval")
         if not self.epoch or self.source not in {"native_sta_traffic", "fixture"}:
             raise ValueError("client traffic requires an explicit source and epoch")
+        if self.transport not in {"ieee1905-ethernet", "prpl-1905-broker", "prpl-local-broker"}:
+            raise ValueError("unsupported native traffic transport")
 
 @dataclass(frozen=True)
 class Snapshot:

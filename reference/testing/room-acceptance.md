@@ -142,11 +142,11 @@ Receiver queue draining is not calibrated physical capacity.
 
 ## Current qualification
 
-September 12, 2026 UTC, `codex/0908-clean` working trees: the latest
-RDK/rev140 catalog passes **14/14 after independent audit**, including the
-unchanged five-second extender-loss departure gate. Three preceding warm
-loss/recovery repeats also pass without resetting native services between runs.
-The unchanged prpl/rev150 qualification remains **14/14**. Every room loads
+September 12, 2026 UTC, `codex/0908-clean`: both follow-up catalogs pass
+**14/14 after independent audit**, run in parallel on RDK/rev140 and prpl/rev150.
+The unchanged five-second extender-loss departure gate passes on both.
+Three preceding warm loss/recovery repeats and two additional evacuation
+repeats also pass without native resets between runs. Every room loads
 and plays at 1×, with initial/checkpoint/final policy convergence, fullscreen
 room/topology inspection, presence, directional RF and physical/native/rendered
 ownership.
@@ -162,25 +162,25 @@ unchanged. Only the test action cap rises to 2000, then returns to 100.
 
 | Observation | RDK / rev140 | prpl / rev150 |
 | --- | --- | --- |
-| UTC window | 21:41:57–22:08:21 | 16:03:14–16:26:59 |
-| Verified / submitted actions | 150 / 150 | 155 / 155 |
+| UTC window | 22:53:54–23:22:06 | 22:54:11–23:19:52 |
+| Verified / submitted actions | 151 / 151 | 145 / 145 |
 | Failed / discarded / unmatched verifications | 0 / 0 / 0 | 0 / 0 / 0 |
-| Request → verification p50 / p95 / max, s | 1.711 / 5.907 / 7.999 | 1.032 / 1.231 / 1.719 |
-| Submission p50 / p95 / max, s | 0.059 / 0.074 / 0.104 | 0.485 / 0.590 / 0.635 |
-| RF application p50 / p95 / max, ms | 8.662 / 29.496 / 515.927 | 8.949 / 51.301 / 677.072 |
-| Candidate publication wait p50 / p95 / max, ms | 85.145 / 130.681 / 743.800 | 42.391 / 107.784 / 630.228 |
+| Request → verification p50 / p95 / max, s | 1.600 / 4.794 / 7.724 | 1.024 / 1.204 / 1.451 |
+| Submission p50 / p95 / max, s | 0.060 / 0.074 / 0.103 | 0.476 / 0.507 / 0.551 |
+| RF application p50 / p95 / max, ms | 9.252 / 28.275 / 516.363 | 8.806 / 29.098 / 698.533 |
+| Candidate publication wait p50 / p95 / max, ms | 84.236 / 131.161 / 580.435 | 40.313 / 88.834 / 476.369 |
 | Unavailable collections / native HTTP 504s / busy rejections | 0 / 0 / 0 | 0 / 0 / 0 |
-| Superseded collections, separate cancellations | 17 | 17 |
+| Superseded collections, separate cancellations | 16 | 16 |
 
-RDK candidate transactions p50/p95/max: **268.480 / 387.504 / 7833.369 ms**.
-prpl NBAPI operations: **149.754 / 181.344 / 299.624 ms**;
-complete collections: **936.268 / 980.837 / 2954.019 ms**.
-prpl's timestamp-resolution guard remains **480/534 ms p50/p95**: removing
+RDK candidate transactions p50/p95/max: **269.643 / 392.333 / 5750.946 ms**.
+prpl NBAPI operations: **143.592 / 170.363 / 248.121 ms**;
+complete collections: **942.036 / 988.241 / 1944.851 ms**.
+prpl's timestamp-resolution guard remains **501/531 ms p50/p95**: removing
 it without request correlation would weaken freshness validity. These measure
 different boundaries, not interchangeable stack execution time.
-RDK's median request → verification improves from 2.477 to 1.711 s versus
-the failed post-retune catalog, but its p95/max tails do not improve.
-Passing bounded gates is not a claim that every latency decreases.
+The default signal path and native binaries are unchanged in this follow-up;
+differences from preceding runs are not proof of a broker-induced speedup.
+Passing bounded gates is not a claim of zero external delay.
 
 RDK now includes agent **0185/0186** and OneWifi **0027/0028**, qualified below; its
 controller and HAL through **0038**, prplMesh and hostapd remain unchanged.
@@ -196,27 +196,28 @@ the five-second continuous hold is additional.
 
 | Room | RDK initial / final | prpl initial / final |
 | --- | --- | --- |
-| `home-a-stationary` | 1.04 / 0.01 | 8.37 / 0.01 |
-| `home-a-one-client-handover` | 11.15 / 2.04 | 6.06 / 0.01 |
-| `large-room-extender-evacuation` | 19.22 / 13.18 | 8.11 / 1.02 |
-| `large-room-perimeter-counter-roam` | 23.25 / 8.12 | 9.13 / 0.01 |
-| `home-a-asymmetric-link` | 14.19 / 6.08 | 11.14 / 0.01 |
-| `home-a-band-walk-small` | 17.36 / 8.11 | 8.08 / 3.03 |
-| `home-a-border-hover` | 23.27 / 17.25 | 10.13 / 2.03 |
-| `home-a-disappear-reappear` | 18.25 / 0.01 | 3.04 / 0.01 |
-| `home-a-extender-loss-recovery` | 7.08 / 0.01 | 3.05 / 0.01 |
-| `home-a-fast-transit` | 18.21 / 18.25 | 11.12 / 6.06 |
-| `home-a-flash-crowd` | 8.11 / 0.01 | 6.07 / 0.02 |
-| `home-a-private-client-room-walk` | 13.21 / 0.01 | 3.04 / 0.01 |
-| `home-a-slow-walk-ten` | 17.28 / 10.15 | 3.06 / 6.10 |
-| `home-b-slow-walk-ten` | 25.36 / 6.09 | 12.18 / 3.04 |
+| `home-a-stationary` | 0.03 / 0.01 | 0.02 / 0.01 |
+| `home-a-one-client-handover` | 10.12 / 8.10 | 8.08 / 0.01 |
+| `large-room-extender-evacuation` | 19.26 / 21.27 | 7.90 / 0.01 |
+| `large-room-perimeter-counter-roam` | 25.32 / 7.09 | 6.66 / 0.01 |
+| `home-a-asymmetric-link` | 15.20 / 2.03 | 8.07 / 0.01 |
+| `home-a-band-walk-small` | 16.20 / 10.12 | 5.05 / 6.07 |
+| `home-a-border-hover` | 20.25 / 18.24 | 4.10 / 2.04 |
+| `home-a-disappear-reappear` | 17.22 / 0.02 | 3.04 / 0.01 |
+| `home-a-extender-loss-recovery` | 3.04 / 11.14 | 4.04 / 0.01 |
+| `home-a-fast-transit` | 15.17 / 22.27 | 7.84 / 7.07 |
+| `home-a-flash-crowd` | 3.05 / 0.01 | 0.01 / 0.01 |
+| `home-a-private-client-room-walk` | 23.41 / 0.01 | 1.03 / 0.01 |
+| `home-a-slow-walk-ten` | 19.25 / 8.13 | 4.08 / 9.12 |
+| `home-b-slow-walk-ten` | 24.37 / 9.16 | 6.08 / 2.03 |
 
 Absolute-strongest diagnostics remain separate from policy convergence:
 
-- rdk: no stronger same-band candidate remains at the settled final samples.
+- rdk: `home-a-stationary`, `02:00:00:00:06:00`, 2 RCPI held by the configured margin.
+- rdk: `home-a-one-client-handover`, `02:00:00:00:06:00`, 2 RCPI held by the configured margin.
 - prpl: `home-a-stationary`, `02:00:00:10:04:00`, 2 RCPI held by the configured margin.
 - prpl: `home-a-one-client-handover`, `02:00:00:10:04:00`, 2 RCPI held by the configured margin.
-- prpl: `home-a-slow-walk-ten`, `02:00:00:20:08:00`, 2 RCPI held by the configured margin.
+- prpl: `large-room-extender-evacuation`, `02:00:00:10:04:00`, 2 RCPI held by the configured margin.
 
 These are policy passes, not claims that every client always selects the
 absolute strongest AP. `room-final-readiness.py` uses the same fresh,
@@ -266,7 +267,7 @@ is independent of room convergence and cannot turn a failed room into a pass.
 
 ### Opt-in policy outcome
 
-Two RDK warm-retune repetitions and the separate prpl qualification pass with
+Three RDK warm-retune repetitions and the broker-enabled prpl qualification pass with
 the production twenty-client pool intact. Native AP metrics/activity drive one gentle BTM to a slightly
 weaker, quieter AP on another 2.4-GHz channel. Signal-only remains the default.
 Both live-room recommend-mode smoke tests also pass, including owned receiver
@@ -275,10 +276,10 @@ shutdown and restoration; these smoke tests authorize no steering.
 | Observation | RDK | prpl |
 | --- | --- | --- |
 | Source → target RCPI | 148 → 144 | 148 → 144 |
-| Native utilization, octet 0–255 | 234 → 11–12 | 235 → 15 |
-| Sustained condition before action | 10.533–10.553 s | 5.058 s |
-| Request → native verified association | 1.954–2.522 s | 0.674 s |
-| Verifier-only interval | 1.903–2.470 s | 0.229 s |
+| Native utilization, octet 0–255 | 234 → 11 | 234 → 17 |
+| Sustained condition before action | 10.053–11.560 s | 5.032 s |
+| Request → native verified association | 1.207–1.440 s | 0.719 s |
+| Verifier-only interval | 1.157–1.390 s | 0.288 s |
 | Additional actions during ≥20 s settling | 0 | 0 |
 
 RDK uses five-second report skew/freshness and a ten-second hold because its
@@ -286,9 +287,9 @@ independent native periodic reports arrive staggered. prpl uses one-second
 skew/five-second hold. Both AP reports must advance; default room gates and
 native reporting intervals do not change. Unknown/stale load never means idle.
 
-Two 12-Mbit/s UDP senders deliver approximately **13.55 → 29.60 Mbit/s RDK**
+Two 12-Mbit/s UDP senders deliver approximately **13.59 → 26.15 Mbit/s RDK**
 in receiver windows 5–15 s and 65–75 s. The separate prpl repeat delivers
-**12.58 → 25.04 Mbit/s** in the same windows. Later windows include queued
+**12.60 → 24.63 Mbit/s** in the same windows. Later windows include queued
 traffic draining and can exceed the 24-Mbit/s offered rate; these are receiver
 delivery observations, **not calibrated capacity or steady-state gains**.
 Packet activity is not offered demand; wireless hops are not backhaul capacity.
@@ -298,9 +299,85 @@ Setup scans/roams and retunes occur before timed
 steering; cleanup restores them and verifies fresh twenty-client metrics.
 The RDK target starts and ends at **6/36/37** (2.4/5/6 GHz); only its
 2.4-GHz channel changes. This is not arbitrary radio-configuration qualification.
-Earlier RDK preparation failures and a 15-second native BTM verification
-timeout remain failed evidence; one later successful move does not explain
-away that timeout. No forced roam repairs a measured failure.
+No forced roam repairs a measured failure; earlier failures remain evidence
+in the timeout investigation below.
+
+### Native-load coverage
+
+`tests/native-load-acceptance.py` is a read-only, twenty-second check of the
+default lab. It requires all thirty private/IoT BSS loads, native station
+counts matching controller associations, all twenty client activity records,
+advancing report timestamps and unavailable observations after receiver
+shutdown. RDK prefixes the path with `gen/`.
+
+Run inside the VM with a new output directory:
+
+```sh
+PYTHONPATH=optimizer python3 tests/native-load-acceptance.py \
+  --stack prpl --output /tmp/native-load-new
+```
+
+For RDK use `PYTHONPATH=gen/optimizer`,
+`gen/tests/native-load-acceptance.py` and `--stack rdk`.
+No retunes, traffic injection, steering or native restarts occur.
+
+Both pass on September 12. Complete load/activity coverage first appears in
+**2.155 s prpl / 10.333 s RDK**; the activity calculation needs two native
+counter reports. prpl covers one colocated and four remote APs through one
+owned `uds_broker` subscription to AP Metrics Response CMDUs. RDK retains its
+Ethernet receiver. Snapshot/decision transport provenance distinguishes
+`prpl-local-broker`, `prpl-1905-broker` and `ieee1905-ethernet`.
+
+The prpl v6 x86_64 little-endian broker envelope is checked against the pinned
+source and live transport layout. Its native publication timestamp has
+**one-second resolution**: retain that conservative timestamp, not the time a
+queued record or cached NBAPI object is read. Reports older than five seconds,
+future timestamps, unsupported envelopes and disconnected receivers fail
+closed. Duplicate/older timestamps cannot refresh observations or activity.
+No extra native requests, agents, services or public ports are introduced.
+The default signal-only room starts no load collector.
+
+The prpl recommend-mode room also exposes local-AP evidence and cleans up its
+receiver on return to default. Both post-change UDP/native-BTM checks pass,
+with no further move during twenty seconds of settling. Evidence is under
+`/home/rev/work/steering-local-ap-0912/`: `*native-load*/`,
+`steering-local-ap-prpl-load-1/`, `rdk-load-3/` and
+`steering-local-ap-prpl-room-load/`.
+
+### RDK steering-timeout investigation
+
+Retained failures are specifically:
+
+- **15.178 s:** September 12 17:05:21 UTC, STA `02:00:00:00:03:00`,
+  `02:00:00:88:ae:ac` → `02:00:00:da:2e:b2`, channel 1.
+- **40.088 s:** 17:10:24 UTC, evacuation STA `02:00:00:00:0d:00`,
+  `02:00:00:da:2e:b2` → `02:00:00:c7:08:e5`, channel 6.
+
+Both requests received successful native-helper acknowledgements in about
+50 ms, but controller association verification stayed at the source.
+The evacuation collector remained fresh and both views agreed; it was not a
+forty-second browser repaint delay. The retained records lack synchronized
+BTM/client/native-commit evidence for those exact failures. They cannot
+distinguish an untransmitted request, client refusal or lost native reporting.
+Their root cause therefore remains **unproven**, not fixed by inference.
+
+Three bounded load repeats and two warm evacuation load/play runs now verify
+**39/39 steers**, without native resets or relaxed gates. The first two loaded
+moves take **1.207 / 1.440 s** from request to verification; transmitted BTM,
+token-matched acceptance, target association and native commit are joined.
+The previously failing evacuation tuple verifies in **1.490 / 0.886 s**.
+Full BTM/acceptance/association/native-commit packet joins cover **37/39**;
+two 6-GHz moves have protected action frames without a decoded BTM join.
+All native uprobe traces close with matching event counts and zero lost events;
+packet captures report zero kernel drops. The shared native-commit tracer now
+opens its consumer before attaching probes, closing a startup observability
+race without changing native behavior.
+
+Keep the old failures. On recurrence capture all four boundaries before any
+reset; API admission is not proof of transmitted BTM. The bounded drivers,
+pcaps, client events, native commits and explicit ambiguous joins are in
+`/home/rev/work/steering-local-ap-0912/rdk-*` and `rdk-summary.json`.
+Single-guest wall/monotonic packet joins are not calibrated compositor timing.
 
 ### RDK warm-retune regression
 
@@ -399,30 +476,37 @@ and process attribution are opt-in, off by default. Unsupported counters stay nu
 
 | Full-catalog observation | RDK / rev140 | prpl / rev150 |
 | --- | --- | --- |
-| Samples / maximum gap | 792 / 2.006 s | 713 / 2.007 s |
-| Total CPU p95 / peak | 15.54% / 19.28% | 43.92% / 50.63% |
-| Minimum available RAM | 49.96 GiB | 12.61 GiB |
-| Peak sampled sensor | 97.00°C | 85.50°C |
-| Package throttling duration / measured window | 1164 ms / 1582.73 s | Unsupported, not zero |
-| Package throttling time fraction | 0.0735% | Unsupported |
-| Sampler elapsed p95 / max | 3.60 / 5.88 ms | 1.62 / 6.87 ms |
+| Samples / maximum gap | 846 / 2.005 s | 770 / 2.009 s |
+| Total CPU p95 / peak | 15.23% / 17.96% | 32.64% / 38.48% |
+| Minimum available RAM | 49.93 GiB | 12.55 GiB |
+| Peak sampled sensor | 99.00°C | 85.50°C |
+| Package throttling duration / measured window | 456 ms / 1690.76 s | Unsupported, not zero |
+| Package throttling time fraction | 0.0270% | Unsupported |
+| Sampler elapsed p95 / max | 4.15 / 6.01 ms | 1.57 / 9.35 ms |
 
 rev140 has limited thermal headroom, not RAM exhaustion or sustained total CPU
 overload. Inspect physical cooling separately; these measurements do not
 justify swapping hosts or increasing resources. No host power policy changes.
 The observer runs on rev150, so results are deployment observations, not
-uncontended comparisons. The final catalogs do not run simultaneously.
+uncontended comparisons. These catalogs run simultaneously and share the
+observer's CPU 0–1 affinity.
 
 Both labs return to **20 clients/six logical roles**, default world paused at
 zero, no lease/fault, fresh complete metrics and cap 100. Catalog restoration
-first converges in **27.43 s RDK / 10.19 s prpl**, then holds.
-Separate readiness checks pass in **5.094 s RDK / 5.113 s prpl**.
+first converges in **26.81 s RDK / 13.02 s prpl**, then holds.
+Separate readiness checks pass in **5.093 s RDK / 5.075 s prpl**.
 VM autostart remains disabled.
 No native restart occurs inside either final catalog; no thin tar or box is made.
 
 ### Evidence and limitations
 
-Latest RDK evidence is on rev150 under
+Latest follow-up evidence is on rev150 under
+`/home/rev/work/steering-local-ap-0912/`: both `*-all-rooms/audited-summary.json`
+files, fullscreen screenshots/JSONL, RDK native/management pcaps, native load
+coverage, load-driven BTM, regression logs and final readiness. All raw
+evidence remains outside the repositories.
+
+The earlier extender-loss repair evidence remains under
 `/home/rev/work/extender-loss-fix-0912/`: `all-rooms/audited-summary.json`,
 screenshots/JSONL, `extender-loss-fixed-catalog/`, `both-1/` through `both-3/`,
 before/partial-fix trials, build logs, regression logs and final readiness.
@@ -439,15 +523,13 @@ The earlier `/home/rev/work/policy-profiling-0912/` contains:
 - `rdk-default-qualified/`, `prpl-default-qualified/`: restored default readiness.
 
 The preceding `rdk-all-rooms-final/` remains **13/14**, with 149/150 moves
-verified: evacuation's initial gate failed on one 40.088-second native
-verification timeout, despite later convergence. Retuning experiments also
-exposed stale staged channel values and volatile reporting policy after agent
-refresh. The new driver instead preserves all radio channels and the running
-agent; the retune regression above qualifies this replacement. The timeout's cause is
-not proven, and the clean rerun is not evidence that it can never recur.
+verified; the timeout investigation above preserves its failed evacuation
+gate. The warm-retune regression qualifies replacing global radio Apply and
+agent refresh with single-radio updates that preserve sibling channels and
+the running agent's reporting policy.
 
-Python regressions: **670 passed RDK / 543 passed prpl**, plus ten prpl adapter
-tests. Five daemon-integration checks per stack require `WMDC_TEST_DAEMON`;
+Python regressions: **700 passed RDK / 573 passed prpl**. The earlier ten-test
+prpl adapter qualification remains unchanged. Five daemon-integration checks per stack require `WMDC_TEST_DAEMON`;
 four RDK VirtualBox checks require Ruby. These are explicit skips, not passes.
 Both 65-test documentation/monitoring subsets, JavaScript and prpl Go race
 tests pass. Assembled-source scheduler, channel dispatch, association publication,
@@ -464,12 +546,9 @@ the implemented scope. Retain failures; never weaken freshness or timeouts.
 The RDK extender-loss regression gate is closed by the qualification above.
 Remaining profiling/load-policy work is separate:
 
-1. **RDK native steering:** retain the earlier 15/40-second failures and capture
-   request admission, transmitted BTM, client response and native commit on
-   any recurrence. The latest 150/150 moves do not establish their root cause.
-2. **prpl local AP telemetry:** add native colocated AP report provenance and
-   freshness to the opt-in load collector; never timestamp cached NBAPI reads
-   as new measurements or substitute bridge-modeled load for native reports.
-3. **Common profiling:** cover non-association metric publication and
+1. **Common profiling:** cover non-association metric publication and
    compositor completion, with bounded observer overhead and clock uncertainty.
-4. Keep packaging separate; repeat the unchanged regression gates after changes.
+2. **RDK timeout attribution:** the bounded investigation above does not
+   reproduce the historical failures. Preserve native/client captures if they recur.
+3. Keep packaging separate; repeat the unchanged regression gates after changes.
+   Local AP telemetry is implemented and qualified above, not an open feature.

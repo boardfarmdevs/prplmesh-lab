@@ -58,10 +58,18 @@ settling/cooldown. Weak links retain signal-policy protection. Missing, stale,
 skewed, synthetic or epoch-mismatched observations cannot become zero load.
 Reasons and evidence are recorded with each decision.
 
-The initial receiver cannot observe prpl's colocated AP over Ethernet;
-that AP remains explicitly unavailable rather than inferred from a global
-survey. Reception-backed candidate measurements, demand/capacity estimation
-and general channel selection remain separate work.
+prpl subscribes once to native AP Metrics Response CMDUs on the controller's
+`/tmp/beerocks/uds_broker`, covering colocated and remote APs without additional
+queries. Snapshot/decision `transport` distinguishes `prpl-local-broker` from
+`prpl-1905-broker`. The pinned v6 x86_64 broker's one-second publication
+timestamp is retained conservatively; reading queued or cached data cannot
+refresh it. Stale reports, unsupported envelopes and disconnects fail closed.
+Restart the opt-in experiment after a broker restart. No extra service or port
+is needed; RDK continues to capture Ethernet.
+
+Run `PYTHONPATH=optimizer python3 tests/native-load-acceptance.py --stack prpl --output /tmp/native-load-new`
+inside the VM for bounded read-only coverage, count, freshness and cleanup
+checks. Reception-backed candidates and calibrated capacity remain separate work.
 
 ## Test
 
