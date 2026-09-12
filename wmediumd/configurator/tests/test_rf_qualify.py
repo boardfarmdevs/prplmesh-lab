@@ -4,10 +4,17 @@ from pathlib import Path
 import tempfile
 from unittest.mock import Mock, patch
 
-from wmdcfg.rf_qualify import MediumRestarter, association_identity, comparison, launch_medium, restore_actions
+from wmdcfg.rf_qualify import MediumRestarter, association_identity, comparison, launch_medium, qualification_passed, restore_actions
 
 
 class ThroughputComparisonTests(unittest.TestCase):
+    def test_inconclusive_or_unrestored_qualification_is_not_cli_success(self):
+        for state in ("inconclusive", "incomplete", "failed", "passed"):
+            for restored in (False, True):
+                for error in (None, "traffic failed"):
+                    report = {"comparison": {"state": state}, "restored": restored, "error": error}
+                    self.assertEqual(qualification_passed(report), state == "passed" and restored and not error)
+
     def test_medium_is_owned_by_systemd_not_the_management_exec_session(self):
         with patch("wmdcfg.rf_qualify.command", side_effect=["", "123\n"]) as command:
             process = launch_medium(["/medium", "-F"], "/tmp/medium.log", {0, 1}, 5, "/tmp")

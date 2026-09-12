@@ -32,6 +32,7 @@ PATCHES=(
     0022-wmediumd-phy-metadata-and-airtime.patch
     0023-wmediumd-independent-reverse-ack.patch
     0024-wmediumd-observer-surveys-and-spatial-reuse.patch
+    0025-wmediumd-preserve-confirmed-client-departures.patch
 )
 
 case "${1:-}" in

@@ -1,22 +1,116 @@
 from __future__ import annotations
 
 import tempfile
+from concurrent.futures import Future
+from datetime import datetime, timezone
 import unittest
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 from pathlib import Path
 import sys
 
 if sys.version_info < (3, 9):
     raise unittest.SkipTest("optimizer runtime requires Python 3.9 or newer")
 
-from optimizer.model import ClientObservation, MeshHealth, Snapshot
-from optimizer.policy import Decision, Evaluation
+from optimizer.model import CandidateObservation, ClientObservation, MeshHealth, Snapshot
+from optimizer.policy import Decision, Evaluation, PolicyConfig, ThresholdPolicy
 from optimizer.state import ClientPolicyState, PolicyState
-from room_demo.conductor import LiveConductor, _deferred_state
+from room_demo.conductor import (
+    LiveConductor, _candidate_measurement_needed, _deferred_state, _interactive_policy,
+)
 from room_demo.events import EventStore
 
 
 class ConductorProjectionTests(unittest.TestCase):
+    def test_full_verification_queue_never_marks_unsent_clients_pending(self):
+        conductor, store = self._conductor()
+        conductor.interactive = True
+        conductor.profiling = True
+        conductor.mode = "act"
+        conductor.manifest.update({"policy": "policy.yaml", "optimizer": {
+            "allow_simulated_candidates": True, "request_only": True, "interval_seconds": 5,
+            "action_window_ms": [0, 1000], "max_actions": 20, "interactive_action_batch_size": 8,
+        }})
+        store.emit("demo.state", 0, {"state": "running"})
+        now = datetime.now(timezone.utc).isoformat()
+        clients = tuple(ClientObservation(
+            sta_mac=f"02:00:00:00:{number:02x}:00", connected_device_id="02:00:00:00:01:20",
+            connected_device_name="Source", connected_bssid="02:00:00:00:01:01",
+            rcpi=70, association_uptime_seconds=90, metric_observed_at=now,
+            measurement_source="associated_sta_link_metrics", band="5", ssid="private_ssid", cohort="private",
+        ) for number in range(3, 12))
+        candidates = tuple(CandidateObservation(
+            sta_mac=client.sta_mac, bssid="02:00:00:00:04:01", device_id="02:00:00:00:02:20",
+            device_name="Target", rcpi=100, metric_observed_at=now, measurement_source="candidate", band="5",
+        ) for client in clients)
+        snapshot = Snapshot(schema_version=1, sequence=0, controller_url="http://controller", observed_at=now,
+                            health=MeshHealth(5, 9), clients=clients, candidates=candidates)
+        for number, client in enumerate(clients):
+            conductor._role_by_mac[client.sta_mac] = f"sta_static_{number:02}"
+            conductor._container_by_mac[client.sta_mac] = f"client-{number}"
+        conductor._mac_by_role = {role: mac for mac, role in conductor._role_by_mac.items()}
+        room = {"environment_epoch": 1, "revision": 1, "stable_for_seconds": 1,
+                "daemon": {"instance_id": "test"},
+                "expected_online_clients": len(clients),
+                "roles": {conductor._role_by_mac[client.sta_mac]: {"present": True} for client in clients}}
+        conductor.room_state = lambda: room
+        policy = ThresholdPolicy(_interactive_policy(PolicyConfig(expected_clients=9)))
+        provider = Mock(last_raw=[], last_selected_sta_macs={client.sta_mac for client in clients},
+                        last_requested_sta_macs=set(), last_selection={}, last_unavailable=None)
+        observer = Mock()
+        observer.observe.return_value = snapshot
+        actuator = Mock()
+        actuator.execute.return_value.success = True
+        actuator.execute.return_value.to_dict.return_value = {"success": True}
+        futures = [Future() for _index in range(6)]
+        waits = []
+
+        def advance(*_arguments):
+            waits.append(actuator.execute.call_count)
+            if len(waits) == 2:
+                decision = actuator.execute.call_args_list[0].args[0]
+                futures[0].set_result((decision, Mock(success=True), datetime.now(timezone.utc), None))
+            return len(waits) == 3
+
+        with patch("room_demo.conductor.load_policy", return_value=policy.config), \
+             patch("room_demo.conductor._simulated_bss_channels", return_value={}), \
+             patch("room_demo.conductor.ThresholdPolicy", return_value=policy), \
+             patch("room_demo.conductor.PrplMeshCandidateProvider", return_value=provider), \
+             patch("room_demo.conductor.StreamingCandidateProvider", return_value=provider), \
+             patch("room_demo.conductor.PrplMeshObserver", return_value=observer), \
+             patch("room_demo.conductor.SteerActuator", return_value=actuator), \
+             patch.object(policy, "evaluate", wraps=policy.evaluate) as evaluate, \
+             patch.object(conductor._verification_executor, "submit", side_effect=futures), \
+             patch.object(conductor, "_optimizer_wait", side_effect=advance):
+            conductor._optimizer_worker()
+        self.assertEqual(conductor.errors, [])
+        self.assertEqual(waits, [5, 5, 6])
+        queued_state = evaluate.call_args_list[2].args[1]
+        for client in clients[5:]:
+            pending = queued_state.for_sta(client.sta_mac)
+            self.assertEqual(pending.phase, "holding")
+            self.assertIsNone(pending.pending_since)
+            self.assertIsNone(pending.last_action_at)
+            self.assertEqual(pending.failure_count, 0)
+        self.assertEqual(actuator.execute.call_args_list[5].args[0].sta_mac, clients[5].sta_mac)
+
+    def test_collection_observes_cooldown_and_backoff_without_duplicate_pending_work(self):
+        client = Mock(sta_mac="02:00:00:00:03:00")
+        policy = Mock()
+        policy.requires_candidate_measurement.return_value = True
+        now = "2026-09-08T00:00:00Z"
+        future = "2026-09-08T00:00:30Z"
+        for phase, until in (("pending", {}), ("cooldown", {"cooldown_until": future}),
+                             ("backoff", {"backoff_until": future})):
+            state = PolicyState((ClientPolicyState(sta_mac=client.sta_mac, phase=phase, **until),))
+            self.assertEqual(_candidate_measurement_needed(policy, state, client, now), phase != "pending")
+            if until:
+                self.assertTrue(_candidate_measurement_needed(policy, state, client, future))
+        for phase in ("holding", "stable"):
+            state = PolicyState((ClientPolicyState(sta_mac=client.sta_mac, phase=phase),))
+            self.assertTrue(_candidate_measurement_needed(policy, state, client, now))
+        policy.requires_candidate_measurement.return_value = False
+        self.assertFalse(_candidate_measurement_needed(policy, PolicyState(), client, now))
+
     def test_health_uses_prplmesh_nodes_not_rdk_database_counts(self):
         conductor, store = self._conductor()
         conductor.manifest["health"] = {"interval_seconds": 1,

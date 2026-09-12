@@ -45,6 +45,11 @@ def comparison(trials):
             "observed_overhead_percent": overhead}
 
 
+def qualification_passed(report):
+    return (bool(report.get("restored")) and not report.get("error")
+            and report.get("comparison", {}).get("state") == "passed")
+
+
 class SystemdMedium:
     def __init__(self, unit, pid):
         self.unit = unit
@@ -265,7 +270,7 @@ def main(argv=None):
         report["restored"] = not report["cleanup_errors"]
         (args.output / "report.json").write_text(json.dumps(report, indent=2) + "\n")
     print(json.dumps({key: value for key, value in report.items() if key != "trials"}))
-    return 1 if not report["restored"] or report.get("error") or report.get("comparison", {}).get("state") in ("failed", "incomplete") else 0
+    return 0 if qualification_passed(report) else 1
 
 
 if __name__ == "__main__":

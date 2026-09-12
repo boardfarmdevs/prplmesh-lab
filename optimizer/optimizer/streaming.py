@@ -126,15 +126,15 @@ class StreamingCandidateProvider:
         self._rejections = {key: (version, timestamp) for key, (version, timestamp) in self._rejections.items()
                             if valid(key, version, timestamp)}
         eligible = [client for client in clients if self.selector is None or self.selector(client, observed_at)]
-        eligible.sort(key=lambda client: (self._queried.get((client.sta_mac, self._versions[client.sta_mac]), -1), client.sta_mac))
+        eligible.sort(key=lambda client: (self._queried.get(client.sta_mac, -1), client.sta_mac))
         if not self._closed and self._future is None and eligible and time.monotonic() >= self._next_attempt:
             cohort = [client for client in eligible if client.band == eligible[0].band][:self.maximum_clients]
             selected = {client.sta_mac for client in cohort}
             self._round += 1
             self._queried = {key: value for key, value in self._queried.items()
-                             if key[0] in owners and key[1] == self._versions[key[0]]}
+                             if key in owners}
             for station in selected:
-                self._queried[(station, self._versions[station])] = self._round
+                self._queried[station] = self._round
             self._active_selected = selected
             self._cancel = threading.Event()
             self._future = self._executor.submit(self._collect, clients, inventory, bsses, observed_at,

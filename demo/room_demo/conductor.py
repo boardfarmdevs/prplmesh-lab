@@ -55,12 +55,7 @@ def _candidate_measurement_needed(policy, state, client, observed_at):
     if not policy.requires_candidate_measurement(client, observed_at):
         return False
     prior = state.for_sta(client.sta_mac)
-    if prior.phase == "pending":
-        return False
-    until = prior.cooldown_until if prior.phase == "cooldown" else (
-        prior.backoff_until if prior.phase == "backoff" else None
-    )
-    return until is None or parse_time(observed_at) >= parse_time(until)
+    return prior.phase != "pending"
 
 
 def _priority_client(client, role, mac_by_role, ap_role_by_bssid, deadline, now):
@@ -125,25 +120,6 @@ def _deferred_state(prior: PolicyState, evaluation) -> PolicyState:
     state = evaluation.state
     for decision in evaluation.decisions:
         if decision.action != "steer":
-            continue
-        proposed = state.for_sta(decision.sta_mac)
-        previous = prior.for_sta(decision.sta_mac)
-        state = state.replace(replace(
-            proposed,
-            phase="holding",
-            pending_since=None,
-            last_action_at=previous.last_action_at,
-        ))
-    return state
-
-
-def _single_action_state(
-    prior: PolicyState, evaluation, selected_sta: str
-) -> PolicyState:
-    """Keep all non-selected steer candidates eligible for the next cycle."""
-    state = evaluation.state
-    for decision in evaluation.decisions:
-        if decision.action != "steer" or decision.sta_mac == selected_sta:
             continue
         proposed = state.for_sta(decision.sta_mac)
         previous = prior.for_sta(decision.sta_mac)
@@ -1200,10 +1176,8 @@ class LiveConductor:
                         _deferred_state(prior, evaluation)
                         if not window_open else _recommendation_state(prior, evaluation)
                     )
-                elif selected_action is not None and can_act:
-                    state = _single_action_state(
-                        prior, evaluation, selected_action.sta_mac
-                    )
+                elif steer_decisions and can_act:
+                    state = _deferred_state(prior, evaluation)
                 else:
                     state = evaluation.state
                 subject_state = state.for_sta(subject_mac)
@@ -1327,13 +1301,9 @@ class LiveConductor:
                                     producer="optimizer",
                                 )
                                 break
-                            # The policy initially left deferred batch members
-                            # in holding state. Mark only the action that is
-                            # about to be sent as pending, so an interrupted
-                            # batch cannot leave unsent clients in timeout.
-                            state = state.replace(
-                                evaluation.state.for_sta(decision.sta_mac)
-                            )
+                        state = state.replace(
+                            evaluation.state.for_sta(decision.sta_mac)
+                        )
                         subject_mac = decision.sta_mac
                         subject_role = self._role_by_mac[subject_mac]
                         self.action_attempts += 1
