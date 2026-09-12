@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from dataclasses import replace
+
 from optimizer.policy import PolicyConfig, ThresholdPolicy
 from optimizer.state import PolicyState
 from .helpers import TARGET, snapshot
@@ -55,6 +57,44 @@ def test_band_upgrade_selects_an_acceptable_current_link_for_measurement():
 def test_stale_candidate_is_a_safe_no_action():
     result = policy().evaluate(snapshot(0, target_age=8))
     assert decision(result).reason == "fresh_candidate_metric_missing"
+
+
+def test_partial_client_candidates_do_not_trigger_an_intermediate_roam():
+    engine = policy(condition_hold_seconds=0)
+    sample = snapshot(0)
+    strongest = replace(sample.candidates[0], bssid="02:00:00:bb:bb:02", rcpi=160)
+    missing = replace(strongest, rcpi=None, metric_observed_at=None)
+    partial = replace(sample, candidates=sample.candidates + (missing,))
+    waiting = decision(engine.evaluate(partial))
+    assert waiting.action == "none"
+    assert waiting.reason == "candidate_snapshot_incomplete"
+    assert waiting.scores[0].bssid == TARGET
+    complete = replace(sample, candidates=sample.candidates + (strongest,))
+    ready = decision(engine.evaluate(complete))
+    assert ready.action == "steer"
+    assert ready.target_bssid == strongest.bssid
+
+
+def test_stale_comparison_blocks_only_its_own_client():
+    engine = policy(condition_hold_seconds=0)
+    sample = snapshot(0)
+    stale = replace(snapshot(0, target_age=8).candidates[0], bssid="02:00:00:bb:bb:02")
+    independent = replace(sample.clients[0], sta_mac="02:00:00:00:04:00")
+    comparison = replace(sample.candidates[0], sta_mac=independent.sta_mac)
+    result = engine.evaluate(replace(sample, clients=sample.clients + (independent,),
+                                     candidates=sample.candidates + (stale, comparison)))
+    assert result.decisions[0].reason == "candidate_snapshot_incomplete"
+    assert result.decisions[1].action == "steer"
+
+
+def test_unqueried_other_band_and_ineligible_bss_do_not_block_same_band_decision():
+    sample = snapshot(0)
+    unavailable = replace(sample.candidates[0], bssid="02:00:00:bb:bb:02", rcpi=None,
+                          metric_observed_at=None)
+    for excluded in (replace(unavailable, band="6"), replace(unavailable, eligible=False)):
+        result = policy(condition_hold_seconds=0).evaluate(
+            replace(sample, candidates=sample.candidates + (excluded,)))
+        assert decision(result).action == "steer"
 
 
 def test_threshold_margin_and_hold_produce_exactly_one_pending_recommendation():

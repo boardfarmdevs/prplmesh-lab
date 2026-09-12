@@ -29,6 +29,12 @@ PATCHES=(
     0019-wmediumd-resolve-association-vifs.patch
     0020-wmediumd-page-configured-link-dumps.patch
     0021-wmediumd-export-channel-airtime-survey.patch
+    0022-wmediumd-phy-metadata-and-airtime.patch
+    0023-wmediumd-independent-reverse-ack.patch
+    0024-wmediumd-observer-surveys-and-spatial-reuse.patch
+    0025-wmediumd-preserve-confirmed-client-departures.patch
+    0026-wmediumd-fill-spatial-reservation-gaps.patch
+    0027-wmediumd-preserve-earliest-scheduler-deadline.patch
 )
 
 case "${1:-}" in

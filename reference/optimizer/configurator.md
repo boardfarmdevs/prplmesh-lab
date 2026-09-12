@@ -39,6 +39,15 @@ The four important boundaries are:
    `--yes-act`, uses a bounded BTM request and verifies physical and NBAPI
    convergence.
 
+Candidate collection remains fair across clients that roam repeatedly. Cooldown
+and backoff delay another action, not collection of its next measurements; an
+already pending action does not start duplicate collection. A decision requires
+that client's complete fresh same-band comparison, rather than whichever AP
+responded first. Unrelated clients remain independent. Only requests actually
+submitted enter pending state, so a full verification queue cannot impose an
+unsent client's timeout. Native reporting intervals, steering limits and the
+prplMesh NBAPI path remain unchanged.
+
 ## Components and interfaces
 
 | Component | Interface | Purpose |

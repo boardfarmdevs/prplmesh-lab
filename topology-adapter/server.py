@@ -6,7 +6,8 @@ import datetime as dt
 import json
 import re
 import subprocess
-from concurrent.futures import ThreadPoolExecutor
+import threading
+from concurrent.futures import Future, ThreadPoolExecutor
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
@@ -220,6 +221,32 @@ def topology(objects=None):
     }
 
 
+class TopologyReader:
+    def __init__(self, reader=None):
+        self.reader = reader or topology
+        self.lock = threading.Lock()
+        self.pending = None
+
+    def read(self):
+        with self.lock:
+            owner = self.pending is None or self.pending.done()
+            if owner:
+                self.pending = Future()
+            pending = self.pending
+        if owner:
+            try:
+                pending.set_result(self.reader())
+            except BaseException as error:
+                pending.set_exception(error)
+        return pending.result()
+
+
+class TopologyServer(ThreadingHTTPServer):
+    def __init__(self, *arguments, **options):
+        super().__init__(*arguments, **options)
+        self.topology_reader = TopologyReader()
+
+
 class Handler(BaseHTTPRequestHandler):
     def send_json(self, status, value):
         body = json.dumps(value, indent=2).encode()
@@ -233,9 +260,11 @@ class Handler(BaseHTTPRequestHandler):
     def do_GET(self):
         if self.path == "/api/topology":
             try:
-                self.send_json(HTTPStatus.OK, topology())
+                value = self.server.topology_reader.read()
             except Exception as error:
                 self.send_json(HTTPStatus.SERVICE_UNAVAILABLE, {"error": str(error)})
+            else:
+                self.send_json(HTTPStatus.OK, value)
             return
         if self.path == "/health":
             self.send_json(HTTPStatus.OK, {"status": "ok"})
@@ -251,7 +280,7 @@ def main():
     parser.add_argument("--listen", default="0.0.0.0")
     parser.add_argument("--port", type=int, default=8092)
     args = parser.parse_args()
-    server = ThreadingHTTPServer((args.listen, args.port), Handler)
+    server = TopologyServer((args.listen, args.port), Handler)
     print(f"prplMesh internal topology adapter listening on {args.listen}:{args.port}", flush=True)
     server.serve_forever()
 

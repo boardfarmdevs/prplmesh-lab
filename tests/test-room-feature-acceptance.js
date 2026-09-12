@@ -1,6 +1,6 @@
 'use strict';
 const assert = require('node:assert/strict');
-const {expectedFrame, evaluate, distribution, eventPerformance, viewAgreement} = require('./room-feature-acceptance.js');
+const {expectedFrame, evaluate, distribution, eventPerformance, viewAgreement, recordedEventKind} = require('./room-feature-acceptance.js');
 const now = Date.now();
 const timestamp = new Date(now).toISOString();
 const world = {roles: {client: 'station'}, generations: [
@@ -25,6 +25,20 @@ const station = {mac: 'aa', bssid: 'bb', ssid: 'private'};
 const view = {meshCount: 6, stations: [station], modelStations: [station], edges: parents.map(role => ({to: role, from: 'gateway'}))};
 const check = (snapshot = current, state = interactions, rendered = view) => evaluate(snapshot, state, rendered, world, bindings, now);
 assert.equal(check().converged, true);
+assert.equal(check().strongestApConverged, true);
+const marginHeld = {...current, optimizer: {...current.optimizer,
+  fleet: {...current.optimizer.fleet, clients_with_stronger_ap: 1},
+  client_decisions: [{...current.optimizer.client_decisions[0], reason: 'insufficient_gain',
+    scores: [{band: '5', gain_rcpi: 2}]}]}};
+assert.equal(check(marginHeld).converged, true);
+assert.equal(check(marginHeld).policyConverged, true);
+assert.equal(check(marginHeld).strongestApConverged, false);
+assert.equal(check(marginHeld).strongerClientGaps[0].maximum_gain_rcpi, 2);
+assert.equal(check({...marginHeld, optimizer: {...marginHeld.optimizer,
+  fleet: {...marginHeld.optimizer.fleet, converged: false}}}).converged, false);
+assert.equal(check({...current, optimizer: {...current.optimizer,
+  client_decisions: [{...current.optimizer.client_decisions[0], sta_mac: 'wrong'}]}}).converged, false);
+assert.equal(check(current, {...interactions, fault: 'medium restarted'}).converged, false);
 assert.equal(check(current, interactions, {...view, stations: [station, station]}).converged, false);
 assert.equal(check(current, interactions, {...view, stations: [{...station, bssid: 'wrong'}]}).viewMatchesRoom, false);
 assert.equal(check(current, {...interactions, environment_epoch: 2}).converged, false);
@@ -68,6 +82,24 @@ assert.equal(overlapping.collectionOperationMs.timestamp_resolution_wait.p50, 75
 assert.equal(overlapping.nativeBusyRejections, 1);
 assert.equal(overlapping.nativeBusyReadmissions, 1);
 assert.equal(overlapping.nativeResponseTimeouts, 1);
+const incomplete = eventPerformance([
+  {event: {kind: 'optimizer.collection', payload: {phase: 'completed', unavailable: 'prplMesh candidate metrics incomplete after 30s'}}},
+  {event: {kind: 'optimizer.collection', payload: {phase: 'completed', unavailable: 'collection_superseded'}}},
+]);
+assert.equal(incomplete.candidateUnavailableCollections, 1);
+assert.equal(incomplete.candidateCancelledCollections, 1);
+assert.equal(recordedEventKind('optimizer.verification.discarded'), true);
+assert.equal(recordedEventKind('optimizer.verification'), true);
+assert.equal(recordedEventKind('network.snapshot'), false);
+const discarded = eventPerformance([
+  {event: {kind: 'optimizer.action', payload: {phase: 'submitted', action_id: 'old-world'}}},
+  {event: {kind: 'optimizer.action', payload: {phase: 'submitted', action_id: 'unmatched'}}},
+  {event: {kind: 'optimizer.verification.discarded', payload: {action_id: 'old-world', success: false}}},
+]);
+assert.equal(discarded.discardedVerifications, 1);
+assert.equal(discarded.unmatchedSubmittedActions, 1);
+assert.equal(discarded.failedVerifications, 0);
+assert.equal(discarded.verifiedActions, 0);
 const matching = {viewMatchesRoom: true, viewMatchesModel: true, duplicates: false};
 assert.equal(viewAgreement([{...matching, monoMs: 0, viewMatchesRoom: false}, {...matching, monoMs: 6000}]).passed, true);
 assert.equal(viewAgreement(Array.from({length: 7}, (_, index) => ({...matching, monoMs: index * 1000, viewMatchesRoom: false}))).passed, false);

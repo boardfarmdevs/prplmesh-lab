@@ -8,6 +8,8 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, unquote, urlparse
 
+from wmdcfg.rf_load import load_status
+
 from .engine import RoomEngine
 from .events import EventHistoryGap, EventStore
 from .interactions import InteractionError
@@ -294,6 +296,8 @@ class RoomDemoServer:
                 elif parsed.path == "/api/demo/current":
                     current = store.current()
                     self._json(current, revision=current["world_revision"])
+                elif parsed.path == "/api/demo/rf-load" and interactions is not None and viewer_mode != "replay":
+                    self._json(load_status())
                 elif parsed.path == "/api/demo/world":
                     self._json(store.initial_world if parse_qs(parsed.query).get("initial") == ["1"] else store.current_world())
                 elif parsed.path == "/api/demo/worlds" and interactions is not None:

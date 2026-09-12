@@ -60,7 +60,7 @@ apply_patch_file()
 # static-radio ceiling needed by scale profiles. Patch 0008 makes the
 # userspace-medium monitor ACK path channel-context safe. Userspace wmediumd
 # remains the default because kernel_medium defaults to false.
-for patch_file in "$ROOT"/patches/hwsim/000*.patch; do
+for patch_file in "$ROOT"/patches/hwsim/[0-9][0-9][0-9][0-9]-*.patch; do
     case "$(basename "$patch_file")" in
         0002-*)
             # Linux 7.0 regtest=5 already selects the strict, 6 GHz-capable

@@ -272,6 +272,21 @@ class ThresholdPolicy:
         current_rank = _BAND_RANK.get(client.band)
         ranked = sorted(observed_candidates, key=lambda item: (-int(item.rcpi), item.bssid))
         scores = self._scores(ranked, client)
+        if any(
+            item.eligible
+            and item.bssid != client.connected_bssid
+            and item.band == client.band
+            and (item.rcpi is None or not _fresh(
+                item.metric_observed_at,
+                now,
+                self.config.reject_stale_metrics_after_seconds,
+            ))
+            for item in snapshot.candidates_for(client.sta_mac)
+        ):
+            return (
+                Decision(action="none", reason="candidate_snapshot_incomplete", scores=scores, **base),
+                stable,
+            )
         band_upgrade = False
         if not current_is_weak:
             if current_rank is None:

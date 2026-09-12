@@ -64,9 +64,17 @@ userspace for release baselines, detailed observer telemetry and behavior not
 covered by the kernel model. Backend comparisons must use the same topology,
 traffic and scenario plans.
 
-Neither backend currently supplies qualified live channel-utilization surveys.
-The [virtual RF assessment](virtual-rf-assessment.md) distinguishes implemented
-signal control from airtime, PHY-rate and receiver-observation limitations.
+Userspace exports modeled legacy-rate, 20 MHz airtime through the survey bridge
+and native BSS Load reporting. These are modeled activity counters, not calibrated
+AP capacity. The kernel backend does not implement this full survey path. See the
+[virtual RF assessment](virtual-rf-assessment.md) for provenance and qualification.
+
+Medium patch `0025` preserves confirmed client departures. Read-only
+`GET_ASSOCIATION` returns flag `4`, a zero owner and zero frequency for a known
+departure; genuinely unknown ownership still returns unavailable. Only successful
+association or station-originated data can establish an owner. Stale downlink
+traffic cannot resurrect it. The paired Console decoder excludes departed entries
+from active associations. prplMesh's native HAL and controller paths are unchanged.
 
 ## Startup concurrency
 
