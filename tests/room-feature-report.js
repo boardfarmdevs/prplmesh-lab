@@ -7,6 +7,23 @@ function readJsonLines(filename) {
   return fs.readFileSync(filename, 'utf8').trim().split('\n').filter(Boolean).map(line => JSON.parse(line));
 }
 
+function hostSummary(rows, started, finished, monitorError = null) {
+  const start = Date.parse(started), end = Date.parse(finished);
+  const samples = rows.filter(row => Date.parse(row.time) >= start && Date.parse(row.time) <= end)
+    .sort((left, right) => Date.parse(left.time) - Date.parse(right.time));
+  const times = [start, ...samples.map(row => Date.parse(row.time)), end];
+  const gaps = times.slice(1).map((value, index) => (value - times[index]) / 1000);
+  const counters = samples.filter(row => row.package_throttle_count != null)
+    .map(row => Number(row.package_throttle_count)).filter(Number.isFinite);
+  return {samples: samples.length, samplingComplete: !monitorError && samples.length >= 2 && gaps.every(gap => gap >= 0 && gap <= 30),
+    monitorError,
+    maximumSamplingGapSeconds: Math.max(...gaps),
+    cpuBusyPercent: distribution(samples.map(row => row.cpu_busy_percent)),
+    maximumSensorCelsius: distribution(samples.map(row => Math.max(...Object.values(row.temperatures_celsius || {})))),
+    minimumAvailableMemoryGiB: samples.length ? Math.min(...samples.map(row => row.available_memory_kib)) / 1048576 : null,
+    packageThrottleDelta: counters.length >= 2 ? counters.at(-1) - counters[0] : null};
+}
+
 function summarize(directory, worlds = path.join(directory, '..', 'goldens')) {
   const report = JSON.parse(fs.readFileSync(path.join(directory, 'report.json')));
   const events = readJsonLines(path.join(directory, 'events.jsonl'));
@@ -76,22 +93,19 @@ function summarize(directory, worlds = path.join(directory, '..', 'goldens')) {
       performance: {...room.performance, viewAgreement: agreement, viewMismatchSeconds: agreement.observedBadSpanSeconds,
         ...eventPerformance(events.filter(record => record.room === room.id))}};
   });
-  const monitorPath = path.join(directory, '..', 'host-monitor.jsonl');
+  const monitorPath = fs.existsSync(path.join(directory, 'host-monitor.jsonl'))
+    ? path.join(directory, 'host-monitor.jsonl') : path.join(directory, '..', 'host-monitor.jsonl');
   const monitor = fs.existsSync(monitorPath) ? readJsonLines(monitorPath) : [];
-  const counters = monitor.filter(row => row.package_throttle_count != null).map(row => Number(row.package_throttle_count)).filter(Number.isFinite);
   return {flavor: report.flavor, started: report.started, finished: report.finished,
     convergenceCriterion: report.convergenceCriterion || 'absolute-strongest-ap',
     failure: report.failure, errors: report.errors, eventGaps: report.eventGaps,
     catalogCount: report.catalog?.length, tested: rooms.length, passed: rooms.filter(room => room.passed).length,
     nativeIdentitiesUnchanged: report.nativeIdentitiesUnchanged, restoration: report.restoration,
     performance: eventPerformance(events.filter(record => rooms.some(room => room.id === record.room))), rooms,
-    host: {samples: monitor.length, cpuBusyPercent: distribution(monitor.map(row => row.cpu_busy_percent)),
-      maximumSensorCelsius: distribution(monitor.map(row => Math.max(...Object.values(row.temperatures_celsius)))),
-      minimumAvailableMemoryGiB: monitor.length ? Math.min(...monitor.map(row => row.available_memory_kib)) / 1048576 : null,
-      packageThrottleDelta: counters.length ? counters.at(-1) - counters[0] : null}};
+    host: hostSummary(monitor, report.started, report.finished, report.hostMonitor?.error || null)};
 }
 
-module.exports = {summarize};
+module.exports = {summarize, hostSummary};
 if (require.main === module) {
   const report = summarize(process.argv[2], process.argv[3]);
   process.stdout.write(JSON.stringify(report, null, 2) + '\n');

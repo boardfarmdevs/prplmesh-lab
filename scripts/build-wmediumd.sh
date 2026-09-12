@@ -33,6 +33,7 @@ PATCHES=(
     0023-wmediumd-independent-reverse-ack.patch
     0024-wmediumd-observer-surveys-and-spatial-reuse.patch
     0025-wmediumd-preserve-confirmed-client-departures.patch
+    0026-wmediumd-fill-spatial-reservation-gaps.patch
 )
 
 case "${1:-}" in

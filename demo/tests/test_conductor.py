@@ -12,6 +12,7 @@ if sys.version_info < (3, 9):
     raise unittest.SkipTest("optimizer runtime requires Python 3.9 or newer")
 
 from optimizer.model import CandidateObservation, ClientObservation, MeshHealth, Snapshot
+from optimizer.candidates import CandidateMetricsUnavailable
 from optimizer.policy import Decision, Evaluation, PolicyConfig, ThresholdPolicy
 from optimizer.state import ClientPolicyState, PolicyState
 from room_demo.conductor import (
@@ -21,6 +22,29 @@ from room_demo.events import EventStore
 
 
 class ConductorProjectionTests(unittest.TestCase):
+    def test_unavailable_topology_keeps_observation_workers_alive_without_publishing_old_data(self):
+        for worker, method in (("network", "observe_topology"), ("network-metrics", "metrics_for")):
+            with self.subTest(worker=worker):
+                conductor, store = self._conductor()
+                conductor.interactive = True
+                conductor._network_clients = (Mock(),)
+                observer = Mock()
+                operation = getattr(observer, method)
+                operation.side_effect = [CandidateMetricsUnavailable("native topology unavailable"), Mock()]
+                observer.last_raw = {"topology": {}}
+                with patch("room_demo.conductor.PrplMeshObserver", return_value=observer), \
+                     patch.object(conductor, "_wait_for_run", return_value=True), \
+                     patch.object(conductor, "_active", return_value=True), \
+                     patch.object(conductor, "_sleep", side_effect=[False, True]), \
+                     patch.object(conductor, "_merge_network_metrics"), \
+                     patch.object(conductor, "_network_payload", return_value={"clients": []}) as project:
+                    conductor._run_worker(worker, getattr(conductor, "_" + worker.replace("-", "_") + "_worker"))
+                self.assertEqual(conductor.errors, [])
+                self.assertEqual(operation.call_count, 2)
+                self.assertEqual(project.call_count, int(worker == "network"))
+                self.assertEqual(len(conductor.warnings), 1)
+                self.assertFalse(store.current()["latest"]["worker.error"]["payload"]["fatal"])
+
     def test_full_verification_queue_never_marks_unsent_clients_pending(self):
         conductor, store = self._conductor()
         conductor.interactive = True

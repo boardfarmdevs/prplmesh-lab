@@ -28,6 +28,15 @@ def _band(value: str | None) -> str | None:
     return normalize_band(value.replace(" ", "") if value else value)
 
 
+def _rcpi(value: Any) -> int | None:
+    if isinstance(value, str):
+        try:
+            value = int(value)
+        except ValueError:
+            return None
+    return value if type(value) is int and 0 <= value <= 220 else None
+
+
 def _fetch(url: str) -> dict[str, Any]:
     with urlopen(url, timeout=5) as response:  # nosec: operator lab endpoint
         return json.load(response)
@@ -134,7 +143,9 @@ class PrplMeshObserver:
             try:
                 topology = self.fetcher(f"{self.base_url}/api/topology")
             except OSError as error:
-                raise CandidateMetricsUnavailable("prplMesh topology collection failed") from error
+                raise CandidateMetricsUnavailable(
+                    f"prplMesh topology collection failed: {type(error).__name__}: {error}"
+                ) from error
             devices, bsses, raw_clients = _flatten(topology)
             identities = [normalize_mac(client["id"]) for client in raw_clients]
             if len(identities) == len(set(identities)):
@@ -148,7 +159,7 @@ class PrplMeshObserver:
         sampled_at = topology.get("generated_at") or format_time(self.clock())
         clients: list[ClientObservation] = []
         for item in raw_clients:
-            rcpi_value = int(item.get("signal_raw") or 0)
+            rcpi_value = _rcpi(item.get("signal_raw"))
             metric_time = item.get("signal_updated_at")
             clients.append(
                 ClientObservation(
@@ -156,7 +167,7 @@ class PrplMeshObserver:
                     connected_device_id=item["device_id"],
                     connected_device_name=item["device_name"],
                     connected_bssid=item["bssid"],
-                    rcpi=rcpi_value if rcpi_value > 0 else None,
+                    rcpi=rcpi_value,
                     association_uptime_seconds=int(
                         item.get("last_connect_seconds") or 0
                     ),
@@ -353,8 +364,8 @@ class PrplMeshCandidateProvider:
                 continue
             mac = item.get("MACAddress")
             timestamp = item.get("X_PRPLWARE-COM_TimeStamp")
-            signal = int(item.get("SignalStrength") or 0)
-            if mac and timestamp and not str(timestamp).startswith("0001-") and signal > 0:
+            signal = _rcpi(item.get("SignalStrength"))
+            if mac and timestamp and not str(timestamp).startswith("0001-") and signal is not None:
                 result[normalize_mac(mac)] = (signal, str(timestamp))
         return result
 

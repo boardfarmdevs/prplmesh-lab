@@ -1,6 +1,6 @@
 'use strict';
 const assert = require('node:assert/strict');
-const {expectedFrame, evaluate, distribution, eventPerformance, viewAgreement} = require('./room-feature-acceptance.js');
+const {expectedFrame, evaluate, distribution, eventPerformance, viewAgreement, recordedEventKind} = require('./room-feature-acceptance.js');
 const now = Date.now();
 const timestamp = new Date(now).toISOString();
 const world = {roles: {client: 'station'}, generations: [
@@ -82,6 +82,24 @@ assert.equal(overlapping.collectionOperationMs.timestamp_resolution_wait.p50, 75
 assert.equal(overlapping.nativeBusyRejections, 1);
 assert.equal(overlapping.nativeBusyReadmissions, 1);
 assert.equal(overlapping.nativeResponseTimeouts, 1);
+const incomplete = eventPerformance([
+  {event: {kind: 'optimizer.collection', payload: {phase: 'completed', unavailable: 'prplMesh candidate metrics incomplete after 30s'}}},
+  {event: {kind: 'optimizer.collection', payload: {phase: 'completed', unavailable: 'collection_superseded'}}},
+]);
+assert.equal(incomplete.candidateUnavailableCollections, 1);
+assert.equal(incomplete.candidateCancelledCollections, 1);
+assert.equal(recordedEventKind('optimizer.verification.discarded'), true);
+assert.equal(recordedEventKind('optimizer.verification'), true);
+assert.equal(recordedEventKind('network.snapshot'), false);
+const discarded = eventPerformance([
+  {event: {kind: 'optimizer.action', payload: {phase: 'submitted', action_id: 'old-world'}}},
+  {event: {kind: 'optimizer.action', payload: {phase: 'submitted', action_id: 'unmatched'}}},
+  {event: {kind: 'optimizer.verification.discarded', payload: {action_id: 'old-world', success: false}}},
+]);
+assert.equal(discarded.discardedVerifications, 1);
+assert.equal(discarded.unmatchedSubmittedActions, 1);
+assert.equal(discarded.failedVerifications, 0);
+assert.equal(discarded.verifiedActions, 0);
 const matching = {viewMatchesRoom: true, viewMatchesModel: true, duplicates: false};
 assert.equal(viewAgreement([{...matching, monoMs: 0, viewMatchesRoom: false}, {...matching, monoMs: 6000}]).passed, true);
 assert.equal(viewAgreement(Array.from({length: 7}, (_, index) => ({...matching, monoMs: index * 1000, viewMatchesRoom: false}))).passed, false);

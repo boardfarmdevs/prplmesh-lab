@@ -117,7 +117,7 @@ def test_ambiguous_ownership_and_transport_failure_are_unavailable(monkeypatch):
         raise OSError("temporary adapter interruption")
 
     observer = PrplMeshObserver(fetcher=unavailable, clock=lambda: NOW)
-    with pytest.raises(CandidateMetricsUnavailable, match="collection failed"):
+    with pytest.raises(CandidateMetricsUnavailable, match="collection failed: OSError: temporary adapter interruption"):
         observer.observe()
 
 
@@ -157,6 +157,42 @@ def test_bulk_radio_read_uses_one_native_query_without_cross_radio_leakage(monke
     assert calls[0][2]["rel_path"] == "Device.*.Radio.*.UnassociatedSTA."
     assert result[radios[0]]["02:00:00:10:01:00"][0] == 100
     assert result[radios[1]]["02:00:00:10:01:00"][0] == 101
+
+
+@pytest.mark.parametrize("signal", [0, 1, 220, "0"])
+def test_fresh_candidate_includes_valid_rcpi_endpoints(signal):
+    values = {"Radio.1.UnassociatedSTA.1.": {
+        "MACAddress": "02:00:00:10:01:00", "SignalStrength": signal,
+        "X_PRPLWARE-COM_TimeStamp": STAMP,
+    }}
+    assert PrplMeshCandidateProvider._parse_radio_metrics(values) == {
+        "02:00:00:10:01:00": (int(signal), STAMP),
+    }
+
+
+@pytest.mark.parametrize("signal", [None, "", "invalid", -1, 221, 255, True, 0.5])
+def test_candidate_rejects_missing_reserved_or_malformed_rcpi(signal):
+    values = {"Radio.1.UnassociatedSTA.1.": {
+        "MACAddress": "02:00:00:10:01:00", "SignalStrength": signal,
+        "X_PRPLWARE-COM_TimeStamp": STAMP,
+    }}
+    assert PrplMeshCandidateProvider._parse_radio_metrics(values) == {}
+
+
+@pytest.mark.parametrize("timestamp", [None, "0001-01-01T00:00:00Z"])
+def test_zero_candidate_without_native_timestamp_is_not_a_measurement(timestamp):
+    values = {"Radio.1.UnassociatedSTA.1.": {
+        "MACAddress": "02:00:00:10:01:00", "SignalStrength": 0,
+        "X_PRPLWARE-COM_TimeStamp": timestamp,
+    }}
+    assert PrplMeshCandidateProvider._parse_radio_metrics(values) == {}
+
+
+def test_serving_zero_rcpi_is_weak_not_missing():
+    topology = _topology()
+    topology["devices"][0]["radios"][0]["bsses"][0]["clients"][0]["signal_raw"] = 0
+    observer = PrplMeshObserver(fetcher=lambda url: topology, clock=lambda: NOW)
+    assert observer.observe().clients[0].rcpi == 0
 
 
 class _Provider(PrplMeshCandidateProvider):
@@ -308,6 +344,24 @@ def test_candidate_provider_rejects_cached_metrics_after_update():
     observer = PrplMeshObserver(fetcher=lambda url: _topology(),
                                 candidate_provider=provider, clock=lambda: NOW)
     with pytest.raises(CandidateMetricsError, match="incomplete"):
+        observer.observe()
+
+
+def test_zero_candidate_completes_only_after_native_timestamp_advances():
+    provider = _Provider()
+    def read(radio):
+        updated = any(method == "UpdateUnassociatedStationsStats" for _, method, _ in provider.calls)
+        return provider._parse_radio_metrics({radio + ".UnassociatedSTA.1.": {
+            "MACAddress": "02:00:00:10:01:00", "SignalStrength": 0,
+            "X_PRPLWARE-COM_TimeStamp": STAMP if updated else METRIC_STAMP,
+        }})
+    provider._radio_metrics = read
+    observer = PrplMeshObserver(fetcher=lambda url: _topology(), candidate_provider=provider, clock=lambda: NOW)
+    assert observer.observe().candidates[0].rcpi == 0
+    assert provider.last_raw[-1]["operation"] == "complete"
+    provider.calls.clear()
+    provider._radio_metrics = lambda radio: {"02:00:00:10:01:00": (0, METRIC_STAMP)}
+    with pytest.raises(CandidateMetricsUnavailable, match="incomplete"):
         observer.observe()
 
 

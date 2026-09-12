@@ -80,6 +80,24 @@ def net_command(pid, *arguments, **options):
     return command("nsenter", "-t", str(pid), "-n", *arguments, **options)
 
 
+def diagnostic_sample(processes, nodes, client_nodes, radios, station_macs, console_port, instance, generation):
+    sample = {"sampled_at": time.time()}
+    sample["clients"] = {node: net_command(processes[node], "iw", "dev", "wlan0", "station", "dump")
+                         for node in client_nodes}
+    sample["aps"] = {node: net_command(processes[node], "iw", "dev", radio["interface"],
+                                      "station", "get", station_mac)
+                     for node, radio, station_mac in zip(nodes, radios, station_macs)}
+    sample["tcp"] = {node: net_command(processes[node], "ss", "-tin", "dport = :55203")
+                     for node in client_nodes}
+    with urllib.request.urlopen(f"http://127.0.0.1:{console_port}/api/v1/snapshot", timeout=3) as response:
+        medium = json.load(response)
+    sample["medium"] = {key: medium.get(key) for key in (
+        "captured_at", "daemon", "packet_metrics", "radio_frequencies")}
+    sample["medium_current"] = (medium.get("daemon", {}).get("instance_id") == instance
+                                and medium.get("daemon", {}).get("generation") == generation)
+    return sample
+
+
 def registered_radio(node, interface, registered):
     info = command("lxc", "exec", node, "--", "iw", "dev", interface, "info")
     phy = re.search(r"\bwiphy (\d+)", info)
@@ -115,6 +133,8 @@ def main(argv=None):
     parser.add_argument("--stack", choices=("rdk", "prplmesh"), required=True)
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--seconds", type=int, default=12)
+    parser.add_argument("--diagnostics", action="store_true")
+    parser.add_argument("--daemon", type=Path)
     parser.add_argument("--yes-change-lab", action="store_true")
     args = parser.parse_args(argv)
     if os.geteuid() or not args.yes_change_lab or not 8 <= args.seconds <= 20:
@@ -137,7 +157,7 @@ def main(argv=None):
     bridge = "wmdcfg-survey-bridge"
     command("systemctl", "is-active", "--quiet", room, bridge)
     command("iperf3", "--version")
-    medium = MediumRestarter(args.stack)
+    medium = MediumRestarter(args.stack, args.daemon.resolve() if args.daemon else None)
     if "-F" in medium.original_args or "-S" in medium.original_args:
         raise RuntimeError("qualification requires the normal global survey-enabled profile")
     registered = {item[field] for item in medium.links + medium.frequencies for field in ("source", "destination")}
@@ -165,9 +185,11 @@ def main(argv=None):
     args.output.mkdir(parents=True, exist_ok=False)
     report = {"stack": args.stack, "seconds_per_trial": args.seconds, "started_at": time.time(),
               "driver_sha256": hashlib.sha256(Path(__file__).read_bytes()).hexdigest(),
-              "medium_sha256": hashlib.sha256(Path(medium.original_args[0]).read_bytes()).hexdigest(),
+              "medium_sha256": hashlib.sha256(Path(medium.args[0]).read_bytes()).hexdigest(),
+              "original_medium_sha256": hashlib.sha256(Path(medium.original_args[0]).read_bytes()).hexdigest(),
               "scope": "legacy20 conservative reservations, not hidden-node collisions or calibrated capacity",
               "physical_capacity_qualified": False, "interference_model_qualified": False,
+              "diagnostics_enabled": args.diagnostics,
               "trials": [], "radios": radios, "clients": clients, "station_macs": station_macs,
               "original_associations": originals, "traffic_targets": targets}
     cleanup = []
@@ -228,7 +250,9 @@ def main(argv=None):
             medium.restart(args.output, [] if mode == "global" else ["-F"])
             updates = fixture_links(radios, clients, hidden=mode == "hidden_receiver")
             with ControlClient(medium.socket) as control:
-                control.apply_frequency(control.status().generation + 1, updates)
+                status = control.status()
+                generation = status.generation + 1
+                control.apply_frequency(generation, updates)
                 readback = all(control.get_frequency_link(item["source"], item["destination"],
                                item["frequency_mhz"])[1] == item["value"] for item in updates)
             command("systemctl", "start", bridge)
@@ -239,6 +263,9 @@ def main(argv=None):
                 raise RuntimeError("clients did not reach the two intended APs")
             logs = []
             try:
+                diagnostic_log = (args.output / f"{trial_index}-diagnostics.jsonl").open("w") if args.diagnostics else None
+                if diagnostic_log is not None:
+                    logs.append(diagnostic_log)
                 for index, node in enumerate(nodes[:2]):
                     output = (args.output / f"{trial_index}-server-{index}.json").open("w")
                     logs.append(output)
@@ -254,12 +281,21 @@ def main(argv=None):
                         "-p", "55203", "-t", str(args.seconds), "-O", "1", "-J", "--connect-timeout", "3000"],
                         stdin=subprocess.DEVNULL, stdout=output, stderr=subprocess.STDOUT))
                 samples = []
+                diagnostics = []
+                next_diagnostic = 0
                 contexts = [(radio["radio"], radio["frequency"]) for radio in radios[:2]]
                 deadline = time.monotonic() + args.seconds + 15
                 with ControlClient(medium.socket) as control:
                     while any(process.poll() is None for process in traffic) and time.monotonic() < deadline:
                         surveys = control.get_observer_surveys(contexts)
                         samples.append({str(key): value for key, value in surveys.items()})
+                        if args.diagnostics and time.monotonic() >= next_diagnostic:
+                            detail = diagnostic_sample(processes, nodes[:2], client_nodes, radios[:2], station_macs,
+                                                       8890 if rdk else 8090, status.instance_id, generation)
+                            diagnostics.append(detail)
+                            diagnostic_log.write(json.dumps(detail) + "\n")
+                            diagnostic_log.flush()
+                            next_diagnostic = time.monotonic() + 1
                         time.sleep(.5)
                 for process in traffic + servers:
                     if process.wait(timeout=5) != 0:
@@ -274,12 +310,15 @@ def main(argv=None):
             received = [json.loads((args.output / f"{trial_index}-client-{index}.json").read_text())
                         ["end"]["sum_received"]["bits_per_second"] for index in range(2)]
             trial = {"mode": mode, "received_bps": received, "aggregate_bps": sum(received),
+                     "instance_id": status.instance_id, "generation": generation,
                      "same_associations": before == current_identities() == expected, "rf_readback": readback,
                      "survey_valid": all(any((sample[str(context)]["flags"] & 1) and
                          sample[str(context)]["busy_us"] > 0 and sample[str(context)]["overruns"] == 0
-                         for sample in samples) for context in contexts), "surveys": samples}
+                         for sample in samples) for context in contexts), "surveys": samples,
+                     "diagnostics": diagnostics}
             report["trials"].append(trial)
-            print(json.dumps({key: value for key, value in trial.items() if key != "surveys"}), flush=True)
+            print(json.dumps({key: value for key, value in trial.items()
+                              if key not in ("surveys", "diagnostics")}), flush=True)
         report["comparison"] = compare_trials(report["trials"])
     except BaseException as error:
         report["error"] = f"{type(error).__name__}: {error}"

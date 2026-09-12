@@ -748,7 +748,7 @@ class LiveConductor:
                     clients = self._network_clients
                 if clients:
                     observer.metrics_for(clients)
-            except (OSError, ValueError, KeyError) as error:
+            except (CandidateMetricsUnavailable, OSError, ValueError, KeyError) as error:
                 self._record_error("network-metrics", error, fatal=False)
             cadence = 0.25 if self.profiling else 3
             if self._sleep(max(0.05, cadence - (time.monotonic() - started))):
@@ -800,11 +800,7 @@ class LiveConductor:
                     "network.snapshot", self._time(), payload,
                     producer="network",
                 )
-            except (OSError, ValueError, KeyError) as error:
-                # The RDK libemcli adapter serializes its native command path.
-                # A passive GET can time out while the bounded candidate
-                # transaction owns that path; the next sample and the final
-                # authoritative health gate decide whether this was transient.
+            except (CandidateMetricsUnavailable, OSError, ValueError, KeyError) as error:
                 self._record_error("network", error, fatal=False)
             cadence = 0.25 if self.profiling else 1
             if self._sleep(max(0.05, cadence - (time.monotonic() - started)) if self.interactive else 2):

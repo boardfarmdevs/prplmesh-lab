@@ -1,0 +1,62 @@
+'use strict';
+const fs = require('node:fs');
+const path = require('node:path');
+const {spawn} = require('node:child_process');
+const {createInterface} = require('node:readline');
+
+class HostMonitor {
+  constructor(child, filename) {
+    this.child = child;
+    this.samples = 0;
+    this.error = null;
+    this.stopping = false;
+    const descriptor = fs.openSync(filename, 'wx');
+    this.ready = new Promise((resolve, reject) => {
+      const timeout = setTimeout(() => reject(new Error('Host sampler did not produce two samples')), 10000);
+      const lines = createInterface({input: child.stdout});
+      lines.on('line', line => {
+        try {
+          const sample = JSON.parse(line);
+          if (!Number.isFinite(Date.parse(sample.time))) throw new Error('Invalid host sample timestamp');
+          fs.writeSync(descriptor, line + '\n');
+          this.samples++;
+          if (this.samples >= 2) { clearTimeout(timeout); resolve(); }
+        } catch (error) { this.error = error.message; clearTimeout(timeout); reject(error); }
+      });
+      child.once('error', error => { this.error = error.message; clearTimeout(timeout); reject(error); });
+      this.exited = new Promise(done => child.once('close', code => {
+        fs.closeSync(descriptor);
+        clearTimeout(timeout);
+        if (!this.stopping || code !== 0) this.error ||= 'Host sampler exited unexpectedly: ' + code;
+        if (this.samples < 2) reject(new Error(this.error || 'Host sampler ended before readiness'));
+        done();
+      }));
+    });
+    child.stderr.on('data', chunk => { this.error = String(chunk).trim(); });
+    child.stdin.on('error', error => { this.error ||= error.message; });
+  }
+
+  async stop() {
+    this.stopping = true;
+    this.child.stdin.end();
+    const timeout = setTimeout(() => {
+      this.error ||= 'Host sampler did not stop after stdin closed';
+      this.child.kill('SIGKILL');
+    }, 5000);
+    try { await this.exited; } finally { clearTimeout(timeout); }
+    return {samples: this.samples, error: this.error, stopped: true};
+  }
+}
+
+async function startHostMonitor(host, directory) {
+  const filename = path.join(directory, 'host-monitor.jsonl');
+  if (fs.existsSync(filename)) throw new Error('Refusing to overwrite host samples');
+  const source = fs.readFileSync(path.join(__dirname, 'room-feature-host-monitor.py'), 'utf8');
+  const quote = value => "'" + value.replaceAll("'", "'\\''") + "'";
+  const child = spawn('ssh', ['--', host, 'python3 -u -c ' + quote(source) + ' --interval 2 --watch-stdin']);
+  const monitor = new HostMonitor(child, filename);
+  try { await monitor.ready; return monitor; }
+  catch (error) { await monitor.stop(); throw error; }
+}
+
+module.exports = {HostMonitor, startHostMonitor};

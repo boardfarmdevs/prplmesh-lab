@@ -6,6 +6,7 @@ const {performance} = require('node:perf_hooks');
 const {execFile} = require('node:child_process');
 const {promisify} = require('node:util');
 const execFileAsync = promisify(execFile);
+const {startHostMonitor} = require('./room-host-monitor.js');
 const pause = milliseconds => new Promise(resolve => setTimeout(resolve, milliseconds));
 const lower = value => String(value || '').toLowerCase();
 const same = (left, right) => JSON.stringify(left) === JSON.stringify(right);
@@ -98,9 +99,16 @@ function distribution(values) {
   return {count: ordered.length, p50: percentile(0.5), p95: percentile(0.95), max: ordered.at(-1) ?? null};
 }
 
+function recordedEventKind(kind) {
+  return /^(optimizer\.(action|verification(?:\.discarded)?|collection)|rf\.generation\.applied|playback\.rf\.applied|interaction\.playback\.(paused|completed)|worker\.error|room\.world\.committed)$/.test(kind);
+}
+
 function eventPerformance(records) {
   const payloads = kind => records.filter(record => record.event.kind === kind).map(record => record.event.payload);
   const verifications = payloads('optimizer.verification');
+  const discarded = payloads('optimizer.verification.discarded');
+  const submitted = payloads('optimizer.action').filter(payload => payload.phase === 'submitted');
+  const completedActions = new Set([...verifications, ...discarded].map(payload => payload.action_id).filter(Boolean));
   const collections = payloads('optimizer.collection');
   const completed = collections.filter(payload => payload.phase === 'completed');
   const transactions = completed.flatMap(payload => payload.transactions || []);
@@ -122,7 +130,9 @@ function eventPerformance(records) {
   return {
     verifiedActions: verifications.filter(payload => payload.success).length,
     failedVerifications: verifications.filter(payload => !payload.success).length,
-    submittedActions: payloads('optimizer.action').filter(payload => payload.phase === 'submitted').length,
+    submittedActions: submitted.length,
+    discardedVerifications: discarded.length,
+    unmatchedSubmittedActions: submitted.filter(payload => !payload.action_id || !completedActions.has(payload.action_id)).length,
     verificationSeconds: distribution(verifications.filter(payload => payload.success).map(payload => payload.elapsed_seconds)),
     requestToVerificationSeconds: distribution(requestToVerification),
     submissionSeconds: distribution(submission),
@@ -130,6 +140,8 @@ function eventPerformance(records) {
     candidateTransactionMs: distribution(completed.flatMap(payload => (payload.transactions || []).map(transaction => transaction.elapsed_ms))),
     candidatePublicationWaitMs: distribution(collections.filter(payload => payload.phase === 'published').map(payload => payload.publication_wait_ms)),
     candidateFailures: completed.filter(payload => payload.unavailable).map(payload => payload.unavailable),
+    candidateUnavailableCollections: completed.filter(payload => payload.unavailable && payload.unavailable !== 'collection_superseded').length,
+    candidateCancelledCollections: completed.filter(payload => payload.unavailable === 'collection_superseded').length,
     collectionOperationMs: Object.fromEntries(operations.map(operation => [operation,
       distribution(transactions.filter(transaction => (transaction.operation || 'candidate_query') === operation).map(transaction => transaction.elapsed_ms))])),
     nativeBusyRejections: transactions.filter(transaction => transaction.error?.includes('Error_Prev_Cmd_In_Progress')).length,
@@ -221,6 +233,7 @@ async function run(args) {
   let eventSequence = 0;
   let stopped = false;
   let eventAbort;
+  let hostMonitor;
   const selectedEvents = [];
   const eventOutput = fs.createWriteStream(path.join(directory, 'events.jsonl'), {flags: 'a'});
   for (const page of [room, topology]) page.on('pageerror', error => report.errors.push({room: activeRoom?.id, phase, message: error.message}));
@@ -262,7 +275,7 @@ async function run(args) {
             }
             if (event.sequence <= eventSequence) continue;
             eventSequence = event.sequence;
-            if (!/^(optimizer\.(action|verification|collection)|rf\.generation\.applied|playback\.rf\.applied|interaction\.playback\.(paused|completed)|worker\.error|room\.world\.committed)$/.test(event.kind)) continue;
+            if (!recordedEventKind(event.kind)) continue;
             const record = {room: activeRoom?.id, phase, receivedMonoMs: performance.now(), event};
             selectedEvents.push(record);
             if (!eventOutput.write(JSON.stringify(record) + '\n')) await new Promise(resolve => eventOutput.once('drain', resolve));
@@ -441,6 +454,7 @@ async function run(args) {
     delete result.samples;
   }
   try {
+    hostMonitor = await startHostMonitor(args.host, directory);
     const initial = await request('/api/demo/interactions');
     if (initial.lease?.held || initial.recording?.active) throw new Error('Refusing to steal a control lease or interrupt recording');
     report.before = await guest('identity', args.flavor);
@@ -557,6 +571,7 @@ async function run(args) {
     stopped = true; eventAbort?.abort();
     if (eventTask) await eventTask;
     eventOutput.end();
+    if (hostMonitor) report.hostMonitor = await hostMonitor.stop();
     report.finished = new Date().toISOString();
     report.passed = !report.failure && report.rooms.length > 0 && report.rooms.every(result => result.passed) &&
       report.nativeIdentitiesUnchanged && report.restoration?.convergence?.passed && !report.errors.length && !report.eventGaps.length;
@@ -567,6 +582,6 @@ async function run(args) {
   return report;
 }
 
-module.exports = {expectedFrame, evaluate, distribution, eventPerformance, viewAgreement};
+module.exports = {expectedFrame, evaluate, distribution, eventPerformance, viewAgreement, recordedEventKind};
 if (require.main === module) run(argumentsFrom(process.argv.slice(2))).then(report => { process.exitCode = report.passed ? 0 : 1; })
   .catch(error => { console.error(error); process.exitCode = 2; });

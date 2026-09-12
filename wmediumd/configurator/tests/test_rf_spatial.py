@@ -1,10 +1,33 @@
+import io
+import json
 import unittest
 from unittest.mock import patch
 
-from wmdcfg.rf_spatial import compare_trials, fixture_links, private_radio, registered_radio, roam_client
+from wmdcfg.rf_spatial import compare_trials, diagnostic_sample, fixture_links, private_radio, registered_radio, roam_client
 
 
 class SpatialQualificationTests(unittest.TestCase):
+    def test_diagnostics_read_native_rates_and_keep_console_capture_identity(self):
+        snapshot = {"captured_at": "2026-09-12T00:00:00Z", "daemon": {"instance_id": "native", "generation": 3},
+                    "packet_metrics": {"summary": {"queue_depth": 5}}, "radio_frequencies": []}
+        with patch("wmdcfg.rf_spatial.net_command", return_value="tx bitrate: 13 MBit/s") as native, \
+                patch("wmdcfg.rf_spatial.urllib.request.urlopen", return_value=io.StringIO(json.dumps(snapshot))) as console:
+            sample = diagnostic_sample({"ap": 10, "client": 20}, ["ap"], ["client"],
+                                       [{"interface": "wlan0"}], ["02:00:00:00:01:00"], 8090, "native", 3)
+        self.assertEqual(sample["clients"]["client"], "tx bitrate: 13 MBit/s")
+        self.assertEqual(sample["medium"], snapshot)
+        self.assertTrue(sample["medium_current"])
+        self.assertEqual(native.call_count, 3)
+        console.assert_called_once_with("http://127.0.0.1:8090/api/v1/snapshot", timeout=3)
+        native.assert_any_call(20, "ss", "-tin", "dport = :55203")
+        for instance, generation in (("old", 3), ("native", 2)):
+            with self.subTest(instance=instance, generation=generation), \
+                    patch("wmdcfg.rf_spatial.net_command", return_value=""), \
+                    patch("wmdcfg.rf_spatial.urllib.request.urlopen", return_value=io.StringIO(json.dumps(snapshot))):
+                stale = diagnostic_sample({"ap": 10, "client": 20}, ["ap"], ["client"],
+                                          [{"interface": "wlan0"}], ["02:00:00:00:01:00"], 8090, instance, generation)
+                self.assertFalse(stale["medium_current"])
+
     def test_private_radio_does_not_select_a_backhaul_or_another_band(self):
         text = """phy#1
     Interface backhaul

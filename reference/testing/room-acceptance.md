@@ -17,10 +17,10 @@ or intrinsic stack-speed ranking. A targeted `--world` run is not full coverage.
    `tests/room-feature-rf-audit.py` into the guest's `/tmp/`, keeping names.
 4. Use an installed Playwright/Chromium and preferably a separate observer.
    If colocated, restrict only owned browser GPU threads with `--observer-cpus`,
-   using valid CPU IDs. Record host CPU/pressure/temperature/throttle counters
-   with `tests/room-feature-host-monitor.py` before, during and after.
-   Keep it in a foreground session or managed service; verify two samples before
-   starting. A background child of a short-lived command may not survive it.
+   using valid CPU IDs. The harness owns an SSH host sampler, requires two
+   samples before lab mutation and retains it through restoration. Samples
+   include CPU/pressure, RAM, temperature and available throttle counters.
+   Its stdin closes on shutdown; sampler failure invalidates host coverage.
 5. The room's default 100-action cap is session-wide. A complete catalog may
    exceed it. Save the unit and, if needed, create a **named temporary runtime**
    drop-in under `/run/systemd/system/` that copies the original `ExecStart`
@@ -37,15 +37,15 @@ Keep failures and incomplete runs in separate evidence directories.
 | Phase | Required observation |
 | --- | --- |
 | Load | Browser selection auto-applies correct world/epoch, resets overrides and commits verified RF |
-| Initial settling | Within 90 s after readiness: exact roster, no duplicate MACs, six mesh roles, matching physical/native/rendered ownership |
+| Initial settling | Within 60 s after readiness: exact roster, no duplicate MACs, six mesh roles, matching physical/native/rendered ownership |
 | Freshness | Current-epoch complete candidate coverage; evaluation and serving metrics at most 30 s old |
 | Policy convergence | Complete fresh evaluation satisfies the configured steering margins; this is the pass gate |
 | Strongest AP diagnostic | Report stronger same-band candidates and RCPI gaps separately; do not force margin-only roams |
 | Stable gate | All required checks hold continuously for five seconds |
 | Play | Real browser Play at 1×; monotonic clock, golden positions/presence, actual SVG nodes/parents |
 | During motion | Record transient divergence; flag sustained view mismatch over five seconds only with adequate samples |
-| Checkpoints | Allow 60 s per explicit pause, then resume on pass or timeout so later segments still run |
-| End | Allow 120 s after completion for the same stable gate |
+| Checkpoints | Allow 45 s per explicit pause, then resume on pass or timeout so later segments still run |
+| End | Allow 90 s after completion for the same stable gate |
 | Integrity | Native/container/medium identities unchanged; no hidden RF assistance, faults, SSE gaps or browser errors |
 | Cleanup | Default twenty-client world, paused, no lease/fault; original service/action cap restored |
 
@@ -81,7 +81,8 @@ node tests/room-feature-acceptance.js --yes-act --flavor prpl \
   --room-url http://192.168.2.150:18891/ \
   --topology-url http://192.168.2.150:8091/ \
   --worlds /absolute/path/to/deployed-goldens \
-  --output /absolute/path/to/new-results --native-audits 1
+  --output /absolute/path/to/new-results --native-audits 1 \
+  --initial-timeout 60 --checkpoint-timeout 45 --final-timeout 90
 node tests/room-feature-report.js /absolute/path/to/new-results \
   /absolute/path/to/deployed-goldens > audited-summary.json
 ```
@@ -110,196 +111,156 @@ process and must be scheduled, not silently included in a normal room pass.
 
 ## Current qualification
 
-September 11, 2026, canonical `codex/0908-clean`: RDK on rev140,
-prpl on rev150. This is one pass through each advertised room, including Play,
-fullscreen room/topology inspection, roster/presence transitions, RF readback,
-native owner agreement and final policy convergence—not a soak or a
-hardware-speed comparison. Test bounds are initial **60 s**, checkpoint
-**45 s**, final **90 s**, with a five-second stable hold. Steering margins,
-native reporting intervals and lab resources are unchanged. The temporary
-2000-action qualification cap is restored to the normal 100 afterward.
+September 12, 2026 UTC (September 11 Pacific), `codex/0908-clean` worktrees:
+RDK on rev140 and prpl on rev150. Both pass **14/14 complete room gates**:
+load, initial/checkpoint/final policy convergence, Play, fullscreen room and
+topology inspection, roster/presence, directional RF readback and
+physical/native/rendered ownership. Final catalogs have no native/container/
+medium identity changes, browser errors, SSE gaps or worker errors.
+
+Bounds remain **60/45/90 seconds**, plus the **five-second stable hold**.
+Steering margins, native reporting intervals and VM resources are unchanged.
+The qualification-only 2000-action cap is restored to 100. These are bounded
+feature tests, not a soak or an intrinsic stack-speed comparison.
 
 ### RDK results
 
-The rev140 retest, **September 11 23:33–September 12 00:01 UTC**, passes
-**14/14 complete room gates**: every initial, checkpoint and final gate, Play,
-scene/roster checks, physical presence and native/rendered owner agreement.
-Native/container/medium identities remain unchanged; no SSE gaps or browser
-errors occur. This supersedes earlier diagnostic results.
+**01:41:59–02:09:55 UTC: 14/14 rooms; 151/151 submitted moves verified**.
+There are zero failed verifications, unavailable candidate collections,
+native HTTP 504s or busy-admission rejections. Nineteen superseded collections
+are cancellations, not measurement failures.
 
-The deployed worktree includes native patches through **0184**, Wi-Fi HAL
-through **0038**, wmediumd through **0024**, and the corrected room action queue.
-Ordinary cold reconstruction also passes 20 clients, five physical mesh nodes
-and all native metrics in **527.07 s**. No native services restart during the
-catalog run. Six logical mesh roles remain visible in both views.
+Request-to-verification p50/p95/max: **2.181/4.786/6.211 s**.
+Submission p50/p95: **56/69 ms**; candidate transaction: **521/655 ms**;
+publication wait: **86/133 ms**; RF application: **9.1/27.1 ms**.
+These measure distinct boundaries, not instantaneous RF-to-screen latency.
 
-| Room | Overall | Initial / final first policy convergence, seconds |
-| --- | --- | --- |
-| `home-a-stationary` | Pass | <0.02 / <0.02 |
-| `home-a-one-client-handover` | Pass | 15.15 / 15.19 |
-| `large-room-extender-evacuation` | Pass | 34.37 / 23.25 |
-| `large-room-perimeter-counter-roam` | Pass | 32.37 / 7.09 |
-| `home-a-asymmetric-link` | Pass | 18.21 / 8.09 |
-| `home-a-band-walk-small` | Pass | 24.29 / 10.15 |
-| `home-a-border-hover` | Pass | 24.29 / 21.29 |
-| `home-a-disappear-reappear` | Pass | 20.25 / 7.09 |
-| `home-a-extender-loss-recovery` | Pass | 8.08 / <0.02 |
-| `home-a-fast-transit` | Pass | 19.19 / 14.17 |
-| `home-a-flash-crowd` | Pass | 8.09 / <0.02 |
-| `home-a-private-client-room-walk` | Pass | 33.45 / <0.02 |
-| `home-a-slow-walk-ten` | Pass | 25.35 / 11.15 |
-| `home-b-slow-walk-ten` | Pass | 33.49 / 12.16 |
-
-These are first-convergence times; passing also requires the unchanged
-five-second continuous hold. **153/153 submitted actions verify**, with no
-failed verifications. Request-to-verification p50/p95/max is
-**2.274/5.385/6.610 s**. Submission p50/p95 is **59/74 ms**; candidate
-transaction p50/p95 is **509/654 ms**; publication wait p50/p95 is
-**84/132 ms**. RF apply p50/p95 is **9.4/27.4 ms**.
-
-The fixes cover four boundaries:
-
-- **Presence and management delivery:** capability updates cannot resurrect
-  departed clients; confirmed medium departures survive stale downlink traffic.
-  HAL frame sockets cannot block or race teardown, and hostapd uses the normal
-  disabled association-comeback test override.
-- **Current RF and candidates:** fronthaul samples the confirmed serving
-  uplink's simulated matrix RF, not an idle peer's last-packet RSSI. Backhaul
-  retains kernel RSSI. This is modeled RF, not a newly received packet.
-  Collection remains fair across roaming clients and requires each client's
-  complete fresh same-band comparison before choosing a target.
-- **Native command scheduling:** candidate and association commands dispatch
-  at admission; confirmed commands release their radio before the next FIFO
-  admission in that scheduler turn. Validated candidate/BTM reports complete
-  during capability reporting without changing ACK ownership. Radio exclusion,
-  locking, native retries and accepted-query deadlines remain unchanged.
-- **Unsent action bookkeeping:** a full five-verification queue cannot mark an
-  unsent client pending. Only requests passing dispatch guards enter pending.
-  This removes a false 40-second timeout plus backoff without changing actual
-  timeout, cooldown or backoff limits.
-
-A packet-correlated reproduction found an accepted query waiting **8.1 s before
-transmission**, behind association commands; its actual reply took **259 ms**.
-Patch 0184 removes those avoidable timer turns, not the deadline. Both new
-source-extraction regressions fail before the fix and pass on the built source.
-Existing compiled native/HAL fixtures pass; final demo/optimizer/configurator
-validation is **491 tests and 128 subtests passed**, with no skips. All 25 JavaScript
-regression scripts pass at the unchanged UI baseline; the new catalog run also
-inspects both live views throughout.
-
-| Observed full-catalog metric | Before 0184 | After 0184 |
-| --- | --- | --- |
-| Complete room gates | 14/14 | 14/14 |
-| Verified / failed moves | 153 / 0 | 153 / 0 |
-| Native candidate HTTP 504 | 6 | 0 |
-| Busy admission attempts / successful readmissions | 89 / 81 | 0 / 0 |
-| Candidate transaction p95 | 1.040 s | 0.654 s |
-| Request-to-verification p95 | 6.648 s | 5.385 s |
-
-The targeted evacuation/perimeter/home-B check also passes **3/3**, **63/63**
-verified moves and zero candidate timeouts/busy rejections. Epoch cancellations
-remain separate from native failures. These bounded results do not guarantee
-instant convergence or that future runs can never time out.
-
-Restoration passes with twenty clients and six logical roles: first convergence
-**33.44 s**, then the hold. The room is paused at zero, unleased, fault-free,
-with its normal 100-action cap. Diagnostic capture is stopped and hwsim0 is down.
-No new tar or box is created.
-
-**Host caveat:** 168 rev140 samples show peak CPU **22.71%**, at least
-**51.46 GiB available RAM**, peak sampled temperature **92°C**, and **11 package
-throttle-counter increments**. CPU/RAM are not exhausted, but thermal headroom
-is a separate profiling concern. No build or capture runs on rev140 during
-qualification; the browser driver uses isolated CPUs on rev150. Timings are
-observed deployment results, not an uncontended intrinsic-stack benchmark.
-
-Evidence on rev150: `/home/rev/work/rdk-rooms-fix-0911/all-rooms-11/` contains
-`results/`, `audited-summary.json`, restored state and time-filtered host
-samples. `focused-7/` holds the targeted pass; `candidate-timeouts-0911.tar.gz`
-contains the before-fix packet/journal trace, and the negative/positive fixture
-logs retain regression proof. Earlier results remain separate, not relabeled.
+Native EasyMesh through **0184** and HAL **0038** are unchanged in this
+follow-up, retaining fair scheduling, presence/current-RF corrections and
+unsent-action bookkeeping. wmediumd advances through **0025**: its opt-in
+spatial profile fills independent reservation gaps while preserving sender
+FIFO and multicast exclusion. Global contention is unchanged. The actual-queue
+regression fails before and passes after; clean builds and sanitizers pass.
 
 ### prpl results
 
-The common-fix retest, **September 12 00:12–00:35 UTC**, passes **14/14 rooms**
-and verifies **153/153** submitted steering actions, with no failed
-verifications. Every initial/checkpoint/final gate, Play, physical presence,
-scene and native/rendered owner check passes. Native/container/medium
-identities remain unchanged, with no browser errors or SSE gaps.
+**02:09:27–02:32:11 UTC: 14/14 rooms; 145 submissions, 143 verified moves**.
+Two old-world verifications are discarded at world switches: one
+`verification_cancelled`, one `traffic_failed` after world replacement.
+They are **not successful moves**. Native-journal correlation accounts for
+both; no unmatched submissions remain. There are zero current-world failed
+verifications, unavailable candidate collections or worker errors.
+Twelve superseded collections remain separate cancellations.
 
-Request-to-verification p50/p95/max is **0.924/1.175/1.388 s**; submission
-p50/p95 is **451/510 ms**; RF apply p50/p95 is **7.0/32.4 ms**. NBAPI operation
-p50/p95 is **142/173 ms**, publication wait **42/121 ms**. The native timestamp
-resolution guard remains **501/545 ms**; removing it without native request
-correlation would weaken freshness. Heterogeneous prpl collection operations
-are not directly comparable to RDK candidate transactions.
+Request-to-verification p50/p95/max: **0.975/1.181/1.414 s**.
+Submission p50/p95: **454/517 ms**; NBAPI operations: **143/173 ms**;
+publication wait: **41/113 ms**; complete collection p95/max: **0.990/1.942 s**.
+The timestamp-resolution guard remains **498/540 ms**; removing it without
+native request correlation would weaken freshness. RF application:
+**7.6/32.5 ms**. prpl operations are not directly comparable to RDK transactions.
 
-One real **30.289-second incomplete candidate collection** remains during
-extender-loss/recovery, on `Device.WiFi.DataElements.Network.Device.5.Radio.1`
-for clients `02:00:00:10:01:00`, `02:00:00:10:07:00` and
-`02:00:00:20:01:00`. It recovers within its room gate, but is not eliminated by
-the common fixes. Epoch-superseded collections are cancellations, not additional
-measurement failures. The report's HTTP-504-specific counter does not count
-this prpl failure; inspect the incomplete operation and failure list too.
+The false 30-second candidate gap was **fresh RCPI 0 discarded as missing**.
+Valid 0–220 is now accepted; reserved/malformed values and unchanged native
+timestamps remain rejected. Targeted extender recovery changes from a
+**30.323-second incomplete collection** to none; complete post-fix
+collections take at most **2.948 s** in that targeted test.
 
-| Room | Initial / final first policy convergence, seconds |
-| --- | --- |
-| `home-a-stationary` | 0.02 / <0.02 |
-| `home-a-one-client-handover` | 8.13 / <0.02 |
-| `large-room-extender-evacuation` | 8.08 / 5.05 |
-| `large-room-perimeter-counter-roam` | 8.08 / <0.02 |
-| `home-a-asymmetric-link` | 12.12 / <0.02 |
-| `home-a-band-walk-small` | 7.58 / 5.05 |
-| `home-a-border-hover` | 6.12 / 2.04 |
-| `home-a-disappear-reappear` | 5.06 / <0.02 |
-| `home-a-extender-loss-recovery` | 3.05 / <0.02 |
-| `home-a-fast-transit` | 4.05 / 5.05 |
-| `home-a-flash-crowd` | 3.06 / <0.02 |
-| `home-a-private-client-room-walk` | 4.07 / <0.02 |
-| `home-a-slow-walk-ten` | 6.08 / 7.08 |
-| `home-b-slow-walk-ten` | 11.15 / <0.02 |
+The first full follow-up is retained as **13/14**, not relabeled: a native
+`_get_instances` request exceeded its existing five-second limit, and the
+observer's availability exception escaped both observation workers, terminating
+the room. They now record the outage, preserve original measurement timestamps
+and recover. Programming faults remain fatal. Identical concurrent topology
+requests share only their in-flight native read; later requests never reuse
+completed/error results. Device reads remain parallel: no TTL cache or longer
+deadline. Worker recovery, concurrent-read and HTTP failure/recovery tests pass.
 
-These clocks start at the settling gate, not at a client's first movement.
-A near-zero final value means it was already converged when that gate began;
-the stable hold is additional. Native identities remain unchanged.
+prplMesh, hostapd and hwsim binaries are unchanged. The shared medium fix is
+**0026**; only adapter/observer/room support code and wmediumd change.
 
-Perimeter counter-roam retains one **2-RCPI** stronger-AP gap
-(`02:00:00:20:02:00`, `candidate_gain_too_small`). It passes configured policy,
-not absolute-strongest-AP convergence; the other final gates satisfy both.
-No steering margin was reduced to turn this case green.
+### Per-room convergence
 
-The port includes fair collection across ownership changes, continued
-collection during cooldown/backoff, complete per-client candidate comparisons,
-unsent-action bookkeeping and the paired medium/Console departure tombstone.
-prpl's observer, candidate provider, actuator, NBAPI and role mappings remain
-native; no prplMesh/hostapd/hwsim binary is replaced. Final demo/optimizer/configurator
-tests pass **404 tests and 123 subtests**, with no skips; four new regressions fail against the previous
-source and pass with the fixes. Console Go and viewer regression tests pass.
-Ordinary cold reconstruction passes in **454.00 s**.
+Values are initial/final **first policy convergence** in seconds from each
+settling gate, not from the first movement. Near-zero final values mean it
+was already converged; the continuous hold is additional.
 
-Restoration reaches first policy convergence in **27.36 s**, then the hold,
-with twenty clients, six roles, paused time zero, no lease/fault and cap 100.
-Evidence is `/home/rev/work/prpl-common-0911/all-rooms-1/` on rev150, including
-`results/`, `audited-summary.json` and restored state. Separate RF qualification
-and its post-maintenance readiness checks are in the
-[RF assessment](../radio/virtual-rf-assessment.md).
+| Room | RDK initial / final | prpl initial / final |
+| --- | --- | --- |
+| `home-a-stationary` | 0.02 / <0.02 | 0.02 / <0.02 |
+| `home-a-one-client-handover` | 15.18 / 14.20 | 3.03 / <0.02 |
+| `large-room-extender-evacuation` | 29.44 / 13.17 | 9.09 / 5.07 |
+| `large-room-perimeter-counter-roam` | 30.35 / 5.07 | 8.44 / <0.02 |
+| `home-a-asymmetric-link` | 17.21 / 5.07 | 10.13 / <0.02 |
+| `home-a-band-walk-small` | 26.29 / 9.12 | 6.06 / <0.02 |
+| `home-a-border-hover` | 22.24 / 22.27 | 7.11 / 2.03 |
+| `home-a-disappear-reappear` | 21.25 / <0.02 | 6.06 / <0.02 |
+| `home-a-extender-loss-recovery` | 10.13 / 7.09 | 5.07 / <0.02 |
+| `home-a-fast-transit` | 13.13 / 19.25 | 4.04 / 2.02 |
+| `home-a-flash-crowd` | 10.19 / 1.02 | 2.03 / <0.02 |
+| `home-a-private-client-room-walk` | 15.21 / 0.03 | 5.06 / <0.02 |
+| `home-a-slow-walk-ten` | 24.38 / 21.35 | 5.57 / 3.06 |
+| `home-b-slow-walk-ten` | 31.41 / 22.33 | 12.20 / <0.02 |
 
-**Host sampling limitation:** the background sampler exited before the prpl
-catalog began. There are zero in-window physical-host samples; this run cannot
-qualify host thermal/load headroom. Later RF samples do not repair that gap.
-Use a foreground session or managed service and verify at least two samples
-before the next run, then retain the sampler through restoration.
+Absolute-strongest-AP diagnostics retain **2-RCPI** margin-held differences:
+RDK asymmetric link (`02:00:00:00:06:00`), prpl evacuation
+(`02:00:00:10:06:00`) and band walk (`02:00:00:10:08:00`).
+These pass configured policy, not absolute strongest-AP selection.
+No steering margin is lowered to manufacture a pass.
 
-### Remaining qualification boundaries
+### Host evidence and restoration
 
-- prpl: trace the recovered 30-second candidate gap during extender recovery;
-  a passing room deadline does not make that gap disappear.
-- Common: instrument native model commit, publication/polling and actual
-  browser paint separately before claiming controller-to-screen latency.
-  The current SVG identity observer measures only one component.
-- RDK diagnostics: preserve journal suppression and packet-capture counters.
-  A post-failure capture cannot prove what happened before it started, and
-  rate-limited journals cannot prove an unlogged transmission never occurred.
-- Keep failed native actions, short presence-window mismatches and incomplete
-  candidate snapshots in the results. Do not increase timeouts, weaken
-  freshness or force clients onto targets to manufacture convergence.
+The owned SSH sampler verifies two samples before mutation, survives the run
+and closes with the harness. Reports filter to the exact run window, reject
+sampling errors/gaps and leave unsupported counters null. This fixes the
+earlier missing-prpl-sampler problem.
+
+| Full-catalog observation | RDK / rev140 | prpl / rev150 |
+| --- | --- | --- |
+| Samples / maximum gap | 838 / 2.032 s | 682 / 2.007 s |
+| Peak total CPU | 21.27% | 48.67% |
+| Minimum available RAM | 51.45 GiB | 13.06 GiB |
+| Peak sampled sensor | 93°C | 85.38°C |
+| Package throttle-counter increase | **21** | Unsupported, not zero |
+
+CPU/RAM are not exhausted. RDK thermal headroom remains an independent profiling
+concern: inspect cooling and host power policy, not weaker test gates.
+Both browsers run on rev150 with separate GPU CPU sets. RDK overlaps the first
+prpl pass and part of its corrected rerun; timings are deployment observations,
+not an uncontended host-speed ranking.
+
+Both labs return to twenty clients/six logical roles, paused at zero,
+unleased and fault-free, with fresh complete metrics and cap 100.
+Catalog restoration first converges in **29.80 s RDK / 10.12 s prpl**, then
+holds. Separate post-maintenance readiness passes. VM autostart stays disabled.
+No native stack restarts occur inside the final catalog windows; no release
+thin tar or box is created.
+
+### Evidence and remaining boundaries
+
+Evidence on rev150: `/home/rev/work/qualification-fixes-0912/`.
+`rdk-all-rooms/` and `prpl-all-rooms-2/` retain final reports, JSONL,
+screenshots, native audits and host samples. `prpl-all-rooms/` retains the
+failed first pass; targeted logs and `prpl-worker-failure-evidence.tgz`
+preserve failure evidence.
+
+The old observer filter omitted `optimizer.verification.discarded`.
+The two prpl events are separately retained in
+`prpl-all-rooms-2/verification-discarded.journal.jsonl`; reconciled accounting
+is in `action-accounting.json`. Original SSE evidence is not rewritten.
+The updated harness captures these events and explicitly counts discarded
+and unmatched actions. Neither becomes a successful move.
+
+Python regression suites and JavaScript checks pass. The broader RDK suite
+has four Ruby-dependent VirtualBox checks unavailable on this observer;
+no VirtualBox artifact is being built. Daemon integration runs separately
+against both new medium binaries.
+
+- **RF:** prpl passes both bounded spatial windows. RDK retains >5% repeat
+  spread despite correct reuse/exclusion ratios; see
+  [RF qualification](../radio/virtual-rf-assessment.md#results-and-remaining-work).
+  Host thermal and RF-repeatability evidence are separate. Phase 4 remains gated.
+- **Latency:** native model commit, publication/polling and actual browser
+  paint need separate instrumentation. SVG identity agreement is only one
+  component of end-to-end latency.
+- Preserve failed actions, short presence mismatches, unavailable snapshots
+  and discarded verifications. Never increase timeouts, weaken freshness
+  or force targets to manufacture convergence.
