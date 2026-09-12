@@ -76,9 +76,9 @@ future work.
 | --- | --- | --- |
 | Running VM | `rdkeasymesh-20-0908` | `prplmesh-20-0908` |
 | Canonical repository | `/home/rev/yocto/rdkb-bpi-nosrc-vcpe-0908-clean/meta-cmf-bananapi-vcpe` | `/home/rev/git/prplmesh-lab` |
-| Committed/pushed Phase 0–2 checkpoint | `dffc946` | `13268f3` |
+| Prior qualification checkpoint | `0d9cde2` | `e70a431` |
 | Guest kernel | `7.0.0-30-generic` | `7.0.0-30-generic` |
-| Loaded/on-disk hwsim srcversion after Phases 1–2 | `787E6C52AFFB528353585A5`, matching | Same, matching |
+| Loaded/on-disk hwsim srcversion, patch 0010 | `542E9DB26233E9A8439431A`, matching | Same, matching |
 | Configured radio pool / channel contexts | 32 / 3 | 40 / 3 |
 | Mesh radio ownership | One wiphy per mesh container, concurrent band-specific VAPs | Three wiphys per mesh container |
 | Default active radio requirement | 5 mesh + 20 client = 25 | 15 mesh + 20 client = 35 |
@@ -1031,48 +1031,40 @@ On prpl substitute `--stack prplmesh` and a prpl output directory. The VM needs
 metric capture uses the outer VM's tcpdump in the AP's network namespace;
 installing a collector in every AP is unnecessary.
 
-Fixtures publish exact 0, 128 and 255 through the same cache/native path, with
-quantized windows to avoid mistaking millisecond rounding for a field bug.
-They test native station counts and actual beacon/scan fields separately from
-modeled traffic. Remote prpl agents use IEEE 1905; its colocated agent is
-checked through native NBAPI because it shares the controller's AL/local IPC.
+Fixtures publish exact 0/128/255 with quantized windows, checking native
+station counts and beacon/scan fields separately from modeled traffic.
+prpl's colocated agent uses NBAPI; remote agents use IEEE 1905.
 
 #### Short acceptance results
 
-Both labs passed on 2026-09-11 UTC with 20 clients and the usual mesh roles.
+Both labs pass again on 2026-09-12 UTC with hwsim 0010 and 20 clients.
 
 | Check | RDK / rev140 | prpl / rev150 |
 | --- | --- | --- |
 | Live acceptance checks | **25/25 passed** | **28/28 passed** |
 | Actual beacon/scan/native AP metric bytes | **0 / 128 / 255 exact** | **0 / 128 / 255 exact** |
 | Native AP reporting evidence | Colocated AP IEEE 1905, actual BSSID | 36 remote BSSs over IEEE 1905; colocated native NBAPI |
-| Selected BSS station count in fixture capture | 1 | 2 |
-| Modeled busy, baseline → short ping traffic | **5.00% → 37.94%** | **30.23% → 55.12%** |
+| Selected BSS station count in fixture capture | 2 | 2 |
+| Modeled busy, baseline → short ping traffic | **5.01% → 22.82%** | **32.25% → 48.38%** |
 | Native client cross-band roam and return | 5180 → 2437 → 5180 MHz | 2437 → 5180 → 2437 MHz |
 | Retune epoch/provider reset, stale/bad-write rejection | Passed | Passed |
 | Provider loss withdraws survey and BSS Load; recovery without AP restart | Passed | Passed |
-| Native prpl survey unit suite | Not applicable | 7 passed |
-| Module/native builds and medium self-tests | Passed | Passed |
 
-Baseline includes beacons and lab traffic. The load step sends 800 × 1200-byte
-pings at 5 ms spacing to the native gateway: modeled activity, not calibrated
-saturation or a throughput-overhead measurement.
+The load step sends 800 × 1200-byte pings at 5 ms spacing: modeled activity,
+not calibrated saturation.
 
 Native reporting remains separate: observed RDK periodic AP reports take
 about 5 seconds, prpl about 1 second; prpl threshold checks remain 10 seconds.
 The 100 ms cache period does not guarantee controller/UI freshness.
 
-Phase 1–2 evidence is outside reference under
-`/home/rev/work/rf-phases12-0911/` on rev150; final artifacts are
-`rdk-final/rf-phases12-validation-4/` and
-`prpl-final/rf-phases12-validation-3/`. Source/build logs and identity checks
-are retained there.
+Current evidence: `/home/rev/work/profiling-gates-0912/*-feedback-rf-evidence/`.
+Prior results remain in `/home/rev/work/rf-phases12-0911/`.
 
 Phase 3 separately qualifies overhead, spatial reuse, ACKs and UI freshness.
 
 ### 12.5 Phase 3: qualified model and open gates
 
-The shared implementation adds three ordered patches: RDK
+The airtime model starts with RDK
 `0021/0022/0023`, prpl `0022/0023/0024` (PHY/airtime, reverse ACK,
 observer surveys/reservations). Normal startup keeps global contention.
 `WMEDIUMD_VISIBILITY_CONTENTION=1` adds `-F` on the **next medium start**;
@@ -1119,75 +1111,90 @@ over-budget observations still fail.
 
 #### Results and remaining work
 
-Medium builds/self-tests, sanitizer and load-card fixtures pass; configurator
-tests pass **137 RDK / 133 prpl**, including daemon integration. Earlier
-reporting/retune/recovery checks pass **25/25 and 28/28** respectively.
-Observer A/B overhead passes <5%; evidence remains under
-`/home/rev/work/rf-correctness-0911/`. These fixtures do not prove live collisions
-or an intrinsic convergence comparison.
+Builds, self-tests, sanitizers, load-card and daemon integration tests pass.
+Earlier observer A/B overhead passes <5%
+(`/home/rev/work/rf-correctness-0911/`), not calibrated capacity.
 
 See [room qualification](../testing/room-acceptance.md#current-qualification)
-for catalog gates, timings and host limitations. prpl's false 30-second wait
-was a collector bug: fresh native **RCPI 0** was discarded as missing.
-The collector now accepts valid 0–220, rejects reserved/missing values and
-still requires a newer native timestamp. No native reporting interval changes.
+for gates, timings and host limitations. prpl now accepts fresh native
+RCPI 0–220, including zero, while still rejecting reserved/missing values
+and unchanged timestamps. Native reporting intervals are unchanged.
 RDK builds retain global `/home/rev/oe/{downloads,sstate-cache}`.
 
-For bounded native two-flow spatial qualification, run as root inside the lab
-VM from its configurator directory, with a new evidence directory:
+Run two-flow qualification as root from the VM's configurator, with new output:
 
 ```sh
 python3 -m wmdcfg.rf_spatial --stack rdk --seconds 12 \
   --output /tmp/rf-spatial-new --yes-change-lab
 ```
 
-Use `--stack prplmesh` for prpl. Preconditions: iperf3, untouched default
-twenty-client world paused at zero, no lease/recording, global medium and no
-2.4-GHz managed backhaul. Existing private clients (prpl 01/03, not IoT 02)
-use gateway/first-extender APs with provisioned radio IDs. With orchestration
-stopped, six TCP trials run global, isolated, hidden-receiver, then reverse.
-Associations, RF readback, both receiver rates and AP surveys must remain valid.
-Hidden-receiver reservations are conservative, not physical collisions.
+For prpl use `--stack prplmesh`. Require iperf3, default twenty-client world
+paused at zero, no lease/recording, global medium and no 2.4-GHz managed
+backhaul. Private clients (prpl 01/03, not IoT 02) use gateway/first-extender
+APs. With orchestration stopped, trials run global, isolated, hidden-receiver,
+then reverse. Check associations, RF readback, both rates and AP surveys.
+Hidden-receiver reservations are not physical collisions.
 
-Cleanup removes temporary routes/address/RDK TCP rule and restores medium,
-matrices, associations and services. Native gateway addressing preserves ARP
-policy. Retain raw JSON and verify room readiness. Failed/inconclusive trials
-exit nonzero.
+Cleanup removes temporary routes/address/TCP rule and restores medium,
+matrices, associations and services. Retain JSON and verify readiness.
+Failed/inconclusive trials exit nonzero.
 
-Use `--daemon /absolute/candidate` to qualify a replacement without retaining
-it afterward. `--diagnostics` records native rates, TCP state and Console counters;
-instance/generation checks label cached pre-fixture Console data. Diagnostic
-JSONL survives failed traffic. Normal qualification leaves diagnostics off.
+Use `--daemon /absolute/candidate` for temporary replacement. `--diagnostics`
+retains native rates, TCP state and Console counters, labeling cached data.
+Qualification leaves diagnostics off.
 
-The visibility queue previously blocked independent traffic behind future
-multicast reservations. An end-ordered calendar fills free intervals using
-linear scans, retaining sender FIFO, multicast/hidden-receiver exclusion and
-delivery/disconnect cleanup. Global mode is unchanged. The actual-queue
-regression fails before and passes after; clean builds and sanitizers pass.
+The visibility calendar fills independent reservation gaps while retaining
+sender FIFO and multicast/hidden-receiver exclusion. A subsequent **common
+scheduler bug** affected both profiles: inserting a later packet rearmed the
+wallclock timer for that packet, postponing earlier completions. RDK **0026** /
+prpl **0027** now request the pending queue's earliest deadline.
 
-| Patched run | Global / isolated / hidden median Mbit/s | Isolated / global | Hidden / global | Maximum repeat spread | Verdict |
+Scheduler regression fails before and passes after. A timerfd fixture delivers
+a 20-ms job at **250.062 ms before / 20.063 ms after** when later work arrives.
+Clean builds and sanitizers pass.
+Run `bash gen/wmediumd/tests/test-scheduler-deadline.sh /patched/source/wmediumd`
+on RDK; omit `gen/` on prpl. No native rate, buffer, steering or VM-limit changes.
+
+Correlated RDK tracing finds per-flow p95 deadline lateness **22–92 ms before /
+0.21–0.69 ms after**. Netlink ingress still reaches **5.69 ms p95**: not zero
+external delay. Traced runs are diagnostic. Clean-binary qualification disables
+tracing/diagnostics and retains unchanged gates:
+
+| Timer + feedback fixed | Global / isolated / hidden median Mbit/s | Isolated / global | Hidden / global | Maximum repeat spread | Verdict |
 | --- | --- | --- | --- | --- | --- |
-| RDK, 12 s | 4.744 / 8.674 / 4.651 | 1.829 | 0.980 | 11.10% | Inconclusive |
-| RDK, 20 s | 4.557 / 7.462 / 4.582 | 1.637 | 1.005 | 8.98% | Inconclusive |
-| prpl, 12 s | 3.969 / 7.654 / 3.922 | 1.929 | 0.988 | 4.51% | Pass |
-| prpl, 20 s | 3.930 / 7.804 / 3.950 | 1.986 | 1.005 | 0.95% | Pass |
+| RDK, 12 s | 10.759 / 21.503 / 10.755 | 1.999 | 1.000 | 0.81% | Pass |
+| RDK, 20 s | 10.734 / 21.530 / 10.723 | 2.006 | 0.999 | 0.13% | Pass |
+| prpl, 12 s | 9.678 / 19.390 / 9.624 | 2.003 | 0.994 | 1.78% | Pass |
+| prpl, 20 s | 9.631 / 19.383 / 9.684 | 2.013 | 1.005 | 0.96% | Pass |
 
-All runs pass association/readback/survey and restoration. **RDK repeatability
-remains open** under the unchanged <5% gate despite correct reuse/exclusion.
-The 20-second experiment tests window sensitivity, not a relaxed gate or
-replacement for inconclusive 12-second evidence. Residual cause is unproven.
-RF and catalog host evidence remain separate; retain inconclusive runs.
+Association/readback/survey and restoration pass. Earlier RDK 11.10/8.98/14.82%
+inconclusive runs remain retained. Timer-only RDK passes 1.73/2.11% spread,
+but prpl's 20-second run remains **20.66% inconclusive**, with native TX stuck
+at 1 Mbit/s and only 9–10 accounted packets despite thousands transmitted.
 
-The follow-up RDK TCP diagnostic remains inconclusive: **14.82%** isolated
-spread, reuse **1.716×**, exclusion **1.002×**, clean restoration. The slow
-2.44-Mbit/s flow retains queued data without sampled application/window/buffer
-limiting; these observations do not support simple application starvation.
-Its 56 in-window host samples show CPU ≤15.98%, RAM ≥51.45 GiB, 87°C and
-zero throttle increments—not evidence that catalog thermal headroom is healthy.
-Next isolate kernel transmit-queue/medium scheduling feedback with correlated
-timestamps, retaining native rates, buffers and qualification gates.
+Tracing confirms ACKed aggregation requests lack aggregate status:
+[Minstrel ignores AMPDU requests without
+AMPDU status](https://github.com/torvalds/linux/blob/v7.0/net/mac80211/rc80211_minstrel_ht.c).
+Common hwsim **0010** completes singleton status in both TX paths, using the
+real ACK outcome. This restores native rate adaptation, not physical
+aggregation or forced rates. Three helper regressions and clean kernel builds
+pass. Live 16-ping probes advance Minstrel counters **52→70 RDK / 21→41 prpl**;
+ACKed aggregation requests now carry aggregate status. Monitor ACK checks pass.
+prpl's builder now includes four-digit patches beyond 0009.
+
+For module maintenance, stop the room, bridge, console and lab before unload;
+preserve module options and rollback binary. On RDK, restart
+`easymesh-hwsim-pool` after reload, **before** starting the lab: the boot-only
+oneshot otherwise retains obsolete state while radios are newly named wlanN.
+Never reload a live room's radio pool.
+
+Complete RF host sampling: RDK CPU ≤21.49%, RAM ≥51.41 GiB, 76°C,
+zero throttle increments; prpl CPU ≤17.95%, RAM ≥14.53 GiB, 74.13°C, throttle
+counter unsupported. Catalog thermal evidence remains separate. rev140 exposes
+100°C CPU critical temperature and 40/64-W power limits, but no fan RPM.
+Do not increase VM resources or silently change host power policy.
 
 Modern PHY/DCF, live collisions/interference, reception-backed candidates,
 calibration and Phase 4 load-aware policy remain open. Raw evidence on rev150:
-`/home/rev/work/qualification-fixes-0912/` and earlier
-`/home/rev/work/rf-spatial-0912/`. No release thin tar or box is made.
+`/home/rev/work/profiling-gates-0912/`; prior evidence remains under
+`/home/rev/work/qualification-fixes-0912/`. No thin tar or box is made.
