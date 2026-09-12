@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import asdict, dataclass
 from datetime import datetime, timezone
 import re
+import math
 from typing import Any, Iterable
 
 
@@ -147,6 +148,57 @@ class MeshHealth:
         return cls(**value)
 
 
+
+@dataclass(frozen=True)
+class BssLoadObservation:
+    bssid: str
+    device_id: str
+    radio_id: str
+    channel: int
+    utilization: int
+    station_count: int
+    observed_at: str
+    epoch: str
+    backhaul_hops: int | None
+    source: str = "native_ap_metrics"
+
+    def __post_init__(self) -> None:
+        for address in (self.bssid, self.device_id, self.radio_id):
+            normalize_mac(address)
+        parse_time(self.observed_at)
+        if type(self.utilization) is not int or not 0 <= self.utilization <= 255:
+            raise ValueError("load utilization must be a native 0..255 octet")
+        if type(self.channel) is not int or self.channel <= 0:
+            raise ValueError("load requires a known operating channel")
+        if type(self.station_count) is not int or not 0 <= self.station_count <= 65535:
+            raise ValueError("invalid native station count")
+        if not self.epoch or self.source not in {"native_ap_metrics", "fixture"}:
+            raise ValueError("load requires an explicit source and epoch")
+        if self.backhaul_hops is not None and (type(self.backhaul_hops) is not int or self.backhaul_hops < 0):
+            raise ValueError("invalid backhaul hop count")
+
+
+@dataclass(frozen=True)
+class ClientActivityObservation:
+    sta_mac: str
+    bssid: str
+    packets_per_second: float
+    interval_seconds: float
+    observed_at: str
+    epoch: str
+    source: str = "native_sta_traffic"
+
+    def __post_init__(self) -> None:
+        normalize_mac(self.sta_mac)
+        normalize_mac(self.bssid)
+        parse_time(self.observed_at)
+        if not math.isfinite(self.packets_per_second) or self.packets_per_second < 0:
+            raise ValueError("invalid native client traffic rate")
+        if not math.isfinite(self.interval_seconds) or not 0 < self.interval_seconds <= 10:
+            raise ValueError("client traffic requires a bounded counter interval")
+        if not self.epoch or self.source not in {"native_sta_traffic", "fixture"}:
+            raise ValueError("client traffic requires an explicit source and epoch")
+
 @dataclass(frozen=True)
 class Snapshot:
     schema_version: int
@@ -156,9 +208,11 @@ class Snapshot:
     health: MeshHealth
     clients: tuple[ClientObservation, ...]
     candidates: tuple[CandidateObservation, ...]
+    bss_loads: tuple[BssLoadObservation, ...] = ()
+    client_activity: tuple[ClientActivityObservation, ...] = ()
 
     def __post_init__(self) -> None:
-        if self.schema_version != 1:
+        if self.schema_version not in {1, 2}:
             raise ValueError(f"unsupported snapshot schema {self.schema_version}")
         if self.sequence < 0:
             raise ValueError("snapshot sequence cannot be negative")
@@ -166,6 +220,12 @@ class Snapshot:
         client_macs = [client.sta_mac for client in self.clients]
         if len(client_macs) != len(set(client_macs)):
             raise ValueError("snapshot contains duplicate clients")
+        if self.schema_version == 1 and (self.bss_loads or self.client_activity):
+            raise ValueError("load observations require snapshot schema 2")
+        for rows, identity in ((self.bss_loads, "bssid"), (self.client_activity, "sta_mac")):
+            keys = [getattr(row, identity) for row in rows]
+            if len(keys) != len(set(keys)):
+                raise ValueError("snapshot contains duplicate load observations")
 
     def client(self, sta_mac: str) -> ClientObservation | None:
         sta_mac = normalize_mac(sta_mac)
@@ -176,7 +236,11 @@ class Snapshot:
         return tuple(item for item in self.candidates if item.sta_mac == sta_mac)
 
     def to_dict(self) -> dict[str, Any]:
-        return asdict(self)
+        result = asdict(self)
+        if self.schema_version == 1:
+            result.pop("bss_loads")
+            result.pop("client_activity")
+        return result
 
     @classmethod
     def from_dict(cls, value: dict[str, Any]) -> "Snapshot":
@@ -190,6 +254,8 @@ class Snapshot:
             candidates=tuple(
                 CandidateObservation.from_dict(item) for item in value.get("candidates", [])
             ),
+            bss_loads=tuple(BssLoadObservation(**item) for item in value.get("bss_loads", [])),
+            client_activity=tuple(ClientActivityObservation(**item) for item in value.get("client_activity", [])),
         )
 
 

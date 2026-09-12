@@ -23,7 +23,10 @@ bin/easymesh-controller
 ```
 
 Open `http://HOST-IP:8091/`. Network Topology is the default page and
-refreshes every two seconds. Mesh Devices and Connected Clients also consume
+polls live controller data. Concurrent requests share only an in-flight source
+request; completed responses have no additional cache lifetime. Source errors
+and empty inventories are failures, never successful stale snapshots.
+Mesh Devices and Connected Clients also consume
 live data. All other pages are explicit placeholders.
 
 The default source is:

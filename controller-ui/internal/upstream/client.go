@@ -11,71 +11,71 @@ import (
 	"prplmesh-lab/controller-ui/internal/model"
 )
 
-// Client reads the external, read-only prplMesh topology API. It retains the
-// last valid response across a short source outage so a two-second UI refresh
-// cannot replace a valid topology with an empty diagram.
+type flight struct {
+	done  chan struct{}
+	value model.PrplTopology
+	err   error
+}
+
 type Client struct {
-	url    string
-	http   *http.Client
-	ttl    time.Duration
-	mu     sync.RWMutex
-	value  model.PrplTopology
-	loaded time.Time
+	url     string
+	http    *http.Client
+	mu      sync.Mutex
+	pending *flight
 }
 
-func New(url string, timeout, ttl time.Duration) *Client {
-	return &Client{
-		url:  url,
-		http: &http.Client{Timeout: timeout},
-		ttl:  ttl,
+func New(url string, timeout time.Duration) *Client {
+	return &Client{url: url, http: &http.Client{Timeout: timeout}}
+}
+
+func (client *Client) URL() string { return client.url }
+
+func (client *Client) Get(ctx context.Context) (model.PrplTopology, error) {
+	if err := ctx.Err(); err != nil {
+		return model.PrplTopology{}, err
+	}
+	client.mu.Lock()
+	call := client.pending
+	if call == nil {
+		call = &flight{done: make(chan struct{})}
+		client.pending = call
+		go func() {
+			call.value, call.err = client.fetch()
+			client.mu.Lock()
+			client.pending = nil
+			close(call.done)
+			client.mu.Unlock()
+		}()
+	}
+	client.mu.Unlock()
+	select {
+	case <-ctx.Done():
+		return model.PrplTopology{}, ctx.Err()
+	case <-call.done:
+		return call.value, call.err
 	}
 }
 
-func (c *Client) URL() string { return c.url }
-
-func (c *Client) Get(ctx context.Context) (model.PrplTopology, error) {
-	c.mu.RLock()
-	if !c.loaded.IsZero() && time.Since(c.loaded) < c.ttl {
-		value := c.value
-		c.mu.RUnlock()
-		return value, nil
-	}
-	c.mu.RUnlock()
-
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.url, nil)
+func (client *Client) fetch() (model.PrplTopology, error) {
+	request, err := http.NewRequest(http.MethodGet, client.url, nil)
 	if err != nil {
 		return model.PrplTopology{}, err
 	}
-	req.Header.Set("Accept", "application/json")
-	resp, err := c.http.Do(req)
+	request.Header.Set("Accept", "application/json")
+	response, err := client.http.Do(request)
 	if err != nil {
-		return c.staleOrError(fmt.Errorf("prplMesh topology API: %w", err))
+		return model.PrplTopology{}, fmt.Errorf("prplMesh topology API: %w", err)
 	}
-	defer resp.Body.Close()
-	if resp.StatusCode != http.StatusOK {
-		return c.staleOrError(fmt.Errorf("prplMesh topology API returned %s", resp.Status))
+	defer response.Body.Close()
+	if response.StatusCode != http.StatusOK {
+		return model.PrplTopology{}, fmt.Errorf("prplMesh topology API returned %s", response.Status)
 	}
-
 	var value model.PrplTopology
-	if err := json.NewDecoder(resp.Body).Decode(&value); err != nil {
-		return c.staleOrError(fmt.Errorf("decode prplMesh topology: %w", err))
+	if err := json.NewDecoder(response.Body).Decode(&value); err != nil {
+		return model.PrplTopology{}, fmt.Errorf("decode prplMesh topology: %w", err)
 	}
 	if len(value.Devices) == 0 {
-		return c.staleOrError(fmt.Errorf("prplMesh topology contains no devices"))
+		return model.PrplTopology{}, fmt.Errorf("prplMesh topology contains no devices")
 	}
-
-	c.mu.Lock()
-	c.value = value
-	c.loaded = time.Now()
-	c.mu.Unlock()
 	return value, nil
-}
-
-func (c *Client) staleOrError(cause error) (model.PrplTopology, error) {
-	c.mu.RLock()
-	defer c.mu.RUnlock()
-	if !c.loaded.IsZero() {
-		return c.value, nil
-	}
-	return model.PrplTopology{}, cause
 }

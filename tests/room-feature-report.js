@@ -1,7 +1,7 @@
 'use strict';
 const fs = require('node:fs');
 const path = require('node:path');
-const {distribution, eventPerformance, viewAgreement} = require('./room-feature-acceptance.js');
+const {distribution, eventPerformance, viewAgreement, fronthaulOutages} = require('./room-feature-acceptance.js');
 
 function readJsonLines(filename) {
   return fs.readFileSync(filename, 'utf8').trim().split('\n').filter(Boolean).map(line => JSON.parse(line));
@@ -15,13 +15,25 @@ function hostSummary(rows, started, finished, monitorError = null) {
   const gaps = times.slice(1).map((value, index) => (value - times[index]) / 1000);
   const counters = samples.filter(row => row.package_throttle_count != null)
     .map(row => Number(row.package_throttle_count)).filter(Number.isFinite);
+  const throttleSamples = samples.filter(row => row.package_throttle_total_time_ms != null &&
+    Number.isFinite(Number(row.package_throttle_total_time_ms)));
+  const throttleTimes = throttleSamples.map(row => Number(row.package_throttle_total_time_ms));
+  const monotonicThrottle = throttleTimes.length >= 2 &&
+    throttleTimes.every((value, index) => value >= 0 && (index === 0 || value >= throttleTimes[index - 1]));
+  const throttleTimeMs = monotonicThrottle ? throttleTimes.at(-1) - throttleTimes[0] : null;
+  const throttleIntervalMs = monotonicThrottle
+    ? Date.parse(throttleSamples.at(-1).time) - Date.parse(throttleSamples[0].time) : null;
   return {samples: samples.length, samplingComplete: !monitorError && samples.length >= 2 && gaps.every(gap => gap >= 0 && gap <= 30),
     monitorError,
     maximumSamplingGapSeconds: Math.max(...gaps),
     cpuBusyPercent: distribution(samples.map(row => row.cpu_busy_percent)),
     maximumSensorCelsius: distribution(samples.map(row => Math.max(...Object.values(row.temperatures_celsius || {})))),
     minimumAvailableMemoryGiB: samples.length ? Math.min(...samples.map(row => row.available_memory_kib)) / 1048576 : null,
-    packageThrottleDelta: counters.length >= 2 ? counters.at(-1) - counters[0] : null};
+    packageThrottleDelta: counters.length >= 2 ? counters.at(-1) - counters[0] : null,
+    packageThrottleTimeMs: throttleTimeMs,
+    packageThrottleMeasuredSeconds: throttleIntervalMs == null ? null : throttleIntervalMs / 1000,
+    packageThrottleWindowPercent: throttleTimeMs == null || throttleIntervalMs <= 0 ? null : throttleTimeMs / throttleIntervalMs * 100,
+    samplingElapsedMs: distribution(samples.map(row => row.sampling_elapsed_ms))};
 }
 
 function summarize(directory, worlds = path.join(directory, '..', 'goldens')) {
@@ -52,15 +64,7 @@ function summarize(directory, worlds = path.join(directory, '..', 'goldens')) {
         firstConverged: selected.find(sample => sample.converged)?.playback.time_ms ?? null,
       }];
     }));
-    const outages = Object.entries(golden.roles).filter(([, kind]) => kind === 'fronthaul_ap').flatMap(([role]) => {
-      const start = golden.generations.find(frame => !frame.present[role])?.time_ms;
-      if (start === undefined) return [];
-      const end = golden.generations.find(frame => frame.time_ms > start && frame.present[role])?.time_ms ?? golden.duration_ms + 1;
-      const checked = samples.filter(sample => sample.phase === 'playing' && sample.playback.time_ms >= start + 5000 && sample.playback.time_ms < end);
-      return [{role, startMs: start, endMs: end, samples: checked.length,
-        remainingAssociations: checked.filter(sample => (sample.roomAssociations || []).some(client => client.ap === role)).map(sample => sample.playback.time_ms),
-        meshConnected: checked.every(sample => sample.meshConnected && sample.meshViewMatches)}];
-    });
+    const outages = fronthaulOutages(golden, samples);
     let directional = null;
     const auditPath = path.join(directory, '..', 'asymmetric-rf-audit.json');
     if (room.id === 'home-a-asymmetric-link' && fs.existsSync(auditPath)) {
@@ -105,8 +109,17 @@ function summarize(directory, worlds = path.join(directory, '..', 'goldens')) {
     host: hostSummary(monitor, report.started, report.finished, report.hostMonitor?.error || null)};
 }
 
-module.exports = {summarize, hostSummary};
+function qualificationPassed(report) {
+  return report.tested > 0 && report.tested === report.passed && !report.failure &&
+    report.errors.length === 0 && report.eventGaps.length === 0 &&
+    report.nativeIdentitiesUnchanged === true && report.restoration?.applied === true &&
+    report.restoration?.convergence?.passed === true && report.host?.samplingComplete === true;
+}
+
+module.exports = {summarize, hostSummary, qualificationPassed};
 if (require.main === module) {
   const report = summarize(process.argv[2], process.argv[3]);
+  report.qualificationPassed = qualificationPassed(report);
   process.stdout.write(JSON.stringify(report, null, 2) + '\n');
+  process.exitCode = report.qualificationPassed ? 0 : 1;
 }

@@ -4,6 +4,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const {execFileSync} = require('node:child_process');
 const {distribution} = require('./room-feature-acceptance.js');
+const {nativeObservations, startNativeTrace} = require('./native-controller-latency.js');
 
 function installObserver() {
   const controller = window.EasyMeshController;
@@ -155,6 +156,7 @@ async function main(argv) {
   const browser = await chromium.launch({headless: true, env: environment,
     executablePath: process.env.CHROMIUM_PATH,
     args: ['--no-sandbox', '--ozone-platform=headless', '--disable-background-timer-throttling']});
+  let nativeTrace;
   try {
     const page = await browser.newPage({viewport: {width: 1280, height: 900}});
     const errors = [];
@@ -165,6 +167,7 @@ async function main(argv) {
     const session = await browser.newBrowserCDPSession();
     await session.send('Tracing.start', {categories: 'devtools.timeline,blink.user_timing',
       transferMode: 'ReturnAsStream'});
+    if (args['native-stack']) nativeTrace = await startNativeTrace(args, args.output, page);
     await page.evaluate(installObserver);
     const processes = await session.send('SystemInfo.getProcessInfo');
     for (const process of processes.processInfo) {
@@ -172,9 +175,13 @@ async function main(argv) {
     }
     await page.waitForTimeout(seconds * 1000);
     const observations = await page.evaluate(() => window.__controllerRenderLatency());
+    const completedTrace = nativeTrace;
+    nativeTrace = null;
+    const native = completedTrace ? await completedTrace.stop() : null;
     const captured = await stopTrace(session);
     fs.writeFileSync(path.join(args.output, 'trace.json'), JSON.stringify(captured.trace));
     observations.records = paintObservations(observations.records, captured.trace);
+    if (native) observations.records = nativeObservations(observations.records, native.events, native.clocks);
     const result = {url: args.url, seconds, errors, ...observations,
       traceDataLoss: captured.dataLossOccurred,
       scope: 'HTTP request to decoded association, SVG identity and subsequent main-thread Paint covering the client bounds; excludes native commit-to-poll wait, compositor presentation, physical display and layout-animation completion',
@@ -184,11 +191,22 @@ async function main(argv) {
     result.passed = !errors.length && observations.records.length > 0 &&
       observations.records.every(record => record.passed && record.paintObserved) &&
       !observations.pending.length && captured.dataLossOccurred === false;
+    if (native) {
+      const moves = observations.records.filter(record => record.from && record.to);
+      result.native = {identity: native.identity, movements: moves.length,
+        matched: moves.filter(record => record.nativeObserved).length,
+        nativeToPaintLowerMs: distribution(moves.filter(record => record.nativeObserved).map(record => record.nativeToPaintMs.lower)),
+        nativeToPaintUpperMs: distribution(moves.filter(record => record.nativeObserved).map(record => record.nativeToPaintMs.upper)),
+        maximumClockUncertaintyMs: Math.max(0, ...moves.filter(record => record.nativeObserved).map(record => record.clockUncertaintyMs))};
+      result.scope = 'Qualified native association model commit to decoded HTTP response and subsequent covering main-thread Paint; monotonic clock bounds include 100 ppm drift allowance. Additions/removals, other metric commits, compositor presentation, physical display and animation completion are excluded.';
+      result.passed &&= moves.length > 0 && moves.every(record => record.nativeObserved);
+    }
     fs.writeFileSync(path.join(args.output, 'report.json'), JSON.stringify(result, null, 2) + '\n');
     console.log(JSON.stringify(result));
     process.exitCode = result.passed ? 0 : 1;
   } finally {
-    await browser.close();
+    try { if (nativeTrace) await nativeTrace.stop(); }
+    finally { await browser.close(); }
   }
 }
 
