@@ -3,7 +3,8 @@
 This procedure starts with a dedicated x86-64 Ubuntu 24.04 host running a
 Linux 7.0 kernel. It downloads pinned upstream source, applies only the patches
 stored in this repository, creates a reusable LXD runtime image, provisions the
-fixed hwsim inventory and starts the accepted four-agent/20-client profile.
+fixed hwsim inventory and starts the four-extender/100-client baseline.
+The room service selects 20 online clients by default without resizing that pool.
 
 The host may be a physical machine or a virtual machine with nested
 virtualization. Do not share its hwsim module or LXD instance names with another
@@ -31,7 +32,10 @@ LXD installation once:
 lxc info >/dev/null 2>&1 || lxd init --auto
 ```
 
-`build-hwsim.sh` obtains the source matching the installed Ubuntu kernel.
+`build-hwsim.sh` requests the installed Ubuntu kernel's source version. If the
+archive has superseded it, the script accepts only the same Linux 7.0 source
+generation, records its package identity and hashes, and builds against the
+installed kernel headers. Module and live RF tests still gate qualification.
 Enable `deb-src` in the Ubuntu deb822 source file by changing its `Types:` line
 from `Types: deb` to `Types: deb deb-src`, then refresh the index:
 
