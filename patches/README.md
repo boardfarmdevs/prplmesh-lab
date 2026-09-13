@@ -129,7 +129,7 @@ remains pinned while its credentials are refreshed; without an existing
 association, `wpa_supplicant` may select a BSS advertising the backhaul SSID.
 Networks created through the HAL are explicitly marked as Multi-AP backhaul
 STA networks so a backhaul-only BSS accepts the replacement association.
-# Wireless kernel namespace isolation
+## Wireless kernel namespace isolation
 
 The hwsim builder also installs the namespace-safe cfg80211 companion module.
 See [its build, restart and regression instructions](../scripts/cfg80211/README.md).

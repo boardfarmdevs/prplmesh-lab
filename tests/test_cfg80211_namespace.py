@@ -63,3 +63,10 @@ def test_guard_precedes_all_radio_socket_cleanup():
     assert 'apt-get source --download-only "$PACKAGE=$VERSION"' in builder
     assert "sha256sum -c checksums" in builder
     assert '"${CFG80211_BUILD_JOBS:-4}"' in builder
+
+
+def test_startup_and_acceptance_require_loaded_namespace_fix():
+    for name in ("scripts/radio-lab.sh", "tests/resource-acceptance.sh"):
+        source = (ROOT / name).read_text()
+        assert "/sys/module/cfg80211/version" in source
+        assert "lab-netns-owner-1" in source

@@ -19,6 +19,10 @@ check_count()
 }
 
 status_section "Runtime footprint and process cardinality"
+[ "$(cat /sys/module/cfg80211/version 2>/dev/null)" = lab-netns-owner-1 ] || {
+    echo "cfg80211 lacks namespace-safe socket cleanup" >&2
+    exit 1
+}
 status_action "Measuring mesh RSS and checking exact daemon counts on every node."
 printf '%-18s %10s %10s\n' NODE RSS_KB PROCESSES
 for node in prpl-controller $(printf 'prpl-agent-%02d ' $(seq 1 "$agents")); do
