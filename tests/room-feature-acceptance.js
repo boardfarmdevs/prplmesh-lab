@@ -276,6 +276,13 @@ async function run(args) {
     args: ['--no-sandbox', '--ozone-platform=headless', '--enable-unsafe-swiftshader', '--use-gl=angle', '--use-angle=swiftshader',
       '--disable-background-timer-throttling', '--disable-renderer-backgrounding', '--disable-backgrounding-occluded-windows']});
   const context = await browser.newContext({viewport: {width: 1280, height: 900}});
+  const labOrigins = new Set([args['room-url'], args['topology-url']].map(value => new URL(value).origin));
+  report.browserNetwork = 'lab-origins-only';
+  await context.route('**/*', route => {
+    const address = new URL(route.request().url());
+    return !['http:', 'https:'].includes(address.protocol) || labOrigins.has(address.origin) ?
+      route.continue() : route.abort('blockedbyclient');
+  });
   const room = await context.newPage();
   const topology = await context.newPage();
   if (args['observer-cpus']) {

@@ -16,11 +16,18 @@ For foreground development:
 
 ```sh
 cd /path/to/prplmesh-lab/controller-ui
+bash prepare-web-assets.sh
 mkdir -p bin
 go test ./...
 go build -o bin/easymesh-controller ./cmd/easymesh-controller
 bin/easymesh-controller
 ```
+
+The checked-in `web-vendor.tar.gz` contains pinned D3 7.9.0, Chart.js 3.9.1,
+Animate.css 4.1.1 and Font Awesome Free 6.4.0 assets, fonts, upstream licenses
+and checksums. Preparation verifies and expands these offline before Go embeds
+them. No runtime CDN access is required. The archive matches RDK's vendor
+payload; update both together and retain its upstream license files.
 
 Open `http://HOST-IP:8091/`. Network Topology is the default page and
 polls live controller data. Concurrent requests share only an in-flight source
