@@ -7,8 +7,8 @@ health monitor. Use [operations](operations.md) to check runtime health.
 
 | Item | Current value |
 | --- | --- |
-| Canonical branch | `codex/0908-clean` |
-| Canonical checkout | `rev150:/home/rev/git/prplmesh-lab` |
+| Canonical branch | `codex/0913-clean` |
+| Canonical checkout | `rev150:/home/rev/git/prplmesh-lab-0913-clean` |
 | Production VM | `rev150:prplmesh-20-0908` |
 | Guest checkout | `/opt/prplmesh-lab` |
 | Native prplMesh | 6.0.0, `2e153c7e00cbcab6b8ee35082f494a364e23f018` |
@@ -21,6 +21,11 @@ the default profile. Room presence does not resize the container pool.
 Outer VM autostart is disabled; starting the VM starts its lab and room.
 
 ## Browser addresses
+
+0913 is being built and qualified from the new canonical checkout. It uses one
+100-client-capacity appliance, a default room with 20 online, and the new
+`fifty-client-counter-roam` room with 50 online. Deployment and artifact rows
+describe the last accepted release until the new cutover has been verified.
 
 | View | rev150 prplMesh |
 | --- | --- |

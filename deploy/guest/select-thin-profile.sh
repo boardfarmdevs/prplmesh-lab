@@ -13,14 +13,11 @@ TEST_MODE=${PRPLMESH_PROFILE_TEST_MODE:-false}
 
 usage()
 {
-    echo "usage: $0 20|50|100" >&2
+    echo "usage: $0 [100] (fixed appliance capacity)" >&2
 }
 
-case "${1:-}" in
-    20) PROFILE=small; CLIENTS=20; RADIOS=40 ;;
-    50) PROFILE=medium; CLIENTS=50; RADIOS=72 ;;
-    100) PROFILE=stress; CLIENTS=100; RADIOS=120 ;;
-    -h|--help|'') usage; exit 2 ;;
+case "${1:-100}" in
+    100) PROFILE=unified; CLIENTS=100; RADIOS=120 ;;
     *) usage; exit 2 ;;
 esac
 

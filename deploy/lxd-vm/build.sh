@@ -6,7 +6,7 @@ ROOT=$(cd "$(dirname "$0")/../.." && pwd)
 source "$ROOT/deploy/lxd-vm/profile.sh"
 # shellcheck source=device-property.sh
 source "$ROOT/deploy/lxd-vm/device-property.sh"
-PROFILE=$(prplmesh_profile_name "${PRPLMESH_LAB_PROFILE:-20}")
+PROFILE=$(prplmesh_profile_name "${PRPLMESH_LAB_PROFILE:-unified}")
 CLIENTS=$(prplmesh_profile_clients "$PROFILE")
 RADIOS=$(prplmesh_profile_radios "$PROFILE")
 NAME=${PRPLMESH_VM_NAME:-$(prplmesh_profile_release_name "$PROFILE")}
@@ -36,7 +36,7 @@ Clean-build inputs:
   PRPL_HOSTAP_ARCHIVE=/path/to/hostap-runtime-2.10.tar.gz
 
 Site overrides:
-  PRPLMESH_LAB_PROFILE=$CLIENTS (20, 50 or 100)
+  PRPLMESH_LAB_PROFILE=$CLIENTS (fixed capacity: 100 clients)
   PRPLMESH_VM_NAME=$NAME
   PRPLMESH_UI_HOST_IP=$HOST_IP
   PRPLMESH_WMEDIUMD_CONSOLE_HOST_PORT=$CONSOLE_PORT

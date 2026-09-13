@@ -139,7 +139,9 @@ ldconfig
 if [ "$BWL_TYPE" = NL80211 ] && \
    [ ! -d /opt/prpl-deps/hostapd-src/hostapd-2.10/.git ]; then
     mkdir -p /opt/prpl-deps/hostapd-src
-    clone_retry https://git.w1.fi/hostap.git \
+    clone_retry https://w1.fi/hostap.git \
+        /opt/prpl-deps/hostapd-src/hostapd-2.10 || \
+    clone_retry https://chromium.googlesource.com/external/w1.fi/cgit/hostap/ \
         /opt/prpl-deps/hostapd-src/hostapd-2.10
 fi
 if [ "$BWL_TYPE" = NL80211 ]; then

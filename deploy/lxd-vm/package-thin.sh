@@ -4,14 +4,14 @@ set -euo pipefail
 ROOT=$(cd "$(dirname "$0")/../.." && pwd)
 # shellcheck source=profile.sh
 source "$ROOT/deploy/lxd-vm/profile.sh"
-RELEASE_ID=${PRPLMESH_RELEASE_ID:-0908}
+RELEASE_ID=${PRPLMESH_RELEASE_ID:-0913}
 case "$RELEASE_ID" in
     [0-9][0-9][0-9][0-9]) ;;
     *) echo "invalid PRPLMESH_RELEASE_ID: $RELEASE_ID" >&2; exit 2 ;;
 esac
 # shellcheck source=device-property.sh
 source "$ROOT/deploy/lxd-vm/device-property.sh"
-PROFILE=$(prplmesh_profile_name "${PRPLMESH_LAB_PROFILE:-20}")
+PROFILE=$(prplmesh_profile_name "${PRPLMESH_LAB_PROFILE:-unified}")
 CLIENTS=$(prplmesh_profile_clients "$PROFILE")
 RADIOS=$(prplmesh_profile_radios "$PROFILE")
 RELEASE_NAME=$(prplmesh_profile_release_name "$PROFILE")
@@ -253,7 +253,7 @@ LAB_STACK=prplmesh
 LAB_RELEASE_ID=$RELEASE_ID
 LAB_FLAVOR=thin
 LAB_PROFILE_SELECTABLE=true
-LAB_SUPPORTED_PROFILES=20,50,100
+LAB_SUPPORTED_PROFILES=100
 LAB_DEFAULT_DISK=160GiB
 LAB_BUILD_STORAGE_POOL=$BUILD_STORAGE_POOL
 LAB_SOURCE_COMMIT=$(git -C "$ROOT" rev-parse HEAD)
@@ -269,13 +269,11 @@ jq -n \
     --arg created_at "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
     --arg archive "$(basename "$OUTPUT")" --arg disk 160GiB \
     --arg build_storage_pool "$BUILD_STORAGE_POOL" \
-    '{schema_version:2,stack:$stack,release_id:$release_id,flavor:$flavor,profile_selectable:true,
-      supported_profiles:[20,50,100],source_commit:$source_commit,created_at:$created_at,
+    '{schema_version:2,stack:$stack,release_id:$release_id,flavor:$flavor,profile_selectable:false,
+      client_capacity:100,default_room_clients:20,source_commit:$source_commit,created_at:$created_at,
       runtime_base_commit:$runtime_base_commit,
       archive:$archive,
-      profiles:{"20":{name:"small",instance:("prplmesh-20-"+$release_id),clients:20,hwsim_radios:40,cpus:6,memory:"8GiB"},
-                "50":{name:"medium",instance:("prplmesh-50-"+$release_id),clients:50,hwsim_radios:72,cpus:8,memory:"12GiB"},
-                "100":{name:"stress",instance:("prplmesh-100-"+$release_id),clients:100,hwsim_radios:120,cpus:12,memory:"20GiB"}},
+      capacity:{instance:("prplmesh-"+$release_id),clients:100,hwsim_radios:120,cpus:8,memory:"16GiB"},
       defaults:{disk:$disk,wmediumd_console_host_port:8090,controller_ui_host_port:8091,room_demo_host_port:18891,autostart:false},
       room:{interactive:true,profile_clients:20,automatic_start:true,profiling:true,adaptive_backhaul:false,
             service:"prplmesh-room-demo.service"},

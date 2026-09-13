@@ -27,7 +27,7 @@ if [ -r /etc/default/prplmesh-lab ]; then
 fi
 
 agents=${PROVISIONED_AGENT_COUNT:-4}
-clients=${PROVISIONED_CLIENT_COUNT:-20}
+clients=${PROVISIONED_CLIENT_COUNT:-100}
 expected=$((1 + agents + clients))
 
 case "$agents:$clients" in

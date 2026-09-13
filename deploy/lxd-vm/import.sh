@@ -6,13 +6,8 @@ if [ -r "$SCRIPT_DIR/release.env" ]; then
     # shellcheck disable=SC1091
     . "$SCRIPT_DIR/release.env"
 fi
-usage()
-{
-    if [ "${LAB_PROFILE_SELECTABLE:-false}" = true ]; then
-        echo "usage: $0 --profile 20|50|100 [--monitoring] [PRPLMESH-LXD-BACKUP.tar.zst]" >&2
-    else
-        echo "usage: $0 [--monitoring] [PRPLMESH-LXD-BACKUP.tar.zst]" >&2
-    fi
+usage() {
+    echo "usage: $0 [--monitoring] [PRPLMESH-LXD-BACKUP.tar.zst]" >&2
 }
 
 MONITORING=false
@@ -22,9 +17,8 @@ while [ "$#" -gt 0 ]; do
     case "$1" in
         --monitoring) MONITORING=true; shift ;;
         --profile)
-            [ "$#" -ge 2 ] || { usage; exit 2; }
-            SELECTED_CLIENTS=$2
-            shift 2
+            echo "Client sizing is selected by the room; 0913 always provides capacity for 100." >&2
+            exit 2
             ;;
         -h|--help) usage; exit 0 ;;
         --)
@@ -43,23 +37,18 @@ while [ "$#" -gt 0 ]; do
 done
 
 PROFILE_SELECTABLE=${LAB_PROFILE_SELECTABLE:-false}
-RELEASE_ID=${LAB_RELEASE_ID:-0908}
+RELEASE_ID=${LAB_RELEASE_ID:-0913}
 case "$RELEASE_ID" in
     [0-9][0-9][0-9][0-9]) ;;
     *) echo "invalid LAB_RELEASE_ID: $RELEASE_ID" >&2; exit 2 ;;
 esac
 if [ "$PROFILE_SELECTABLE" = true ]; then
-    case "$SELECTED_CLIENTS" in
-        20) SELECTED_PROFILE=small; SELECTED_RADIOS=40; SELECTED_CPUS=6; SELECTED_MEMORY=8GiB ;;
-        50) SELECTED_PROFILE=medium; SELECTED_RADIOS=72; SELECTED_CPUS=8; SELECTED_MEMORY=12GiB ;;
-        100) SELECTED_PROFILE=stress; SELECTED_RADIOS=120; SELECTED_CPUS=12; SELECTED_MEMORY=20GiB ;;
-        *)
-            echo "the universal thin release requires --profile 20, 50 or 100" >&2
-            usage
-            exit 2
-            ;;
-    esac
-    DEFAULT_NAME=prplmesh-${SELECTED_CLIENTS}-${RELEASE_ID}
+    SELECTED_CLIENTS=100
+    SELECTED_PROFILE=unified
+    SELECTED_RADIOS=120
+    SELECTED_CPUS=8
+    SELECTED_MEMORY=16GiB
+    DEFAULT_NAME=prplmesh-${RELEASE_ID}
 else
     [ -z "$SELECTED_CLIENTS" ] || {
         echo "--profile is valid only for a profile-selectable thin release" >&2
@@ -70,7 +59,7 @@ else
     SELECTED_RADIOS=${LAB_HWSIM_RADIOS:-unknown}
     SELECTED_CPUS=${LAB_DEFAULT_CPUS:-6}
     SELECTED_MEMORY=${LAB_DEFAULT_MEMORY:-8GiB}
-    DEFAULT_NAME=${LAB_DEFAULT_NAME:-prplmesh-20-${RELEASE_ID}}
+    DEFAULT_NAME=${LAB_DEFAULT_NAME:-prplmesh-${RELEASE_ID}}
 fi
 
 if [ -z "$BACKUP" ]; then

@@ -15,11 +15,11 @@ from .band_profiles import validate_profiles
 class BoundWorlds:
     """Select geometry and an online subset of an immutable, already bound lab."""
 
-    def __init__(self, world: dict, layout: dict, root: Path):
+    def __init__(self, world: dict, layout: dict, root: Path, *, roles: dict | None = None):
         self.default_world = copy.deepcopy(world)
         self.default_layout = copy.deepcopy(layout)
         self.root = root
-        self.roles = dict(world["roles"])
+        self.roles = dict(world["roles"] if roles is None else roles)
         self.mesh_roles = {
             role for role, kind in self.roles.items() if kind == "fronthaul_ap"
         }

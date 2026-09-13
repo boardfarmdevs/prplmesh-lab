@@ -22,17 +22,17 @@ check()
         -eq "$radios"
 }
 
-check 20 small 20 40 prplmesh-20-0908
-check small small 20 40 prplmesh-20-0908
-check 50 medium 50 72 prplmesh-50-0908
-check medium medium 50 72 prplmesh-50-0908
-check 100 stress 100 120 prplmesh-100-0908
-check stress stress 100 120 prplmesh-100-0908
-test "$(prplmesh_thin_release_name)" = prplmesh-0908-thin
-test "$(PRPLMESH_RELEASE_ID=0901 prplmesh_profile_release_name 20)" = \
-    prplmesh-20-0901
-test "$(PRPLMESH_RELEASE_ID=0901 prplmesh_thin_release_name)" = \
-    prplmesh-0901-thin
+check 100 unified 100 120 prplmesh-0913
+check unified unified 100 120 prplmesh-0913
+test "$(prplmesh_thin_release_name)" = prplmesh-0913-thin
+test "$(PRPLMESH_RELEASE_ID=0901 prplmesh_profile_release_name 100)" = prplmesh-0901
+test "$(PRPLMESH_RELEASE_ID=0901 prplmesh_thin_release_name)" = prplmesh-0901-thin
+for obsolete in 20 50 small medium stress; do
+    if prplmesh_profile_name "$obsolete" >/dev/null 2>&1; then
+        echo "obsolete size accepted: $obsolete" >&2
+        exit 1
+    fi
+done
 if prplmesh_profile_name 21 >/dev/null 2>&1; then
     echo 'invalid profile was accepted' >&2
     exit 1
@@ -48,12 +48,9 @@ for script in \
     bash -n "$ROOT/$script"
 done
 
-for clients in 20 50 100; do
-    case "$clients" in
-        20) expected_profile=small; expected_radios=40 ;;
-        50) expected_profile=medium; expected_radios=72 ;;
-        100) expected_profile=stress; expected_radios=120 ;;
-    esac
+for clients in 100; do
+    expected_profile=unified
+    expected_radios=120
     state=$work/state-$clients
     defaults=$work/defaults-$clients
     config=$work/wmediumd-selected-$clients.conf
@@ -95,18 +92,18 @@ done
 universal=$work/universal-import
 mkdir "$universal"
 install -m 0755 "$ROOT/deploy/lxd-vm/import.sh" "$universal/import.sh"
-printf 'LAB_PROFILE_SELECTABLE=true\nLAB_SUPPORTED_PROFILES=20,50,100\n' \
+printf 'LAB_PROFILE_SELECTABLE=true\nLAB_SUPPORTED_PROFILES=100\n' \
     > "$universal/release.env"
 if "$universal/import.sh" >"$work/missing-profile.out" 2>&1; then
-    echo 'universal import accepted a missing profile' >&2
+    echo 'unified import accepted a missing archive' >&2
     exit 1
 fi
-grep -Fq 'requires --profile 20, 50 or 100' "$work/missing-profile.out"
+grep -Fq 'automatic selection requires exactly one .tar.zst' "$work/missing-profile.out"
 if "$universal/import.sh" --profile 21 >"$work/invalid-profile.out" 2>&1; then
     echo 'universal import accepted an invalid profile' >&2
     exit 1
 fi
-grep -Fq 'requires --profile 20, 50 or 100' "$work/invalid-profile.out"
+grep -Fq 'Client sizing is selected by the room' "$work/invalid-profile.out"
 grep -Fq 'PRPLMESH_THIN_CONFIRM' "$ROOT/deploy/lxd-vm/package-thin.sh"
 grep -Fq 'initial_nested_instances:0' "$ROOT/deploy/lxd-vm/package-thin.sh"
 grep -Fq 'LAB_RUNTIME_BASE_COMMIT' "$ROOT/deploy/lxd-vm/package-thin.sh"

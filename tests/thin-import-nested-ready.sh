@@ -61,7 +61,7 @@ case "${1:-} ${2:-}" in
                 : > "$root/profile-lock"
                 exit 0
                 ;;
-            'grep -Fx PROVISIONED_CLIENT_COUNT=20')
+            'grep -Fx PROVISIONED_CLIENT_COUNT=100')
                 test -e "$root/profile-lock"
                 exit
                 ;;
@@ -81,7 +81,7 @@ SH
 chmod 0755 "$work/bin/lxc"
 
 install -m 0755 "$ROOT/deploy/lxd-vm/import.sh" "$work/release/import.sh"
-printf 'LAB_PROFILE_SELECTABLE=true\nLAB_SUPPORTED_PROFILES=20,50,100\n' \
+printf 'LAB_PROFILE_SELECTABLE=true\nLAB_SUPPORTED_PROFILES=100\n' \
     > "$work/release/release.env"
 : > "$work/release/appliance.tar.zst"
 
@@ -94,7 +94,7 @@ run_import()
         PRPLMESH_NESTED_LXD_READY_INTERVAL=0 \
         FAKE_NESTED_READY_AFTER="$2" \
         FAKE_ADDRESS_READY_AFTER=3 \
-        "$work/release/import.sh" --profile 20 \
+        "$work/release/import.sh" \
         "$work/release/appliance.tar.zst"
 }
 
@@ -104,28 +104,28 @@ test "$(cat "$work/address-count")" = 3
 test "$(cat "$work/query-count")" = 3
 test -e "$work/profile-lock"
 test -e "$work/proxy-added"
-query_line=$(grep -nF 'exec prplmesh-20-0904 -- lxc query /1.0' \
+query_line=$(grep -nF 'exec prplmesh-0913 -- lxc query /1.0' \
     "$work/actions" | tail -n 1 | cut -d: -f1)
-select_line=$(grep -nF 'select-thin-profile.sh 20' "$work/actions" |
+select_line=$(grep -nF 'select-thin-profile.sh 100' "$work/actions" |
     cut -d: -f1)
 proxy_line=$(grep -nF 'config device add' "$work/actions" | head -n 1 |
     cut -d: -f1)
 import_line=$(grep -nF \
-    'import '"$work"'/release/appliance.tar.zst prplmesh-20-0904' \
+    'import '"$work"'/release/appliance.tar.zst prplmesh-0913' \
     "$work/actions" | cut -d: -f1)
 grep -F 'eth0,network=lxdbr0' "$work/actions" | grep -F \
     'eth0,ipv4.address=10.99.0.250' >/dev/null
 ! sed -n "${import_line}p" "$work/actions" | grep -Eq \
     'wmediumd-console|controller-ui|topology-ui|room-demo-viewer'
-grep -F 'config device add prplmesh-20-0904 wmediumd-console proxy' \
+grep -F 'config device add prplmesh-0913 wmediumd-console proxy' \
     "$work/actions" | grep -F 'connect=tcp:10.99.0.42:8090' >/dev/null
-grep -F 'config device add prplmesh-20-0904 controller-ui proxy' \
+grep -F 'config device add prplmesh-0913 controller-ui proxy' \
     "$work/actions" | grep -F 'connect=tcp:10.99.0.42:8091' >/dev/null
-grep -F 'config device add prplmesh-20-0904 room-demo-viewer proxy' \
+grep -F 'config device add prplmesh-0913 room-demo-viewer proxy' \
     "$work/actions" | grep -F 'listen=tcp:127.0.0.1:18891' | \
     grep -F 'connect=tcp:10.99.0.42:8891' >/dev/null
 grep -Fq \
-    'config device set prplmesh-20-0904 eth0 ipv4.address 10.99.0.42' \
+    'config device set prplmesh-0913 eth0 ipv4.address 10.99.0.42' \
     "$work/actions"
 test "$import_line" -lt "$query_line"
 test "$query_line" -lt "$select_line"
@@ -155,10 +155,10 @@ SH
 env PATH="$work/bin:$PATH" FAKE_LXC_ROOT="$work" \
     PRPLMESH_UI_HOST_IP=127.0.0.1 PRPLMESH_NESTED_LXD_READY_INTERVAL=0 \
     FAKE_NESTED_READY_AFTER=1 FAKE_ADDRESS_READY_AFTER=1 \
-    "$work/release/import.sh" --profile 20 --monitoring \
+    "$work/release/import.sh" --monitoring \
     "$work/release/appliance.tar.zst" > "$work/monitoring.out"
-monitoring_line=$(grep -nF 'monitoring-enabled prplmesh-20-0904 127.0.0.1' "$work/actions" | cut -d: -f1)
-start_line=$(grep -nF 'exec prplmesh-20-0904 -- systemctl --no-block start prplmesh-lab.service' "$work/actions" | cut -d: -f1)
+monitoring_line=$(grep -nF 'monitoring-enabled prplmesh-0913 127.0.0.1' "$work/actions" | cut -d: -f1)
+start_line=$(grep -nF 'exec prplmesh-0913 -- systemctl --no-block start prplmesh-lab.service' "$work/actions" | cut -d: -f1)
 test "$monitoring_line" -lt "$start_line"
 
 echo 'PASS: thin import waits for nested LXD and enables optional monitoring before lab startup'

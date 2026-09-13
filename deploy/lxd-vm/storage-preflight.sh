@@ -5,7 +5,7 @@ ROOT=$(cd "$(dirname "$0")/../.." && pwd)
 # shellcheck source=profile.sh
 source "$ROOT/deploy/lxd-vm/profile.sh"
 
-profile=$(prplmesh_profile_name "${1:-${PRPLMESH_LAB_PROFILE:-20}}")
+profile=$(prplmesh_profile_name "${1:-${PRPLMESH_LAB_PROFILE:-unified}}")
 pool=${2:-${PRPLMESH_LXD_STORAGE:-${PRPLMESH_LXD_STORAGE_POOL:-}}}
 if [ -z "$pool" ]; then
     pool=$(lxc profile device get default root pool)

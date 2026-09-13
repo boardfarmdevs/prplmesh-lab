@@ -17,6 +17,7 @@ from wmdcfg.world import _hash, compile_world, playback_pause_points
 from .events import EventStore
 from .client_wifi import parallel_disconnections, parallel_reconnections
 from .recovery import RecoveryJournal
+from .pool import expand_initial_world
 
 
 class InteractionError(RuntimeError):
@@ -111,6 +112,10 @@ class InteractiveMediumSession:
         self._recorded_world: dict[str, Any] | None = None
         self._command_executor: Callable[..., Any] | None = None
         first = world["generations"][0]
+        if self.worlds is not None:
+            world = expand_initial_world(world, self.worlds.roles)
+            self.world = world
+            first = world["generations"][0]
         self._roles = {
             role: {
                 "position": [float(value) for value in first["positions"][role]],
@@ -150,7 +155,7 @@ class InteractiveMediumSession:
             for role in world["roles"]
         }
         if self.worlds is not None:
-            self._nodes = self.worlds.rf_nodes(world, layout)
+            self._nodes = self.worlds.rf_nodes(self._playback_world, layout)
 
     def set_command_executor(self, executor: Callable[..., Any]) -> None:
         """Route autonomous movement ticks through the owning RoomEngine."""
@@ -238,7 +243,11 @@ class InteractiveMediumSession:
                         self._instance_id, self._generation, self._baseline
                     )
                     recovery_prepared = True
-                applied = self._apply_generation(initial_updates)
+                with parallel_disconnections(
+                    self.disconnect_client(role) for role in self._allowed_roles
+                    if self.disconnect_client is not None and not self._roles[role]["present"]
+                ):
+                    applied = self._apply_generation(initial_updates)
                 for item in applied:
                     _, value, overridden = client.get_frequency_link(
                         item["source"], item["destination"], item["frequency_mhz"]

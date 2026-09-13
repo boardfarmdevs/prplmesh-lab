@@ -4,7 +4,7 @@ set -euo pipefail
 ROOT=$(cd "$(dirname "$0")/../.." && pwd)
 # shellcheck source=profile.sh
 source "$ROOT/deploy/lxd-vm/profile.sh"
-PROFILE=$(prplmesh_profile_name "${PRPLMESH_LAB_PROFILE:-20}")
+PROFILE=$(prplmesh_profile_name "${PRPLMESH_LAB_PROFILE:-unified}")
 CLIENTS=$(prplmesh_profile_clients "$PROFILE")
 RADIOS=$(prplmesh_profile_radios "$PROFILE")
 RELEASE_NAME=$(prplmesh_profile_release_name "$PROFILE")

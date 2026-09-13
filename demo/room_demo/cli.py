@@ -30,6 +30,7 @@ from .band_profiles import BandProfileManager
 from .recovery import RecoveryJournal, inventory_identity, load_recovery, recover_medium
 from .server import RoomDemoServer
 from .worlds import BoundWorlds
+from .pool import bind_client_pool
 from .client_wifi import disconnected_client, resume_bound_client
 
 
@@ -51,7 +52,7 @@ def _address(value: str) -> tuple[str, int]:
     return host, port
 
 
-def _prepare(world_path: Path, binding_path: Path):
+def _prepare(world_path: Path, binding_path: Path, *, pool: bool = False):
     world = load_json(world_path)
     verify_world_plan(world)
     source = export_wmd(world, "all")
@@ -61,6 +62,13 @@ def _prepare(world_path: Path, binding_path: Path):
     bindings = binding_doc.get("roles")
     if not isinstance(bindings, dict):
         raise ScenarioError(f"{binding_path}: roles must be an object")
+    if pool:
+        binding_doc = bind_client_pool(world, binding_doc, inventory)
+        bindings = binding_doc["roles"]
+        extra_roles = sorted(set(bindings) - set(world["roles"]))
+        declarations = "".join(f"    role {role} : station\n" for role in extra_roles)
+        source = source.replace("    restore captured\n", "    restore captured\n" + declarations, 1)
+        scenario = parse(source)
     plan = compile_scenario(scenario, source, inventory, bindings)
     return world, source, inventory, binding_doc, plan
 
@@ -291,7 +299,7 @@ def _interactive(args) -> int:
     if args.max_actions is not None and args.max_actions < 1:
         raise ActuatorError("interactive --max-actions must be a positive integer")
     manifest, world_path, bindings_path = _paths(args)
-    world, source, inventory, binding_doc, plan = _prepare(world_path, bindings_path)
+    world, source, inventory, binding_doc, plan = _prepare(world_path, bindings_path, pool=True)
     layout, layout_path = _layout_for(world)
     runtime_world = InteractiveMediumSession.runtime_world(world, layout)
     timestamp = dt.datetime.now(dt.timezone.utc).strftime("%Y%m%dT%H%M%SZ")
@@ -305,7 +313,10 @@ def _interactive(args) -> int:
             store, world, layout, plan, args.socket,
             lease_seconds=args.lease_seconds,
             traffic_probe_role=manifest["hero"]["role"],
-            worlds=BoundWorlds(world, layout, CONFIGURATOR / "worlds"),
+            worlds=BoundWorlds(
+                world, layout, CONFIGURATOR / "worlds",
+                roles={role: binding["role_type"] for role, binding in plan["bindings"].items()},
+            ),
             disconnect_client=lambda role: disconnected_client(plan, role, recovery),
             reconnect_client=lambda role: resume_bound_client(plan, role, recovery),
             band_profiles=BandProfileManager(plan, recovery),
