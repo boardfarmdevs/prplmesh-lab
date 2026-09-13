@@ -33,6 +33,11 @@ roster is substituted. Keeping membership separate also avoids an oversized
 full-network recursive reply. Backhaul STAs are represented by the device-parent edge
 and are not counted or mislabeled as ordinary WLAN clients.
 
+The pinned ubus library also needs the lab's reentrant-dispatch backport;
+normal builds and node startup include it. See
+[dependency qualification](../testing/room-acceptance.md#prpl-libubus-reentrancy).
+A dead native controller produces an unavailable topology, not a cached success.
+
 Start and check it inside the radio VM:
 
 ```sh

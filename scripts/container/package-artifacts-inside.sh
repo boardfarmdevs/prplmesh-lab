@@ -4,11 +4,16 @@ set -euo pipefail
 : "${PRPL_RELEASE:?}"
 : "${PRPL_COMMIT:?}"
 : "${PRPL_PATCHSET_SHA256:?}"
+: "${UBUS_PATCHSET_SHA256:?}"
 : "${HOSTAP_COMMIT:?}"
 
 install_dir="/opt/prpl-install-nl80211"
 test -x "$install_dir/bin/beerocks_controller"
 test -x /root/build-hostap-inside.sh
+ubus_provenance=/usr/share/prplmesh-lab/ubus-provenance.env
+grep -Fxq "UBUS_COMMIT=13a4438b4ebdf85d301999e0a615640ac4c9b0a8" "$ubus_provenance"
+grep -Fxq "UBUS_PATCHSET_SHA256=$UBUS_PATCHSET_SHA256" "$ubus_provenance"
+grep -Fxq "UBUS_LIBRARY_SHA256=$(sha256sum /usr/lib/libubus.so | awk '{print $1}')" "$ubus_provenance"
 
 HOSTAP_COMMIT="$HOSTAP_COMMIT" /root/build-hostap-inside.sh
 install -d -m 0755 "$install_dir/share/prplmesh-lab"
@@ -35,6 +40,7 @@ mapfile -t runtime_files < <(
         usr/bin/ubus \
         usr/sbin/ubusd \
         etc/acl/admin/prplmesh.json
+    printf '%s\n' usr/share/prplmesh-lab/ubus-provenance.env
 )
 
 for path in "${runtime_files[@]}"; do

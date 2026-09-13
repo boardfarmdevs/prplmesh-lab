@@ -91,10 +91,24 @@ then
 fi
 git -C /opt/prpl-deps/ubus apply \
     /opt/prplMesh/tools/docker/builder/ubuntu/bionic/ubus/0001-ubusd-convert-tx_queue-to-linked-list.patch
+for patch_file in /root/ubus-patches/*.patch; do
+    git -C /opt/prpl-deps/ubus apply --check "$patch_file"
+    git -C /opt/prpl-deps/ubus apply "$patch_file"
+done
 cmake -S /opt/prpl-deps/ubus -B /opt/prpl-deps/ubus/build \
     -DCMAKE_INSTALL_PREFIX=/usr
 cmake --build /opt/prpl-deps/ubus/build --parallel
 cmake --install /opt/prpl-deps/ubus/build
+install -d -m 0755 /usr/share/prplmesh-lab
+ubus_patchset=$(
+    cd /root
+    sha256sum ubus-patches/*.patch | sed 's#  ubus-patches/#  patches/ubus/#' | sha256sum | awk '{print $1}'
+)
+printf '%s\n' \
+    "UBUS_COMMIT=$(git -C /opt/prpl-deps/ubus rev-parse HEAD)" \
+    "UBUS_PATCHSET_SHA256=$ubus_patchset" \
+    "UBUS_LIBRARY_SHA256=$(sha256sum /usr/lib/libubus.so | awk '{print $1}')" \
+    > /usr/share/prplmesh-lab/ubus-provenance.env
 ldconfig
 
 if [ ! -d /opt/prpl-deps/ambiorix/.repo ]; then

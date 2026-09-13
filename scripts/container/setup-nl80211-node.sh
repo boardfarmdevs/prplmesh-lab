@@ -39,6 +39,8 @@ sed -i 's/^send_btm_to_non_11v_sta=.*/send_btm_to_non_11v_sta=1/' \
 pkill -x hostapd 2>/dev/null || true
 pkill -x wpa_supplicant 2>/dev/null || true
 pkill -x ubusd 2>/dev/null || true
+tar --unlink-first -C / -xzf "$project/artifacts/prpl-runtime-deps-6.0.0.tar.gz"
+ldconfig
 rm -rf /tmp/beerocks /var/run/hostapd/* /var/run/ubus/ubus.sock
 rm -rf /var/run/wpa_supplicant/*
 mkdir -p /tmp/beerocks /var/run/hostapd /var/run/ubus /var/run/wpa_supplicant

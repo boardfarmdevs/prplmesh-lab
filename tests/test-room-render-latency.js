@@ -2,7 +2,7 @@
 
 const assert = require('node:assert/strict');
 const vm = require('node:vm');
-const {installRoomObserver, roomPresentationObservations} = require('./room-render-latency.js');
+const {installRoomObserver, roomPresentationObservations, nativeRoomObservations} = require('./room-render-latency.js');
 const identity = {pid: 10, tid: 11, id2: {local: '0x8'}};
 const events = [
   {...identity, name: 'ProxyMain::BeginMainFrame', ph: 'X', ts: 10, dur: 15, args: {begin_frame_id: 20}},
@@ -65,4 +65,27 @@ assert.equal(result.records[1].changed, true);
 assert.equal(result.records[2].passed, false);
 assert.equal(marks.length, 3);
 assert.equal(result.overflow, false);
+const clocks = {browser: [{before: 0, after: 0, remote: 0}], guest: [{before: 0, after: 0, remote: 0}]};
+const gauge = {mac: 'station', bssid: 'ap', rcpi: 100, rssi: -59, level: 2, source: 'associated_sta_link_metrics', fresh: true, passed: true};
+const roomRecords = [{id: 1, receivedAt: 100, gauges: [gauge]},
+  {id: 2, receivedAt: 120, passed: true, presentationObserved: true, receivedToPresentationMs: 3,
+    gauges: [{...gauge, rcpi: 102}]}];
+const metric = {kind: 'metric', sta: 'station', bssid: 'ap', rcpi: 102, monotonic_ns: 110000000};
+const join = (events, records = roomRecords) => nativeRoomObservations(records, events, clocks)[0];
+assert.equal(join([metric]).nativeObserved, true);
+assert.equal(join([metric]).visualChanged, false);
+assert.ok(join([metric]).nativeToPresentationMs.lower > 12.9);
+assert.equal(join([metric, {...metric, monotonic_ns: 115000000}]).nativeObserved, true);
+assert.equal(join([]).nativeObserved, false);
+assert.equal(join([{...metric, bssid: 'wrong'}]).nativeObserved, false);
+assert.equal(join([{...metric, monotonic_ns: 200000000}]).nativeObserved, false);
+assert.equal(join([metric, {...metric, rcpi: 104, monotonic_ns: 112000000}, {...metric, monotonic_ns: 115000000}]).nativeObserved, false);
+for (const fields of [{fresh: false}, {passed: false}, {source: 'iw_fallback'}, {rssi: -40}, {rssi: null}]) {
+  assert.equal(join([metric], [roomRecords[0], {...roomRecords[1], gauges: [{...gauge, rcpi: 102, ...fields}]}]).nativeObserved, false);
+}
+for (const rcpi of [0, 221, 102.5, null]) {
+  assert.equal(join([{...metric, rcpi}], [roomRecords[0], {...roomRecords[1], gauges: [{...gauge, rcpi}]}]).nativeObserved, false);
+}
+assert.equal(nativeRoomObservations(roomRecords, [metric], {...clocks, guest: [{before: 0, after: 6, remote: 0}]})[0].nativeObserved, false);
+assert.deepEqual(nativeRoomObservations([roomRecords[0], {...roomRecords[1], gauges: []}, roomRecords[1]], [metric], clocks), []);
 console.log('PASS: room WebGL checks actual gauges and association geometry, unique mailbox/frame presentation, loss and supersession');

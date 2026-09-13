@@ -1149,9 +1149,6 @@ tracing/diagnostics and retains unchanged gates:
 | prpl, 12 s | 9.678 / 19.390 / 9.624 | 2.003 | 0.994 | 1.78% | Pass |
 | prpl, 20 s | 9.631 / 19.383 / 9.684 | 2.013 | 1.005 | 0.96% | Pass |
 
-Association/readback/survey and restoration pass. Earlier inconclusive
-timer-only runs remain retained, not relabeled as feedback-qualified results.
-
 Common hwsim **0010** completes singleton aggregate status using real ACK
 outcomes, restoring native rate adaptation rather than forcing rates or
 modeling aggregation. [Minstrel requires that
@@ -1165,10 +1162,8 @@ preserve module options and rollback binary. On RDK, restart
 oneshot otherwise retains obsolete state while radios are newly named wlanN.
 Never reload a live room's radio pool.
 
-The bounded thermal follow-up measures **80 ms** package throttling over
-**122.09 s** on rev140 (0.066%), CPU p95 13.28%, peak 89°C and ≥49.64 GiB
-available RAM. This does not justify swapping hosts or increasing resources.
-prpl thermal counters are unsupported, not zero. No power policy is changed.
+See [current thermal findings](../testing/room-acceptance.md#host-headroom-and-restoration)
+before changing host placement or resources. Unsupported counters are not zero.
 
 ### 12.6 Opt-in native-load policy
 
@@ -1184,21 +1179,23 @@ colocated AP reports with conservative native timestamps.
 See [coverage qualification](../testing/room-acceptance.md#native-load-coverage) and the package README.
 
 Channels and client `freq_list` are prerequisites, not policy side effects.
-RDK test retunes use a single-radio South subdoc, never global Apply or an
-agent restart. Kernel/native channels, sibling bands and agent PID must agree.
-Its five-second periodic
-reports are staggered: the opt-in profile allows five-second skew/freshness
-but requires a ten-second hold and advancing reports from both APs. prpl uses
-one-second skew/five-second hold. Neither changes default room gates or native
-cadence. `tests/load-policy-acceptance.py` qualifies real UDP/native BTM and
-verifies restoration; the policy never treats missing telemetry as idle.
-Both live load-driven BTM qualifications pass, with no additional move during
-twenty seconds of settling; see [qualification](../testing/room-acceptance.md#opt-in-load-policy-qualification).
-Eight warm channel changes preserve all three radios and reporting policy.
-Earlier native timeouts remain failures; passing repeats do not explain them.
+RDK uses single-radio retunes without restarting agents. Its staggered reports
+require five-second skew/freshness and a ten-second hold; prpl uses one-second
+skew/five-second hold. Neither changes native cadence or default room gates.
+See [UDP/BTM qualification and restoration](../testing/room-acceptance.md#opt-in-load-policy-qualification)
+for measured outcomes and retained failures. Missing telemetry never means idle.
 RDK association publication and ready-command dispatch are event-driven;
 [extender-loss qualification](../testing/room-acceptance.md#extender-loss-repair-and-attribution)
 passes without changing security timers.
+
+prpl HAL **0015** preserves candidate socket identity across interruptions;
+it does not replace idealized candidates with reception-backed measurements.
+See [repair qualification](../testing/room-acceptance.md#prpl-snapshot-coherence-and-candidate-diagnosis)
+and [native RCPI → room presentation profiling](../testing/room-acceptance.md#room-webgl-presentation),
+which excludes RF generation and physical scanout.
+The pinned prpl ubus dependency also receives a
+[reentrant-dispatch backport](../testing/room-acceptance.md#prpl-libubus-reentrancy);
+this changes message coordination, not RF or steering policy.
 
 Modern PHY/DCF, live collisions/interference, reception-backed candidates
 and physical calibration remain open. Evidence:
