@@ -38,10 +38,24 @@ The wmediumd subset contains only radio-medium correctness changes:
 9. transmit-learning requirement for multicast;
 10. classification of transient clone rejections.
 
-The scenario-control, frequency-override, metrics and observer socket patches
-are not included in this phase.
+The current ordered build series also includes scenario control,
+frequency-qualified overrides, metrics and observer sockets. The build script
+and patch directory are authoritative; the list above describes the initial
+radio-correctness subset, not the complete current manifest.
 
 ## prplMesh native-platform correction
+
+`prplmesh/0017-controller-reconcile-recreated-agent-model.patch` repairs child
+STA data-model paths when a native Agent is removed and recreated under a new
+Device instance. Successful parent removal invalidates its old STA paths;
+authoritative BSS publication repairs connected non-backhaul children still
+owned by that BSS. Unchanged paths preserve association timestamps, and stale
+old-AP membership cannot move a client back. Missing operating-channel state
+requests a real Operating Channel Report with an empty Channel Selection
+Request, without changing channel preferences or inventing metrics.
+`tests/test_prpl_model_recreation.py` covers recovery, exact path boundaries,
+failed deletion and the unchanged-path/roamed-client cases. This fixes recovery,
+not the cause of every possible Agent disappearance.
 
 `prplmesh/0001-linux-map-third-radio-interface.patch` completes the native
 Linux BPL mapping for radio number 2. Upstream release 6.0.0 already defines

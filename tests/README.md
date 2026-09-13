@@ -32,6 +32,18 @@ node tests/viewer-world-loading-test.js
 node tests/signal-meter-test.js
 ```
 
+For the combined Python regression suite, including shared test fixtures:
+
+```sh
+PYTHONPATH="$PWD/wmediumd/configurator:$PWD/optimizer:$PWD/demo:$PWD/demo/tests:$PWD/tests" \
+  python3 -m pytest --import-mode=importlib \
+  wmediumd/configurator/tests optimizer/tests demo/tests tests
+```
+
+Run adapter-specific suites separately if their module names collide with
+the optimizer modules. Native model-recreation regressions compile the actual
+patch fragments and require a C++ compiler, but no live appliance.
+
 ## Appliance command context
 
 The portable deployment is an outer LXD VM containing nested prplMesh and
@@ -39,7 +51,7 @@ client containers. Enter the selected VM as root from its outer host, then load
 the immutable profile before running tests:
 
 ```sh
-VM=prplmesh-20-0908
+VM=prplmesh-0913
 lxc exec "$VM" -- bash
 
 cd /opt/prplmesh-lab
