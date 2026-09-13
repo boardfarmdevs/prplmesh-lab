@@ -131,6 +131,6 @@ test "$(grep -c 'sha256sum -c SHA256SUMS' \
 "$ROOT/tests/data-plane-leaf.sh"
 "$ROOT/tests/thin-package-order.sh"
 "$ROOT/tests/thin-import-nested-ready.sh"
-"$ROOT/tests/baseline-room.sh"
+bash "$ROOT/tests/baseline-room.sh"
 
 echo 'PASS: prplMesh portable profiles and wmediumd rosters'

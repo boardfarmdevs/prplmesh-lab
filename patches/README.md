@@ -1,5 +1,21 @@
 # Virtual-radio patch scope
 
+## Signal-manager dependency
+
+`amxp/0001-coalesce-signal-pipe-wakeups.patch` targets libamxp v2.0.0 from the
+pinned Ambiorix v7.1.0 manifest. A 100-client model update can enqueue more
+notifications than a pipe holds before the event loop gets another turn.
+The original blocking write then prevents that same loop from draining it.
+The patch keeps one nonblocking, level-triggered wakeup while queued work
+exists; it does not discard or merge the actual notification payloads.
+Suspension, resumption, deferred calls and cleanup update that readiness under
+the existing queue mutex. Native dependency artifacts carry a checked
+`amxp-provenance.env`; packaging and acceptance reject stale libraries.
+`bash tests/amxp-signal-burst.sh` exercises 100,000-event bursts, concurrent
+producers and complete delivery in the native build environment.
+
+## Radio patches
+
 These patches are copied into this independent experiment so the prplMesh lab
 does not build from or modify the RDK repository.
 

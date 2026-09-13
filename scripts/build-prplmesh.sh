@@ -26,6 +26,15 @@ for patch_file in "$ROOT"/patches/ubus/*.patch; do
     lxc file push "$patch_file" \
         "$BUILD_CONTAINER/root/ubus-patches/$(basename "$patch_file")"
 done
+lxc exec "$BUILD_CONTAINER" -- rm -rf /root/amxp-patches
+lxc exec "$BUILD_CONTAINER" -- mkdir -p /root/amxp-patches /root/amxp-tests
+for patch_file in "$ROOT"/patches/amxp/*.patch; do
+    lxc file push "$patch_file" \
+        "$BUILD_CONTAINER/root/amxp-patches/$(basename "$patch_file")"
+done
+for test_file in amxp-signal-burst.sh amxp-signal-burst.c; do
+    lxc file push "$ROOT/tests/$test_file" "$BUILD_CONTAINER/root/amxp-tests/$test_file"
+done
 lxc exec "$BUILD_CONTAINER" -- env \
     PRPL_RELEASE="$PRPL_RELEASE" PRPL_COMMIT="$PRPL_COMMIT" \
     HOSTAP_COMMIT="$HOSTAP_COMMIT" BWL_TYPE="$BWL" \

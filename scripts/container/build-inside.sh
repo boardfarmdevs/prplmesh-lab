@@ -119,6 +119,13 @@ if [ ! -d /opt/prpl-deps/ambiorix/.repo ]; then
 fi
 cd /opt/prpl-deps/ambiorix
 retry repo sync
+amxp_commit=873b53069855414d35b821fcb46ed0f8ae108b3e
+test "$(git -C libraries/libamxp rev-parse HEAD)" = "$amxp_commit"
+git -C libraries/libamxp reset --hard "$amxp_commit"
+for patch_file in /root/amxp-patches/*.patch; do
+    git -C libraries/libamxp apply --check "$patch_file"
+    git -C libraries/libamxp apply "$patch_file"
+done
 for component in \
     libraries/libamxc libraries/libamxp libraries/libamxd libraries/libamxb \
     libraries/libamxs libraries/libamxo libraries/libamxj libraries/libamxrt \
@@ -128,6 +135,17 @@ do
     make -C "$component"
     make install -C "$component"
 done
+ldconfig
+bash /root/amxp-tests/amxp-signal-burst.sh
+amxp_patchset=$(
+    cd /root
+    sha256sum amxp-patches/*.patch | sed 's#  amxp-patches/#  patches/amxp/#' | sha256sum | awk '{print $1}'
+)
+printf '%s\n' \
+    "AMXP_COMMIT=$amxp_commit" \
+    "AMXP_PATCHSET_SHA256=$amxp_patchset" \
+    "AMXP_LIBRARY_SHA256=$(sha256sum /usr/lib/x86_64-linux-gnu/libamxp.so.2.0.0 | awk '{print $1}')" \
+    > /usr/share/prplmesh-lab/amxp-provenance.env
 
 clone_retry \
     https://gitlab.com/prpl-foundation/components/core/modules/mod-dmext.git \
