@@ -18,11 +18,8 @@ qualification](../optimizer/band-steering.md): capability-aware passive scans,
 native receive-channel reporting, and independent signal/load telemetry. Its
 room results do not replace the RF-capacity qualification limits in this assessment.
 
-0913 deployments also require [namespace-safe cfg80211 socket cleanup](../../scripts/cfg80211/README.md).
-The stock kernel's cross-namespace port-ID collision reproduced on both labs;
-the patched live probe preserves foreign interfaces and still cleans up the
-actual owner's interface. This protects real radio state, not modeled RF values;
-normal room convergence remains a separate release gate.
+0913 requires [namespace-safe cfg80211 socket cleanup](../../scripts/cfg80211/README.md).
+Its live regression passes on both labs; room convergence remains a separate gate.
 
 ## Navigation
 
