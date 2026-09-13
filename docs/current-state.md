@@ -9,31 +9,38 @@ health monitor. Use [operations](operations.md) to check runtime health.
 | --- | --- |
 | Canonical branch | `codex/0913-clean` |
 | Canonical checkout | `rev150:/home/rev/git/prplmesh-lab-0913-clean` |
-| Production VM | `rev150:prplmesh-20-0908` |
+| Qualification VM | `rev150:prplmesh-0913` (not yet release-accepted) |
+| Last accepted VM | `rev150:prplmesh-20-0908`, stopped for rollback |
 | Guest checkout | `/opt/prplmesh-lab` |
 | Native prplMesh | 6.0.0, `2e153c7e00cbcab6b8ee35082f494a364e23f018` |
 | Radio host | Ubuntu 24.04 / Linux 7, userspace wmediumd |
-| Default pool | Twenty clients; five mesh containers / six logical roles |
+| Fixed pool | 100 clients; default room selects 20 online; five mesh containers / six logical roles |
 | RDK peer | Independent repository and VM on rev140 |
 
-There are ten private and ten IoT clients. Forty permanent hwsim radios serve
-the default profile. Room presence does not resize the container pool.
+The default room selects ten private and ten IoT clients. The unified appliance
+has 120 permanent hwsim radios. Room presence does not resize the container pool.
 Outer VM autostart is disabled; starting the VM starts its lab and room.
 
 ## Browser addresses
 
-0913 is being built and qualified from the new canonical checkout. It uses one
+0913 is being qualified from the new canonical checkout. It uses one
 100-client-capacity appliance, a default room with 20 online, and the new
-`fifty-client-counter-roam` room with 50 online. Deployment and artifact rows
-describe the last accepted release until the new cutover has been verified.
+`fifty-client-counter-roam` room with 50 online. Native builds have completed;
+room ownership/convergence failures still block release packaging. There is
+no accepted 0913 thin tar yet. The addresses below now target the qualification
+VM and may be unavailable while it rebuilds or restarts.
 
 | View | rev150 prplMesh |
 | --- | --- |
 | Live room | <http://192.168.2.150:18891/> |
 | Network topology | <http://192.168.2.150:8091/> |
 | wmediumd console | <http://192.168.2.150:8090/> |
-| Inner LXD UI | <https://192.168.2.150:18892/ui/> |
-| Grafana: inner containers and outer VM | <https://192.168.2.150:18893/> |
+| Inner LXD UI | Planned: <https://192.168.2.150:18892/ui/> |
+| Grafana: inner containers and outer VM | Planned: <https://192.168.2.150:18893/> |
+
+Monitoring is not installed on 0913 yet. Install it after sanitized export so
+enrollment keys and passwords cannot enter release images. The old VM remains
+stopped for rollback.
 
 The native NBAPI normalization adapter stays on guest loopback port 8092.
 The normal room URL needs no `?mode=`. LXD proxy devices survive reboots;
@@ -46,7 +53,7 @@ Management access requires a trusted LAN/VPN; monitoring requires login.
 
 Both hosts mirror `/home/rev/releases/0909/prplmesh-0909-thin.tar` with adjacent
 checksums, bundle metadata and acceptance evidence. **0909 is the latest
-packaged download; production still uses the named 0908 VM.** A newer thin tar
+packaged download; 0908 is the stopped rollback VM.** A newer thin tar
 is not proof of live redeployment or a native rebuild.
 
 The 0909 thin import passed bounded native, BTM and twenty-client traffic
