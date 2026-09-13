@@ -13,8 +13,9 @@ steering adapters and deployment remain independent.
 - [Build from source](docs/from-scratch.md)
 - [Technical reference by subsystem](reference/README.md)
 
-Default room deployments retain twenty client containers, a controller with
-colocated agent and four extenders: five mesh containers / six displayed roles.
+One appliance retains 100 client containers; rooms select the online subset
+(20 by default). A controller with colocated agent and four extenders provides
+five mesh containers / six displayed roles.
 The live prplMesh lab belongs on rev150, separately from RDK on rev140.
 No screenshot or accepted BTM alone proves convergence; compare physical
 association, native ownership, fresh measurements and traffic.

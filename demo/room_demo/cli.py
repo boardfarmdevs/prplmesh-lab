@@ -68,6 +68,13 @@ def _prepare(world_path: Path, binding_path: Path, *, pool: bool = False):
         extra_roles = sorted(set(bindings) - set(world["roles"]))
         declarations = "".join(f"    role {role} : station\n" for role in extra_roles)
         source = source.replace("    restore captured\n", "    restore captured\n" + declarations, 1)
+        initial_links = "".join(
+            f"            link {role} <-> {ap} band {band}GHz snr = 0dB\n"
+            for role in extra_roles
+            for ap, kind in sorted(world["roles"].items()) if kind == "fronthaul_ap"
+            for band in ("2.4", "5", "6")
+        )
+        source = source.replace("        parallel {\n", "        parallel {\n" + initial_links, 1)
         scenario = parse(source)
     plan = compile_scenario(scenario, source, inventory, bindings)
     return world, source, inventory, binding_doc, plan

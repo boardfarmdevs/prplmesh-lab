@@ -21,6 +21,7 @@ HOST_IP=${PRPLMESH_UI_HOST_IP:-$(ip -4 route get 1.1.1.1 2>/dev/null |
 HOST_IP=${HOST_IP:-127.0.0.1}
 CONSOLE_PORT=${PRPLMESH_WMEDIUMD_CONSOLE_HOST_PORT:-8090}
 UI_PORT=${PRPLMESH_UI_HOST_PORT:-8091}
+ROOM_PORT=${PRPLMESH_ROOM_DEMO_HOST_PORT:-18891}
 RUNTIME_DEPS=${PRPL_RUNTIME_DEPS_ARCHIVE:-}
 PRPL_INSTALL=${PRPL_INSTALL_ARCHIVE:-}
 HOSTAP_RUNTIME=${PRPL_HOSTAP_ARCHIVE:-}
@@ -41,6 +42,7 @@ Site overrides:
   PRPLMESH_UI_HOST_IP=$HOST_IP
   PRPLMESH_WMEDIUMD_CONSOLE_HOST_PORT=$CONSOLE_PORT
   PRPLMESH_UI_HOST_PORT=$UI_PORT
+  PRPLMESH_ROOM_DEMO_HOST_PORT=$ROOM_PORT
   PRPLMESH_LXD_STORAGE=<outer LXD storage pool>
 EOF
 }
@@ -189,6 +191,8 @@ build_vm()
         listen="tcp:$HOST_IP:$CONSOLE_PORT" connect="tcp:$guest_ip:8090"
     lxc config device add "$NAME" controller-ui proxy nat=true \
         listen="tcp:$HOST_IP:$UI_PORT" connect="tcp:$guest_ip:8091"
+    lxc config device add "$NAME" room-demo-viewer proxy nat=true \
+        listen="tcp:$HOST_IP:$ROOM_PORT" connect="tcp:$guest_ip:8891"
     lxc start "$NAME"
     wait_agent
 

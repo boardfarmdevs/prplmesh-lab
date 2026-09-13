@@ -1,13 +1,16 @@
 from __future__ import annotations
 
 import copy
+import json
 from contextlib import contextmanager
 from dataclasses import replace
 from pathlib import Path
 import tempfile
 import unittest
+from unittest.mock import patch
 
 from room_demo.engine import RoomEngine
+from room_demo.cli import _prepare
 from room_demo.events import EventStore
 from room_demo.interactions import InteractiveMediumSession
 from room_demo.pool import bind_client_pool, expand_initial_world
@@ -124,6 +127,35 @@ class ClientCapacityTests(unittest.TestCase):
         self.assertEqual(pool["sta_pool_021"], "prpl-client-21")
         self.assertEqual(pool["sta_pool_022"], "prpl-client-22")
         self.assertEqual(pool["sta_pool_100"], "prpl-client-100")
+
+    def test_prepare_compiles_full_pool_initial_rf_and_keeps_default_world(self):
+        radios = []
+        for ordinal, (role, kind) in enumerate(self.roles.items(), 1):
+            address = f"02:00:00:00:{ordinal:02x}:00"
+            radios.append({
+                "container": role, "kind": "station" if kind == "station" else "mesh",
+                "tx_mac": address, "permanent_mac": address, "station_mac": address,
+                "band": "5", "ssid": "private_ssid",
+                "interfaces": [{"ssid": "private_ssid", "frequency_mhz": frequency}
+                               for frequency in (2412, 5180, 5955)],
+            })
+        with tempfile.TemporaryDirectory() as directory:
+            binding_path = Path(directory) / "bindings.json"
+            binding_path.write_text(json.dumps({"roles": {role: role for role in self.world["roles"]}}))
+            with patch("room_demo.cli.discover", return_value={"radios": radios}):
+                world, source, inventory, bindings, plan = _prepare(
+                    ROOT / "golden/home-a-private-client-room-walk.world.json",
+                    binding_path, pool=True)
+        self.assertEqual(world, self.world)
+        self.assertEqual(plan["expected_lab"], {"clients": 100, "mesh_devices": 5})
+        self.assertEqual(len(plan["bindings"]), 105)
+        updates = plan["events"][0]["updates"]
+        self.assertEqual(len(updates), 100 * 5 * 3 * 2)
+        unused = [item for item in updates if
+                  item["source_role"].startswith("sta_pool_") or
+                  item["destination_role"].startswith("sta_pool_")]
+        self.assertEqual(len(unused), 80 * 5 * 3 * 2)
+        self.assertTrue(all(item["value"] == 0 for item in unused))
 
 
 if __name__ == "__main__":
