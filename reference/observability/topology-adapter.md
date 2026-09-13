@@ -22,9 +22,15 @@ flowchart LR
 ```
 
 The normalized API contains EasyMesh devices, their backhaul parent and type,
-radios, band/opclass/channel, BSSs, and attached clients. STA instances are
+radios, band/opclass/channel, BSSs, and attached clients. Device instances are
 discovered with `_get_instances`; `ubus list` is not used as a topology
-inventory. Backhaul STAs are represented by the device-parent edge
+inventory. Device/radio/BSS metadata is read concurrently at depth four.
+Client membership then comes from **one** `_get` of
+`Device.*.Radio.*.BSS.*.STA.` at depth one, rather than merging STA lists from
+different device-read times. This prevents a roam from appearing at both its
+old and new AP. No timestamp-based deduplication, guessed owner or cached
+roster is substituted. Keeping membership separate also avoids an oversized
+full-network recursive reply. Backhaul STAs are represented by the device-parent edge
 and are not counted or mislabeled as ordinary WLAN clients.
 
 Start and check it inside the radio VM:

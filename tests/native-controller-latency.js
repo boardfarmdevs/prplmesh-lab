@@ -2,10 +2,55 @@
 
 const fs = require('node:fs');
 const path = require('node:path');
-const {spawn} = require('node:child_process');
+const {spawn, execFile} = require('node:child_process');
+const {promisify} = require('node:util');
 const {createInterface} = require('node:readline');
 const now = () => Number(process.hrtime.bigint()) / 1e6;
 const quote = value => "'" + value.replaceAll("'", "'\\''") + "'";
+
+async function nativeCpuSample(args) {
+  if (!args['native-stack']) return null;
+  if (!['rdk', 'prpl'].includes(args['native-stack']) ||
+      ![args.host, args.vm].every(value => typeof value === 'string' && /^[a-zA-Z0-9][a-zA-Z0-9_.-]*$/.test(value))) {
+    throw new Error('Invalid native trace target');
+  }
+  const name = args['native-stack'] === 'rdk' ? 'onewifi_em_ctrl' : 'beerocks_controller';
+  const source = `import json, os, pathlib, time
+matches = []
+for binary in pathlib.Path('/proc').glob('[0-9]*/exe'):
+    try:
+        if binary.resolve().name == '${name}':
+            fields = binary.with_name('stat').read_text().rsplit(')', 1)[1].split()
+            matches.append({'pid': int(binary.parent.name), 'start': fields[19],
+                'cpuTicks': int(fields[11]) + int(fields[12]), 'hz': os.sysconf('SC_CLK_TCK'),
+                'monotonicMs': time.monotonic_ns() / 1000000})
+    except (OSError, ValueError):
+        continue
+assert len(matches) == 1, matches
+print(json.dumps(matches[0]))`;
+  const {stdout} = await promisify(execFile)('ssh', ['--', args.host,
+    'lxc exec ' + quote(args.vm) + ' -- python3 -c ' + quote(source)], {timeout: 10000});
+  return JSON.parse(stdout);
+}
+
+function cpuWindow(samples) {
+  const [first, last] = samples;
+  const elapsed = (last.at - first.at) / 1000;
+  const sameProcesses = first.processes.length === last.processes.length && first.processes.every(process =>
+    last.processes.some(other => other.id === process.id && other.type === process.type && other.cpuTime >= process.cpuTime));
+  const cpuSeconds = last.processes.reduce((total, process) => total + process.cpuTime, 0) -
+    first.processes.reduce((total, process) => total + process.cpuTime, 0);
+  const native = first.native && last.native && first.native.pid === last.native.pid &&
+    first.native.start === last.native.start && first.native.hz === last.native.hz &&
+    last.native.cpuTicks >= first.native.cpuTicks && last.native.monotonicMs > first.native.monotonicMs;
+  const nativeElapsed = native ? (last.native.monotonicMs - first.native.monotonicMs) / 1000 : null;
+  const nativeTicks = native ? last.native.cpuTicks - first.native.cpuTicks : null;
+  return {elapsedSeconds: elapsed, sameBrowserProcesses: sameProcesses,
+    browserCpuPercentOneCore: elapsed > 0 && sameProcesses ? 100 * cpuSeconds / elapsed : null,
+    sameNativeProcess: Boolean(native), nativeCpuPercentOneCore: native ? {
+      lower: 100 * Math.max(0, nativeTicks - 2) / first.native.hz / nativeElapsed,
+      upper: 100 * (nativeTicks + 2) / first.native.hz / nativeElapsed} : null};
+}
 
 function offsetBounds(samples, localTime, driftPpm = 100) {
   if (!samples.length) throw new Error('Clock calibration missing');
@@ -17,14 +62,14 @@ function offsetBounds(samples, localTime, driftPpm = 100) {
   return {lower, upper};
 }
 
-async function calibrate(readClock, count = 5) {
+async function calibrate(readClock, count = 5, resolutionMs = 0) {
   const samples = [];
   for (let index = 0; index < count; index++) {
     const before = now();
     const remote = Number(await readClock());
     const after = now();
     if (!Number.isFinite(remote)) throw new Error('Invalid clock sample');
-    samples.push({before, remote, after});
+    samples.push({before, remote, after, resolutionMs});
   }
   return samples;
 }
@@ -37,7 +82,11 @@ function remoteTimeBounds(samples, remoteTime, driftPpm = 100) {
   }
   const intervals = samples.map(sample => {
     const delta = remoteTime - sample.remote;
-    const endpoints = [delta / (1 - fraction), delta / (1 + fraction)];
+    const radius = 2 * (sample.resolutionMs ?? 0);
+    if (![sample.before, sample.after, sample.remote, radius].every(Number.isFinite) ||
+        sample.before > sample.after || radius < 0) throw new Error('Invalid clock sample');
+    const endpoints = [(delta - radius) / (1 - fraction), (delta - radius) / (1 + fraction),
+      (delta + radius) / (1 - fraction), (delta + radius) / (1 + fraction)];
     return {lower: sample.before + Math.min(...endpoints), upper: sample.after + Math.max(...endpoints)};
   });
   const lower = Math.max(...intervals.map(interval => interval.lower));
@@ -81,9 +130,11 @@ function nativeObservations(records, events, clocks) {
     };
     const decodedDelay = delay(record.receivedAt);
     const paintDelay = record.paintObserved ? delay(record.receivedAt + record.decodedToPaintMs) : null;
+    const presentationDelay = record.presentationObserved ? delay(record.receivedAt + record.decodedToPresentationMs) : null;
     return {...record, nativeObserved: decodedDelay.upper >= 0 && Boolean(paintDelay),
       nativeCommit: commit, nativeToRequestMs: delay(record.requestedAt),
       nativeToDecodedMs: decodedDelay, nativeToPaintMs: paintDelay,
+      nativeToPresentationMs: presentationDelay,
       clockUncertaintyMs: paintDelay ? paintDelay.upper - paintDelay.lower : null};
   });
 }
@@ -101,7 +152,7 @@ async function startNativeTrace(args, directory, page) {
   const clocks = {guest: [], browser: []};
   const source = fs.readFileSync(path.join(__dirname, 'native-controller-trace.py'), 'utf8');
   const child = spawn('ssh', ['--', args.host, prefix + quote(source) + ' --stack ' + args['native-stack'] +
-    ' --seconds ' + Math.ceil(seconds + 25) + ' --watch-stdin']);
+    ' --seconds ' + Math.ceil(seconds + 25) + ' --watch-stdin' + (['metrics', 'overhead'].includes(args.scope) ? ' --metrics' : '')]);
   const events = [];
   const clockRequests = new Map();
   let clockSequence = 0;
@@ -147,7 +198,7 @@ async function startNativeTrace(args, directory, page) {
   let stopping = false;
   const collectClocks = async () => {
     clocks.guest.push(...await calibrate(readGuestClock));
-    clocks.browser.push(...await calibrate(() => page.evaluate(() => performance.now())));
+    clocks.browser.push(...await calibrate(() => page.evaluate(() => performance.now()), 5, 0.1));
   };
   const scheduleCalibration = () => {
     calibrationTimer = setTimeout(() => {
@@ -172,10 +223,12 @@ async function startNativeTrace(args, directory, page) {
     const end = events.find(event => event.kind === 'end');
     if (failure) throw failure;
     if (stderr.trim() || !end || end.lost !== 0 || end.records !== end.emitted ||
-        end.records !== events.filter(event => event.kind === 'commit').length) {
+        end.records !== events.filter(event => ['commit', 'metric'].includes(event.kind)).length ||
+        events.some(event => event.kind === 'metric' && (!event.associated ||
+          !event.sta || !event.bssid || [event.sta, event.bssid].includes('00:00:00:00:00:00')))) {
       throw new Error('Native trace incomplete or reported diagnostics');
     }
-    return {events, clocks, identity: events.find(event => event.kind === 'identity')};
+    return {events, clocks, identity: events.find(event => event.kind === 'identity'), capture: end};
   };
   try {
     await ready;
@@ -187,4 +240,4 @@ async function startNativeTrace(args, directory, page) {
   return {stop};
 }
 
-module.exports = {offsetBounds, remoteTimeBounds, calibrate, nativeObservations, startNativeTrace};
+module.exports = {offsetBounds, remoteTimeBounds, calibrate, nativeObservations, startNativeTrace, nativeCpuSample, cpuWindow};

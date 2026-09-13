@@ -1281,6 +1281,7 @@
   const frameTimings = new URLSearchParams(location.search).get('profile') === '1' ? [] : null;
   let receivedNetworkFrame = null;
   let updatedNetworkFrame = null;
+  let frameObserver = null;
   function update() {
     renderStats.requests++;
     if (updateQueued) return;
@@ -1300,6 +1301,8 @@
   function renderScene() {
     if (!world3d) return;
     renderer.render(scene, camera);
+    if (frameObserver) frameObserver({renderer, nodes: world3d.nodes, actual: world3d.actual,
+      network: networkState, frame: updatedNetworkFrame, clock: liveClock});
     sceneRenderDirty = false;
     if (frameTimings && updatedNetworkFrame && updatedNetworkFrame !== renderStats.lastNetworkFrame) {
       renderStats.lastNetworkFrame = updatedNetworkFrame;
@@ -2914,6 +2917,7 @@
   window.__scene = scene; window.__viewer = {
     renderStats,
     frameTimings,
+    observeFrames: frameTimings ? (observer) => { frameObserver = observer; } : null,
     loadWorld, update, frameAt: (t) => frameAt(t),
     bestServing: (g) => bestServing(g),
     setTime: (t) => { tMs = t; update(); },

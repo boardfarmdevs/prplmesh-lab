@@ -8,6 +8,7 @@ import os
 from pathlib import Path
 import select
 import signal
+import resource
 import sys
 import time
 import threading
@@ -29,6 +30,7 @@ struct event {
     u8 bssid[6];
     u8 associated;
     u8 rcpi;
+    u8 metric;
 };
 BPF_PERF_OUTPUT(events);
 BPF_ARRAY(count, u64, 1);
@@ -53,6 +55,16 @@ int commit(struct pt_regs *context) {
     bpf_probe_read_user(&event.rcpi, 1, (void *)((u64)object + 0xd4));
     return publish(context, &event);
 }
+int metric(struct pt_regs *context) {
+    u64 object = (u32)context->si;
+    struct event event = {};
+    bpf_probe_read_user(event.station, 6, (void *)(object + 4));
+    bpf_probe_read_user(event.bssid, 6, (void *)(object + 10));
+    bpf_probe_read_user(&event.associated, 1, (void *)(object + 22));
+    bpf_probe_read_user(&event.rcpi, 1, (void *)(object + 0xd4));
+    event.metric = 1;
+    return publish(context, &event);
+}
 """
     return common + """
 BPF_HASH(pending, u64, struct event, 1024);
@@ -72,6 +84,18 @@ int commit(struct pt_regs *context) {
     if (event && PT_REGS_RC(context) == 1) publish(context, event);
     pending.delete(&thread);
     return 0;
+}
+int metric(struct pt_regs *context) {
+    u64 object = context->ax;
+    u64 bss = 0;
+    struct event event = {};
+    bpf_probe_read_user(event.station, 6, (void *)object);
+    bpf_probe_read_user(&bss, 8, (void *)(object + 880));
+    bpf_probe_read_user(event.bssid, 6, (void *)bss);
+    bpf_probe_read_user(&event.rcpi, 1, (void *)(object + 280));
+    event.associated = 1;
+    event.metric = 1;
+    return publish(context, &event);
 }
 """
 
@@ -99,6 +123,7 @@ def main(argv=None):
     parser.add_argument("--stack", choices=tuple(PROFILES), required=True)
     parser.add_argument("--seconds", type=int, default=60)
     parser.add_argument("--watch-stdin", action="store_true")
+    parser.add_argument("--metrics", action="store_true")
     args = parser.parse_args(argv)
     if os.geteuid() or not 5 <= args.seconds <= 180:
         parser.error("requires root and 5..180 seconds")
@@ -125,7 +150,7 @@ def main(argv=None):
             nonlocal records
             event = probe["events"].event(data)
             records += 1
-            emit({"kind": "commit", "monotonic_ns": event.timestamp,
+            emit({"kind": "metric" if event.metric else "commit", "monotonic_ns": event.timestamp,
                               "sta": ":".join(f"{octet:02x}" for octet in event.station),
                               "bssid": ":".join(f"{octet:02x}" for octet in event.bssid),
                               "associated": bool(event.associated),
@@ -142,10 +167,16 @@ def main(argv=None):
         else:
             probe.attach_uprobe(name=binary, sym=PRPL_ASSOCIATION, fn_name="enter")
             probe.attach_uretprobe(name=binary, sym=PRPL_ASSOCIATION, fn_name="commit")
+        metric_address = 0x89b90 if args.stack == "rdk" else 0x2737c1
+        if args.metrics:
+            probe.attach_uprobe(name=binary, addr=metric_address, fn_name="metric")
         emit({"kind": "identity", "stack": args.stack, "sha256": digest,
                           "binary": binary, "clock": "guest-monotonic",
-                          "boundary": "native-model-association-commit"})
+                          "boundary": "native-model-association-commit",
+                          "metric_boundary": "native-model-rcpi-store" if args.metrics else None})
         emit({"kind": "ready"})
+        ready_cpu = time.process_time()
+        ready_time = time.monotonic()
 
         def control():
             for raw in sys.stdin:
@@ -170,13 +201,18 @@ def main(argv=None):
         else:
             probe.detach_uprobe(name=binary, sym=PRPL_ASSOCIATION)
             probe.detach_uretprobe(name=binary, sym=PRPL_ASSOCIATION)
+        if args.metrics:
+            probe.detach_uprobe(name=binary, addr=metric_address)
         probe.perf_buffer_poll(timeout=100)
         emitted = probe["count"][0].value
         if lost or emitted != records:
             raise RuntimeError(f"incomplete trace: received={records}, emitted={emitted}, lost={lost}")
         if controller(args.stack) != (binary, digest):
             raise RuntimeError("controller changed during trace")
-        emit({"kind": "end", "records": records, "emitted": emitted, "lost": lost})
+        emit({"kind": "end", "records": records, "emitted": emitted, "lost": lost,
+              "receiver_cpu_seconds": time.process_time() - ready_cpu,
+              "receiver_elapsed_seconds": time.monotonic() - ready_time,
+              "receiver_peak_rss_kib": resource.getrusage(resource.RUSAGE_SELF).ru_maxrss})
     finally:
         probe.cleanup()
     return 0

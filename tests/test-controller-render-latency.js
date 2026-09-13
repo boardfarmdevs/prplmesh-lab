@@ -76,6 +76,8 @@ async function main() {
   };
   assert.equal((await stopTrace(session)).dataLossOccurred, true);
   assert.equal(closed, true);
+  await assert.rejects(stopTrace(session, 50, 1), /byte budget/);
+  assert.equal(closed, true);
   assert.equal(session.listenerCount('Tracing.tracingComplete'), 0);
   session.send = async () => {};
   await assert.rejects(stopTrace(session, 1), /timed out/);

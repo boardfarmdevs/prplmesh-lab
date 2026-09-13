@@ -345,6 +345,25 @@ def test_candidate_provider_rejects_cached_metrics_after_update():
                                 candidate_provider=provider, clock=lambda: NOW)
     with pytest.raises(CandidateMetricsError, match="incomplete"):
         observer.observe()
+    incomplete = provider.last_raw[-1]
+    assert incomplete["operation"] == "incomplete"
+    assert incomplete["last_read_at"]
+    assert incomplete["freshness"] == [{
+        "radio": "Device.WiFi.DataElements.Network.Device.2.Radio.2",
+        "sta_mac": "02:00:00:10:01:00",
+        "baseline": (122, METRIC_STAMP), "last_read": (122, METRIC_STAMP),
+    }]
+
+
+def test_candidate_timeout_distinguishes_missing_from_unchanged_publication():
+    provider = _Provider()
+    provider._radio_metrics = lambda radio: {}
+    observer = PrplMeshObserver(fetcher=lambda url: _topology(),
+                                candidate_provider=provider, clock=lambda: NOW)
+    with pytest.raises(CandidateMetricsUnavailable, match="incomplete"):
+        observer.observe()
+    assert provider.last_raw[-1]["freshness"][0]["last_read"] is None
+    assert provider.last_raw[-1]["freshness"][0]["baseline"] is None
 
 
 def test_zero_candidate_completes_only_after_native_timestamp_advances():

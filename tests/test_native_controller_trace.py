@@ -48,16 +48,16 @@ class FakeProbe:
 
 
 class NativeTraceTest(unittest.TestCase):
-    def run_trace(self, stack, probe):
+    def run_trace(self, stack, probe, metrics=False):
         with contextlib.ExitStack() as contexts:
             contexts.enter_context(patch.dict("sys.modules", {
                 "bcc": SimpleNamespace(BPF=lambda **_kwargs: probe)}))
             contexts.enter_context(patch.object(trace.os, "geteuid", return_value=0))
             contexts.enter_context(patch.object(trace, "controller", return_value=("binary", "digest")))
             contexts.enter_context(patch.object(trace.signal, "signal"))
-            contexts.enter_context(patch.object(trace.time, "monotonic", side_effect=[0, 10]))
+            contexts.enter_context(patch.object(trace.time, "monotonic", side_effect=[0, 0, 10, 10]))
             contexts.enter_context(contextlib.redirect_stdout(io.StringIO()))
-            return trace.main(["--stack", stack, "--seconds", "5"])
+            return trace.main(["--stack", stack, "--seconds", "5"] + (["--metrics"] if metrics else []))
 
     def test_consumer_precedes_both_native_profiles(self):
         for stack in ("rdk", "prpl"):
@@ -72,3 +72,11 @@ class NativeTraceTest(unittest.TestCase):
         with self.assertRaisesRegex(RuntimeError, "attachment failed"):
             self.run_trace("rdk", probe)
         self.assertTrue(probe.cleaned)
+
+    def test_metric_profiles_detach_with_association_probes(self):
+        for stack in ("rdk", "prpl"):
+            with self.subTest(stack=stack):
+                probe = FakeProbe()
+                self.assertEqual(self.run_trace(stack, probe, metrics=True), 0)
+                self.assertTrue(probe.cleaned)
+                self.assertEqual(probe.attached, 0)

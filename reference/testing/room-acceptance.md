@@ -142,12 +142,10 @@ Receiver queue draining is not calibrated physical capacity.
 
 ## Current qualification
 
-September 12, 2026 UTC, `codex/0908-clean`: both follow-up catalogs pass
+September 13, 2026 UTC, `codex/0908-clean`: both atomic-snapshot/WebGL follow-up catalogs pass
 **14/14 after independent audit**, run in parallel on RDK/rev140 and prpl/rev150.
 The unchanged five-second extender-loss departure gate passes on both.
-Three preceding warm loss/recovery repeats and two additional evacuation
-repeats also pass without native resets between runs. Every room loads
-and plays at 1×, with initial/checkpoint/final policy convergence, fullscreen
+Every available room loads and plays at 1×, with initial/checkpoint/final policy convergence, fullscreen
 room/topology inspection, presence, directional RF and physical/native/rendered
 ownership.
 Both catalogs retain unchanged native/container/medium identities, no browser
@@ -162,25 +160,41 @@ unchanged. Only the test action cap rises to 2000, then returns to 100.
 
 | Observation | RDK / rev140 | prpl / rev150 |
 | --- | --- | --- |
-| UTC window | 22:53:54–23:22:06 | 22:54:11–23:19:52 |
-| Verified / submitted actions | 151 / 151 | 145 / 145 |
-| Failed / discarded / unmatched verifications | 0 / 0 / 0 | 0 / 0 / 0 |
-| Request → verification p50 / p95 / max, s | 1.600 / 4.794 / 7.724 | 1.024 / 1.204 / 1.451 |
-| Submission p50 / p95 / max, s | 0.060 / 0.074 / 0.103 | 0.476 / 0.507 / 0.551 |
-| RF application p50 / p95 / max, ms | 9.252 / 28.275 / 516.363 | 8.806 / 29.098 / 698.533 |
-| Candidate publication wait p50 / p95 / max, ms | 84.236 / 131.161 / 580.435 | 40.313 / 88.834 / 476.369 |
-| Unavailable collections / native HTTP 504s / busy rejections | 0 / 0 / 0 | 0 / 0 / 0 |
-| Superseded collections, separate cancellations | 16 | 16 |
+| UTC window | 01:23:25–01:51:23 | 01:25:31–01:52:52 |
+| Verified / submitted actions | 147 / 148 | 156 / 156 |
+| Failed / discarded / unmatched verifications | 0 / 1 / 0 | 0 / 0 / 0 |
+| Request → verification p50 / p95 / max, s | 1.683 / 4.796 / 7.714 | 1.001 / 1.165 / 1.413 |
+| Submission p50 / p95 / max, s | 0.060 / 0.076 / 0.114 | 0.496 / 0.564 / 0.629 |
+| RF application p50 / p95 / max, ms | 9.770 / 29.487 / 522.090 | 8.425 / 30.318 / 730.851 |
+| Candidate publication wait p50 / p95 / max, ms | 83.474 / 130.508 / 628.876 | 38.491 / 86.342 / 712.372 |
+| Unavailable collections / native HTTP 504s / busy rejections | 0 / 0 / 0 | 1 / 0 / 0 |
+| Superseded collections, separate cancellations | 17 | 11 |
 
-RDK candidate transactions p50/p95/max: **269.643 / 392.333 / 5750.946 ms**.
-prpl NBAPI operations: **143.592 / 170.363 / 248.121 ms**;
-complete collections: **942.036 / 988.241 / 1944.851 ms**.
-prpl's timestamp-resolution guard remains **501/531 ms p50/p95**: removing
+RDK's one discarded verification is cancelled by the next world load, not a
+failed native steer or an unaccounted submission. The prpl restoration also
+cancels one verification outside the catalog's action window. Neither is
+counted as a verified action.
+
+RDK candidate transactions p50/p95/max: **269.196 / 385.478 / 6411.265 ms**.
+prpl NBAPI operations: **146.828 / 169.694 / 346.020 ms**;
+complete collections: **943.903 / 980.523 / 1938.292 ms**.
+prpl's timestamp-resolution guard remains **493/528 ms p50/p95**: removing
 it without request correlation would weaken freshness validity. These measure
 different boundaries, not interchangeable stack execution time.
-The default signal path and native binaries are unchanged in this follow-up;
-differences from preceding runs are not proof of a broker-induced speedup.
+Native binaries and steering policy remain unchanged; the prpl adapter now
+reads coherent membership;
+differences from preceding runs are not proof of a stack speedup.
 Passing bounded gates is not a claim of zero external delay.
+
+**Earlier prpl availability failure:** in the preceding catalog, while loading the perimeter room, one candidate
+collection waits **30.36 seconds** for six entries on native
+`Device.2.Radio.2`. The other four radios publish in about 0.59 seconds;
+NBAPI reads remain responsive. The next round recovers and all room/steering
+gates pass. This is a retained performance deficiency, not a cancelled round
+or a failed steer. Its root cause is unproven; capture the native per-radio
+query/response path before changing retry/freshness rules. The bounded follow-up
+below captures a later **30.78-second** failure and localizes it before native
+1905 response publication. It does not establish the earlier episode's cause.
 
 RDK now includes agent **0185/0186** and OneWifi **0027/0028**, qualified below; its
 controller and HAL through **0038**, prplMesh and hostapd remain unchanged.
@@ -196,74 +210,266 @@ the five-second continuous hold is additional.
 
 | Room | RDK initial / final | prpl initial / final |
 | --- | --- | --- |
-| `home-a-stationary` | 0.03 / 0.01 | 0.02 / 0.01 |
-| `home-a-one-client-handover` | 10.12 / 8.10 | 8.08 / 0.01 |
-| `large-room-extender-evacuation` | 19.26 / 21.27 | 7.90 / 0.01 |
-| `large-room-perimeter-counter-roam` | 25.32 / 7.09 | 6.66 / 0.01 |
-| `home-a-asymmetric-link` | 15.20 / 2.03 | 8.07 / 0.01 |
-| `home-a-band-walk-small` | 16.20 / 10.12 | 5.05 / 6.07 |
-| `home-a-border-hover` | 20.25 / 18.24 | 4.10 / 2.04 |
-| `home-a-disappear-reappear` | 17.22 / 0.02 | 3.04 / 0.01 |
-| `home-a-extender-loss-recovery` | 3.04 / 11.14 | 4.04 / 0.01 |
-| `home-a-fast-transit` | 15.17 / 22.27 | 7.84 / 7.07 |
-| `home-a-flash-crowd` | 3.05 / 0.01 | 0.01 / 0.01 |
-| `home-a-private-client-room-walk` | 23.41 / 0.01 | 1.03 / 0.01 |
-| `home-a-slow-walk-ten` | 19.25 / 8.13 | 4.08 / 9.12 |
-| `home-b-slow-walk-ten` | 24.37 / 9.16 | 6.08 / 2.03 |
+| `home-a-stationary` | 0.02 / 0.01 | 0.02 / 0.01 |
+| `home-a-one-client-handover` | 11.14 / 9.13 | 6.06 / 0.01 |
+| `large-room-extender-evacuation` | 20.84 / 13.16 | 0.03 / 1.03 |
+| `large-room-perimeter-counter-roam` | 23.28 / 7.10 | 9.72 / 0.01 |
+| `home-a-asymmetric-link` | 14.17 / 2.03 | 0.02 / 0.01 |
+| `home-a-band-walk-small` | 17.95 / 11.12 | 7.07 / 0.02 |
+| `home-a-border-hover` | 20.25 / 0.01 | 6.15 / 2.03 |
+| `home-a-disappear-reappear` | 16.17 / 0.01 | 8.08 / 0.01 |
+| `home-a-extender-loss-recovery` | 9.48 / 0.01 | 6.07 / 0.01 |
+| `home-a-fast-transit` | 12.82 / 8.12 | 8.08 / 3.03 |
+| `home-a-flash-crowd` | 2.03 / 0.01 | 2.03 / 0.01 |
+| `home-a-private-client-room-walk` | 12.18 / 0.01 | 6.10 / 0.01 |
+| `home-a-slow-walk-ten` | 19.26 / 9.17 | 1.04 / 6.12 |
+| `home-b-slow-walk-ten` | 23.31 / 8.14 | 40.49 / 0.01 |
 
 Absolute-strongest diagnostics remain separate from policy convergence:
 
-- rdk: `home-a-stationary`, `02:00:00:00:06:00`, 2 RCPI held by the configured margin.
-- rdk: `home-a-one-client-handover`, `02:00:00:00:06:00`, 2 RCPI held by the configured margin.
-- prpl: `home-a-stationary`, `02:00:00:10:04:00`, 2 RCPI held by the configured margin.
-- prpl: `home-a-one-client-handover`, `02:00:00:10:04:00`, 2 RCPI held by the configured margin.
-- prpl: `large-room-extender-evacuation`, `02:00:00:10:04:00`, 2 RCPI held by the configured margin.
+- prpl: `large-room-extender-evacuation`, `02:00:00:10:03:00`, 2 RCPI above the current AP; `candidate_gain_too_small`.
 
 These are policy passes, not claims that every client always selects the
 absolute strongest AP. `room-final-readiness.py` uses the same fresh,
 complete policy gate and five-second hold; `--require-absolute-best` adds
 the stricter optional check. No target is forced to make acceptance pass.
 
-### Native commit → browser Paint
+### Native metrics → browser presentation
 
 Use the catalog's Playwright/Chromium environment and a new output directory
-during scheduled movement. On RDK:
+during scheduled movement. The tool only observes; the catalog or an operator
+owns playback. On RDK:
 
 ```sh
 node gen/tests/controller-render-latency.js \
-  --url http://192.168.2.140:48889/ --output /tmp/native-paint-new \
-  --seconds 150 --native-stack rdk --host rev140 --vm rdkeasymesh-20-0908
+  --scope metrics --url http://192.168.2.140:48889/ \
+  --output /tmp/native-metrics-new --seconds 100 \
+  --native-stack rdk --host rev140 --vm rdkeasymesh-20-0908
 ```
 
 On prpl omit `gen/`, use URL `http://192.168.2.150:8091/`,
 `--native-stack prpl --host rev150 --vm prplmesh-20-0908`.
-The guest requires root Python/BCC and the exact qualified native binary hash.
-Unknown builds fail closed. The probe owns its bounded uprobe receiver,
-browser and streams; there is no always-on collector or native binary change.
+The guest requires root Python/BCC and the exact qualified native binary hash;
+the browser profile is **Chromium 139.0.7258.5**. Unknown native builds fail
+closed; changed or missing browser trace identities cannot qualify a frame.
+Captures own their receiver/browser, last at most 150 seconds with native
+tracing, and restore the normal API wrapper before draining pending records.
+There is no always-on observer, extra RF query, policy change or RF write.
 
-| Periodically calibrated capture | RDK | prpl |
+`--scope associations` retains association-model timing; `--scope metrics`
+adds **ordinary serving-link RCPI**, not association events masquerading as
+signal updates. RDK probes the instruction following the accepted RCPI store
+at file offset `0x89b90`; prpl uses `0x2737c1`. Both read the actual STA and
+BSSID from the owning model. prpl's qualified Station/BSS layouts are pinned
+by the controller digest. Requalify instruction boundaries and layouts after
+native rebuilds; never disable the digest guard.
+
+The metric path joins the native RCPI transition to `/clients` response
+decode, checks the same owner/raw RCPI and all ten actual SVG segment fills,
+then finds a covering Paint. Changes within one meter level still require
+the correct SVG data, but **do not require a nonexistent visual change**.
+Repeated equal native reports cannot reset the transition clock. Ambiguous
+recurrences, ownership changes predating the HTTP request, stale metrics, supersession,
+timeouts and incomplete traces fail rather than receiving guessed timings.
+An ownership/metric change proven to occur **after request start but before
+decode** is tagged as an in-flight snapshot race, not mistaken for a bad
+native join. The old-owner metric's own commit must still match uniquely;
+clock-overlapping request boundaries remain unqualified.
+
+Presentation is no longer inferred from two animation callbacks. A covering
+Paint must belong to the exact renderer/thread's main-frame→commit flow;
+that frame's hexadecimal trace identity must match Chrome's presentation
+feedback. Zero-frame feedback and missing/duplicate joins are unqualified.
+The source is Chromium's
+[presentation callback](https://chromium.googlesource.com/chromium/src/+/139.0.7258.5/third_party/blink/renderer/core/frame/animation_frame_timing_monitor.cc)
+and [main-frame pipeline](https://chromium.googlesource.com/chromium/src/+/139.0.7258.5/cc/trees/proxy_main.cc).
+Trace categories are `devtools.timeline,blink.user_timing,benchmark`; avoiding
+the entire `cc` category retains the required commit flows without its
+unrelated scheduler events. Recording is capped at 128 MiB, with loss rejected;
+JSON export has a 512 MiB limit and a separate 30-second completion deadline.
+Export/offline analysis are outside latency and CPU measurement windows and
+use additional memory, not the recording buffer's budget.
+
+| Qualified fullscreen capture | RDK | prpl |
 | --- | --- | --- |
-| Unambiguous native association → Paint joins | 29/29 | 34/34 |
-| p95 interval | 391.00–393.02 ms | 254.85–255.66 ms |
-| Maximum upper bound | 401.85 ms | 263.73 ms |
-| Maximum clock uncertainty | 2.85 ms | 2.69 ms |
+| Ordinary RCPI → decoded response joins | 87/87 | 22/22 |
+| Changed-meter → frame presentation joins | 49/49 | 7/7 |
+| RCPI → presentation p95 interval | 457.11–458.51 ms | 347.20–348.11 ms |
+| Maximum presentation upper bound | 499.56 ms | 348.11 ms |
+| Maximum RCPI clock uncertainty | 3.27 ms | 2.94 ms |
+| Association → presentation joins | 25/25 | 27/27 |
+| Association → presentation p95 interval | 305.91–308.61 ms | 206.77–209.02 ms |
 
-Monotonic clock brackets refresh every ten seconds and include drift at each
-event. Per-STA watermarks prevent ambiguous recurrence joins. Native/perf
-loss, wrong-thread or non-covering Paint, missing joins and trace errors fail.
-Retain raw native events, clock samples and Chrome traces.
+RCPI captures use RDK's `home-b-slow-walk-ten` and prpl's
+`home-a-private-client-room-walk`; association captures cover evacuation.
+Different movement cohorts and small prpl visual counts are **not an intrinsic
+stack-speed comparison**. A separate RDK band-walk capture has 79/79 native
+metric joins and 44/44 changed-meter frames. Earlier raw captures are retained;
+`precision-audit.json` reapplies the conservative timer allowance to recorded
+Chromium timestamps without modifying the original reports.
 
-The removed prpl **750-ms completed-response cache** previously yielded
-native-to-Paint p95 **815.72–843.02 ms**; a post-fix 25-transition follow-up
-yielded **149.01–156.61 ms**. Concurrent reads now share only an in-flight
-request; errors cannot return successful stale topology. Different movement
-samples are not a controlled intrinsic-stack speed comparison.
+Monotonic clock brackets refresh every ten seconds and include 100 ppm drift
+and [0.1 ms browser timer coarsening](https://developer.chrome.com/blog/cross-origin-isolated-hr-timers/)
+at both calibration and event endpoints;
+latency qualification requires ≤5 ms maximum uncertainty.
+Native/perf loss, missing joins, API failures and trace errors fail.
+Retain raw native events, clock samples and Chrome traces outside the repo.
 
-Scope is **association-model commit to covering main-thread Paint**, not all
-metric commits, exact server publication, layout-animation completion,
-compositor or physical display. Request/decode timestamps bracket publication,
-polling and transport. No zero-external-delay claim is made. Paint attribution
-is independent of room convergence and cannot turn a failed room into a pass.
+#### Observer overhead
+
+On a paused, unleased default twenty-client lab, run the same command with
+`--scope overhead --seconds 30 --room-url http://192.168.2.140:48891/` and
+a new output directory. For prpl use room URL `http://192.168.2.150:18891/`.
+This is a **separate qualification**, not a latency pass with zero samples.
+After initializing Chrome's otherwise lazily created tracing service, it
+records 20 seconds before tracing, 30 traced, and 20 after; unchanged
+room epoch/roles/playback, process identities, no RCPI or association changes,
+native metric events and no trace loss are required.
+
+Budgets are fixed before measurement: observer callbacks p95 ≤2 ms and total
+≤1% of wall time, including a conservative 0.2 ms per-callback timer allowance;
+incremental controller CPU ≤5 and browser CPU ≤10 percentage
+points of **one core**. The upper envelope subtracts the lower of the two
+baseline windows, including ±2 native scheduler ticks. It is an observed
+stationary envelope, not a universal or statistical confidence bound.
+
+Final controlled runs pass both stacks: controller upper increments
+**1.45 / 0.00 percentage points**, browser **0.58 / 0.48**, and callback
+upper bounds **0.115% / 0.100%** of elapsed time (RDK/prpl). The zero prpl increment means
+no detectable increase within this envelope, **not zero probe cost**. Moving
+room CPU windows are retained separately and are not controlled A/B evidence.
+The controlled comparison keeps the same topology page open in all windows;
+it bounds instrumentation cost, not the cost of opening a viewer. Catalog
+captures add an observed topology page, so they are not uncontended runs.
+
+Scope is **native association/RCPI model store to topology presentation feedback**
+in a headless compositor. This does not qualify physical display scanout,
+layout-animation completion, the room's WebGL presentation, every native
+counter or an exact server-publication timestamp. Request/decode brackets
+include publication, polling and transport; no zero-external-delay claim is
+made. Profiling cannot turn a failed room convergence gate into a pass.
+
+### prpl snapshot coherence and candidate diagnosis
+
+The September 13 follow-up reproduces a **different** reporting bug while
+playing the perimeter room: `sta-04` appears at its old and new AP in one
+topology sample (13 visible clients instead of 12). The room gate correctly
+fails despite all 11 steering requests completing. The adapter had merged
+independently timed, per-device STA snapshots across the roam.
+
+The fix retains concurrent device metadata reads but obtains all STA
+membership in one bounded NBAPI read. It does not guess the winning owner,
+deduplicate by RSSI, cache a previous roster, or loosen the duplicate gate.
+The focused repaired perimeter run passes, with **11/11** steers verified.
+The prpl repository's `reference/observability/topology-adapter.md` documents
+the read boundaries.
+
+The preceding **30.36-second candidate gap remains unattributed**. Three
+bounded diagnostic perimeter plays show no incomplete collections; the
+retained duplicate-view failure is not counted as a room pass. Native packet
+captures cover **8,460** unambiguous query/response pairs across the four
+extenders, with no missing replies and a maximum observed turnaround of
+**21.46 ms**. Pairing uses agent/opclass/station set with exactly one pending
+request, not an assumed matching response MID. These observations cannot
+explain an earlier uncaptured failure.
+
+The full follow-up catalog does reproduce an availability failure while
+loading `home-b-slow-walk-ten`, at **01:50:24 UTC**:
+
+- Agent `prpl-agent-02` receives an operating-class-115 query containing ten
+  stations. Its response follows **2.754 ms** later but contains only nine;
+  `02:00:00:20:05:00` is missing. The controller-side capture confirms the same
+  omission; all five capture interfaces report zero kernel drops.
+- The native HAL logs `No wmediumd candidate metric` for that first station.
+  The remaining nine reported RSSIs have the preceding station's values:
+  the signal-to-client mapping is shifted, not just late.
+- The new timeout diagnostic retains RCPI 78 and timestamp
+  `2026-09-13T01:50:23Z` unchanged through the last NBAPI read at 01:50:54.140.
+  Freshness correctly refuses that stale entry. The next measurement round
+  recovers, and the room initially converges in **40.49 seconds**, inside the
+  unchanged 60-second bound. The incomplete collection remains a failure.
+
+The assembled laboratory HAL's `read_snr` uses one `send`/`recv` pair, continues
+on a failed receive, and checks frequency but not the echoed source/destination.
+An offline fault-injection harness using that exact function reproduces a
+missing first metric and misassigned subsequent RSSI when the first `recv`
+returns `EINTR`. This proves a transport-handling weakness, **not which errno
+occurred live**: the current HAL does not log it. Packet turnaround rules out
+a 30-second bridge/1905 delivery delay for this particular response, not all
+possible native delays or the earlier six-entry failure.
+
+**Next native-HAL qualification:** preserve one-request/one-response alignment
+across interrupted syscalls with a bounded deadline, validate echoed link
+identity, and abandon a desynchronized transaction rather than label another
+station's signal. Add deterministic interrupted/late/wrong-identity tests,
+then rebuild/deploy the prpl laboratory HAL and repeat the full catalog.
+This follow-up changes only the adapter, diagnostics and opt-in profilers;
+the HAL repair is **not implemented or deployed**, and the live gap is not
+claimed fixed. Do not hide it by accepting cached values or relaxing timeouts.
+
+Candidate timeout transactions now retain the missing entries' baseline and
+last parsed signal/timestamp, plus the last-read time, without extra NBAPI calls
+or changed timeouts. In a prpl lab VM, as root, capture native evidence with:
+
+```sh
+python3 /opt/prplmesh-lab/tests/prpl-candidate-capture.py \
+  /tmp/prpl-candidates-new --seconds 180
+```
+
+The opt-in collector owns five bridge pcaps and filtered native logs, stops
+its processes, and leaves radio/link state untouched. Bounds are 5–2400
+seconds and 256 MiB; touching the output directory's `stop` file ends it early.
+Require exit zero; inspect packet-drop counts in `*.pcap.stderr` and cleanup in `capture.json`.
+Preserve native packets alongside room `events.jsonl`; do not turn a recovered
+timeout into a successful collection.
+
+### Room WebGL presentation
+
+The common opt-in profiler also covers decoded room network snapshots to
+**client gauge materials and association-line geometry, actual WebGL draws,
+canvas mailbox preparation, and exact Chrome frame presentation feedback**:
+
+```sh
+PLAYWRIGHT_MODULE=/path/to/playwright-core \
+CHROMIUM_PATH=/path/to/chromium-139.0.7258.5/chrome \
+node gen/tests/room-render-latency.js --url http://192.168.2.140:48891/ \
+  --output /tmp/rdk-room-render-new --seconds 65
+```
+
+For prpl omit `gen/` and use `http://192.168.2.150:18891/`. Run passively while
+a separately controlled room is playing. The tool enters full screen, enables
+`?profile=1` on its own page, and removes its observer before export. The
+default viewer has no observer. No extra RF/API queries, pixel readback or
+synchronous GPU wait is introduced. The profile pins Chromium and SwiftShader,
+with the owned GPU process restricted to CPUs 0–1 and nice 19.
+
+The join requires one canvas, correct material colors/line endpoints, actual
+draw calls, an exact renderer/thread/main-frame identity and one
+[`DrawingBuffer::prepareMailbox`](https://chromium.googlesource.com/chromium/src/+/139.0.7258.5/third_party/blink/renderer/platform/graphics/gpu/drawing_buffer.cc)
+before its commit. Missing or duplicate joins, lost traces, SSE gaps, context
+loss and API failures fail qualification. A collapsed asynchronous frame in
+Chrome's JSON export is accepted only with its exact begin-frame ID, unique
+explicit render interval and matching recorded duration; no nearest-frame
+guess is used. Marker start times include observer work rather than subtracting
+it from reported latency. Browser timer precision contributes ±0.2 ms.
+
+| Qualified fullscreen profile | RDK band walk | prpl perimeter |
+| --- | --- | --- |
+| Checked and presented network frames | 259/259 | 258/258 |
+| Frames with changed client state | 31 | 38 |
+| SSE decode → presentation p95 upper | 230.77 ms | 327.99 ms |
+| Maximum presentation upper | 344.97 ms | 428.34 ms |
+| Observer callback p95 upper | 0.50 ms | 0.51 ms |
+| Observer callback wall-time upper fraction | 0.153% | 0.153% |
+
+The unchanged callback budgets are p95 ≤2 ms and ≤1% of elapsed wall time.
+An initial profiler used layout-forcing canvas bounds reads; removing those
+reduces its measured callback p95 upper from 4.10 ms to the values above.
+Earlier failed/empty captures are retained, not counted as passes.
+Different rooms and software GPU scheduling preclude an intrinsic stack-speed
+comparison. This is **not** native RF-to-room timing, physical scanout,
+pixel-exact framebuffer validation, completed animations, or qualification of
+every mesh/wall effect. The topology native-RCPI profile remains separate.
 
 ### Opt-in policy outcome
 
@@ -476,13 +682,13 @@ and process attribution are opt-in, off by default. Unsupported counters stay nu
 
 | Full-catalog observation | RDK / rev140 | prpl / rev150 |
 | --- | --- | --- |
-| Samples / maximum gap | 846 / 2.005 s | 770 / 2.009 s |
-| Total CPU p95 / peak | 15.23% / 17.96% | 32.64% / 38.48% |
-| Minimum available RAM | 49.93 GiB | 12.55 GiB |
-| Peak sampled sensor | 99.00°C | 85.50°C |
-| Package throttling duration / measured window | 456 ms / 1690.76 s | Unsupported, not zero |
-| Package throttling time fraction | 0.0270% | Unsupported |
-| Sampler elapsed p95 / max | 4.15 / 6.01 ms | 1.57 / 9.35 ms |
+| Samples / maximum gap | 839 / 2.005 s | 821 / 2.011 s |
+| Total CPU p95 / peak | 15.72% / 20.50% | 36.02% / 52.93% |
+| Minimum available RAM | 49.96 GiB | 11.68 GiB |
+| Peak sampled sensor | 100.00°C | 85.50°C |
+| Package throttling duration / measured window | 980 ms / 1676.76 s | Unsupported, not zero |
+| Package throttling time fraction | 0.0584% | Unsupported |
+| Sampler elapsed p95 / max | 4.04 / 5.93 ms | 1.62 / 11.54 ms |
 
 rev140 has limited thermal headroom, not RAM exhaustion or sustained total CPU
 overload. Inspect physical cooling separately; these measurements do not
@@ -493,18 +699,38 @@ observer's CPU 0–1 affinity.
 
 Both labs return to **20 clients/six logical roles**, default world paused at
 zero, no lease/fault, fresh complete metrics and cap 100. Catalog restoration
-first converges in **26.81 s RDK / 13.02 s prpl**, then holds.
-Separate readiness checks pass in **5.093 s RDK / 5.075 s prpl**.
+first converges in **28.20 s RDK / 15.94 s prpl**, then holds.
+Separate readiness checks pass in **11.210 s RDK / 19.274 s prpl**.
 VM autostart remains disabled.
 No native restart occurs inside either final catalog; no thin tar or box is made.
 
 ### Evidence and limitations
 
-Latest follow-up evidence is on rev150 under
-`/home/rev/work/steering-local-ap-0912/`: both `*-all-rooms/audited-summary.json`
-files, fullscreen screenshots/JSONL, RDK native/management pcaps, native load
-coverage, load-driven BTM, regression logs and final readiness. All raw
-evidence remains outside the repositories.
+Latest evidence is on rev150 under `/home/rev/work/candidate-room-profiling-0913/`:
+
+- `*-all-rooms/audited-summary.json`: final full catalogs, screenshots, JSONL, host samples and native captures.
+- `prpl-perimeter-followup-2/`: retained duplicate-client failure; `prpl-perimeter-fixed/` is the repaired focused pass.
+- `candidate-room-prpl-0913*/`: native per-agent packets/logs; `packets-*-summary.json` describes diagnostic repeats and the final catalog. Partial station-set responses remain ambiguous, not successful joins.
+- `prpl-catalog-gap-event.json`, `prpl-agent-02-full-monitor-window.log`, `candidate-read-reproduction.log`: the captured late failure and offline interrupted-read reproduction, with the extracted source/harness alongside.
+- `rdk-webgl-final/`, `prpl-webgl-qualified/`: qualified fullscreen WebGL profiles; earlier failed/empty attempts remain separate.
+- `*-final-readiness/`, `rdk-regression.log`, `prpl-regression-final.log`, `prpl-go-race.log`: restored defaults and regression checks.
+
+The preceding native-RCPI/topology profiles remain under
+`/home/rev/work/metric-presentation-0912/`:
+
+- `*-all-rooms/audited-summary.json`: full catalogs, with adjacent fullscreen screenshots, JSONL, host samples and RDK native/management captures.
+- `timing-summary.json`: clock-precision reaudits of `rdk-metrics-clocks/`, `prpl-metrics-presentation/` and both `*-associations-final/` captures.
+- `*-overhead-qualified/report.json`: controlled observer qualification; `*-final-readiness/` verifies restored defaults.
+
+Earlier failed or empty profiling attempts are retained separately. They
+exposed an HTTP-boundary attribution race, a ten-second trace-export timeout,
+and lazy tracing-service creation across baseline windows. The profiler fixes
+these without changing room gates; captures with no metric transitions remain
+unqualified rather than passing with zero samples.
+
+The preceding native-load/timeout follow-up remains under
+`/home/rev/work/steering-local-ap-0912/`, including native load coverage and
+load-driven BTM. All raw evidence remains outside the repositories.
 
 The earlier extender-loss repair evidence remains under
 `/home/rev/work/extender-loss-fix-0912/`: `all-rooms/audited-summary.json`,
@@ -528,27 +754,32 @@ gate. The warm-retune regression qualifies replacing global radio Apply and
 agent refresh with single-radio updates that preserve sibling channels and
 the running agent's reporting policy.
 
-Python regressions: **700 passed RDK / 573 passed prpl**. The earlier ten-test
-prpl adapter qualification remains unchanged. Five daemon-integration checks per stack require `WMDC_TEST_DAEMON`;
+Python regressions: **702 passed RDK / 590 passed prpl**, including the 12-test
+prpl adapter suite and two native-capture lifecycle tests. Five daemon-integration checks per stack require `WMDC_TEST_DAEMON`;
 four RDK VirtualBox checks require Ruby. These are explicit skips, not passes.
-Both 65-test documentation/monitoring subsets, JavaScript and prpl Go race
-tests pass. Assembled-source scheduler, channel dispatch, association publication,
+Documentation/link checks, JavaScript and prpl Go race tests pass. Assembled-source scheduler, channel dispatch, association publication,
 ready-command, completion-race and candidate-dispatch regressions pass.
 Prior RF/timer/feedback evidence remains under
 `/home/rev/work/profiling-gates-0912/`; see
 [RF qualification](../radio/virtual-rf-assessment.md#results-and-remaining-work).
 Physical PHY/DCF, collision/interference fidelity, reception-backed candidates,
-calibrated demand/capacity and non-association/compositor timing remain outside
-the implemented scope. Retain failures; never weaken freshness or timeouts.
+calibrated demand/capacity, all-counter timing and native RF-to-room WebGL timing
+remain outside the implemented scope. Native RCPI/topology presentation and
+the room's decoded-client-snapshot/WebGL frame boundary are qualified above.
+Retain failures; never weaken freshness or room timeouts.
 
 ### Remaining implementation order
 
 The RDK extender-loss regression gate is closed by the qualification above.
-Remaining profiling/load-policy work is separate:
+The serving-RCPI/topology-presentation profiling path is implemented above.
+Remaining work is separate:
 
-1. **Common profiling:** cover non-association metric publication and
-   compositor completion, with bounded observer overhead and clock uncertainty.
+1. **prpl candidate transport:** repair and qualify the laboratory HAL's
+   interrupted-read/response-identity handling described above. Retain both
+   availability failures; the 14/14 room result does not close this defect.
 2. **RDK timeout attribution:** the bounded investigation above does not
    reproduce the historical failures. Preserve native/client captures if they recur.
-3. Keep packaging separate; repeat the unchanged regression gates after changes.
+3. Broader profiling can join native events to the room's now-qualified WebGL
+   boundary and add other counters; do not relabel these subsets as every subsystem.
+4. Keep packaging separate; repeat the unchanged regression gates after changes.
    Local AP telemetry is implemented and qualified above, not an open feature.

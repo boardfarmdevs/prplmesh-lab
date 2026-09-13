@@ -485,10 +485,14 @@ class PrplMeshCandidateProvider:
         metrics: dict[tuple[str, str], tuple[int, str]] = {}
         published = set()
         measured = []
+        last_read = {}
+        last_read_at = None
         while time.monotonic() < deadline:
             if self.generation_guard is not None and not self.generation_guard():
                 raise CandidateSnapshotSuperseded("prplMesh candidate generation was superseded")
-            for radio, values in self._read_radios(radios).items():
+            last_read = self._read_radios(radios)
+            last_read_at = format_time(datetime.now(timezone.utc))
+            for radio, values in last_read.items():
                 for sta_mac, value in values.items():
                     key = (radio, sta_mac)
                     if key not in baseline or parse_time(value[1]) > parse_time(baseline[key][1]):
@@ -512,6 +516,11 @@ class PrplMeshCandidateProvider:
         missing = sorted(expected - set(metrics))
         if missing:
             self.last_raw.append({"operation": "incomplete", "missing": sorted(missing),
+                                  "last_read_at": last_read_at,
+                                  "freshness": [{"radio": radio, "sta_mac": sta_mac,
+                                                 "baseline": baseline.get((radio, sta_mac)),
+                                                 "last_read": last_read.get(radio, {}).get(sta_mac)}
+                                                for radio, sta_mac in missing],
                                   "elapsed_ms": round((time.monotonic() - collection_started) * 1000, 3)})
             raise CandidateMetricsUnavailable(
                 f"prplMesh candidate metrics incomplete after {self.timeout_seconds}s: {missing}"

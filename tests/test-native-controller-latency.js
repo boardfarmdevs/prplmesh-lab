@@ -1,6 +1,6 @@
 'use strict';
 const assert = require('node:assert/strict');
-const {offsetBounds, remoteTimeBounds, nativeObservations} = require('./native-controller-latency.js');
+const {offsetBounds, remoteTimeBounds, nativeObservations, cpuWindow} = require('./native-controller-latency.js');
 assert.deepEqual(offsetBounds([{before: 9, remote: 5, after: 11}], 10, 0), {lower: 4, upper: 6});
 assert.throws(() => offsetBounds([], 10), /missing/);
 assert.throws(() => offsetBounds([{before: 10, remote: 1, after: 12}, {before: 20, remote: 1, after: 22}], 10, 0), /Inconsistent/);
@@ -17,6 +17,8 @@ const drift = remoteTimeBounds([{before: 0, remote: 0, after: 0}, {before: 1000,
 assert.ok(drift.upper - drift.lower > .09);
 assert.ok(drift.lower < 500 && drift.upper > 500);
 assert.deepEqual(remoteTimeBounds([{before: 0, remote: 0, after: 0}], 50, 0), {lower: 50, upper: 50});
+assert.deepEqual(remoteTimeBounds([{before: 0, remote: 0, after: 0, resolutionMs: .1}], 50, 0), {lower: 49.8, upper: 50.2});
+assert.throws(() => remoteTimeBounds([{before: 1, remote: 0, after: 0, resolutionMs: .1}], 50), /Invalid clock sample/);
 const recurrence = nativeObservations([record(20, null, 'first'), record(40, 'first', 'second'), record(60, 'second', 'first')],
   [event(10, 'first'), event(30, 'second'), event(50, 'first')], clocks);
 assert.equal(recurrence[2].nativeObserved, true);
@@ -25,3 +27,12 @@ assert.equal(nativeObservations([record(20, 'old', 'missing')], [], clocks)[0].n
 assert.equal(nativeObservations([record(20, null, 'first')], [event(10, 'first')], clocks)[0].nativeScope, 'addition-or-removal-not-qualified');
 assert.equal(nativeObservations([record(60, 'old', 'first')], [event(10, 'first'), event(30, 'second'), event(50, 'first')], clocks)[0].nativeMatches, 2);
 console.log('PASS: bounded clock mapping, missing/ambiguous commits, native owner recurrence and scope');
+const first = {at: 1000, processes: [{id: 10, type: 'renderer', cpuTime: 1}],
+  native: {pid: 20, start: 'abc', hz: 100, cpuTicks: 100, monotonicMs: 1000}};
+const last = {at: 11000, processes: [{id: 10, type: 'renderer', cpuTime: 3}],
+  native: {...first.native, cpuTicks: 200, monotonicMs: 11000}};
+assert.equal(cpuWindow([first, last]).browserCpuPercentOneCore, 20);
+assert.deepEqual(cpuWindow([first, last]).nativeCpuPercentOneCore, {lower: 9.8, upper: 10.2});
+assert.equal(cpuWindow([first, {...last, native: {...last.native, start: 'restarted'}}]).nativeCpuPercentOneCore, null);
+assert.equal(cpuWindow([first, {...last, processes: []}]).browserCpuPercentOneCore, null);
+console.log('PASS: observer CPU windows retain process identity and scheduler-tick uncertainty');
