@@ -60,12 +60,15 @@ negative control.
 STA data-model paths when a native Agent is removed and recreated under a new
 Device instance. Successful parent removal invalidates its old STA paths;
 authoritative BSS publication repairs connected non-backhaul children still
-owned by that BSS. Unchanged paths preserve association timestamps, and stale
-old-AP membership cannot move a client back. Missing operating-channel state
+owned by that BSS and registered as the current station object. Disconnected
+history and orphaned BSS references cannot recreate ghost clients. Unchanged
+paths preserve association timestamps, and stale old-AP membership cannot move
+a client back. Missing operating-channel state
 requests a real Operating Channel Report with an empty Channel Selection
 Request, without changing channel preferences or inventing metrics.
 `tests/test_prpl_model_recreation.py` covers recovery, exact path boundaries,
-failed deletion and the unchanged-path/roamed-client cases. This fixes recovery,
+failed deletion, disconnected/orphan history and unchanged-path/roamed-client
+cases, with negative controls for the missing guards. This fixes recovery,
 not the cause of every possible Agent disappearance.
 
 `prplmesh/0001-linux-map-third-radio-interface.patch` completes the native
