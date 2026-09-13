@@ -17,6 +17,7 @@ class ClientPolicyState:
     failure_count: int = 0
     last_failure_reason: str | None = None
     last_action_at: str | None = None
+    load_epoch: str | None = None
 
     @classmethod
     def from_dict(cls, value: dict[str, Any]) -> "ClientPolicyState":

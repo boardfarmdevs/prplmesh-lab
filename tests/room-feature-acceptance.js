@@ -93,6 +93,18 @@ function evaluate(current, interactions, view, world, bindings, now = Date.now()
     mediumFault};
 }
 
+function fronthaulOutages(world, samples) {
+  return Object.entries(world.roles).filter(([, kind]) => kind === 'fronthaul_ap').flatMap(([role]) => {
+    const start = world.generations.find(frame => !frame.present[role])?.time_ms;
+    if (start === undefined) return [];
+    const end = world.generations.find(frame => frame.time_ms > start && frame.present[role])?.time_ms ?? world.duration_ms + 1;
+    const checked = samples.filter(sample => sample.phase === 'playing' && sample.playback.time_ms >= start + 5000 && sample.playback.time_ms < end);
+    return [{role, startMs: start, endMs: end, samples: checked.length,
+      remainingAssociations: checked.filter(sample => (sample.roomAssociations || []).some(client => client.ap === role)).map(sample => sample.playback.time_ms),
+      meshConnected: checked.every(sample => sample.meshConnected && sample.meshViewMatches)}];
+  });
+}
+
 function distribution(values) {
   const ordered = values.filter(Number.isFinite).sort((left, right) => left - right);
   const percentile = fraction => ordered.length ? ordered[Math.max(0, Math.ceil(ordered.length * fraction) - 1)] : null;
@@ -446,15 +458,20 @@ async function run(args) {
       return {startMs: entry.startMs, endMs, clients: entry.roles.length, topologyVerified: matches.length > 0,
         firstVerifiedRoomTimeMs: matches[0]?.playback.time_ms ?? null};
     });
+    result.fronthaulOutages = fronthaulOutages(golden, result.samples);
     result.passed = Boolean(result.load?.passed && result.initial?.passed && result.playback?.completed && result.final?.passed &&
       result.checkpoints.every(checkpoint => checkpoint.passed) && result.scriptCorrect && result.sceneCorrect && result.viewCorrect &&
       result.presencePhases.every(entry => entry.topologyVerified) &&
+      result.fronthaulOutages.every(outage => outage.samples > 0 && !outage.remainingAssociations.length && outage.meshConnected) &&
       result.kernel?.passed && !result.errors.length && !report.errors.some(error => error.room === result.id));
     result.sampleCount = result.samples.length;
     delete result.samples;
   }
   try {
-    hostMonitor = await startHostMonitor(args.host, directory);
+    hostMonitor = await startHostMonitor(args.host, directory, {
+      interval: Number(args['host-monitor-interval'] ?? 2),
+      processes: args['host-monitor-processes'] === 'true',
+    });
     const initial = await request('/api/demo/interactions');
     if (initial.lease?.held || initial.recording?.active) throw new Error('Refusing to steal a control lease or interrupt recording');
     report.before = await guest('identity', args.flavor);
@@ -582,6 +599,6 @@ async function run(args) {
   return report;
 }
 
-module.exports = {expectedFrame, evaluate, distribution, eventPerformance, viewAgreement, recordedEventKind};
+module.exports = {expectedFrame, evaluate, distribution, eventPerformance, viewAgreement, recordedEventKind, fronthaulOutages};
 if (require.main === module) run(argumentsFrom(process.argv.slice(2))).then(report => { process.exitCode = report.passed ? 0 : 1; })
   .catch(error => { console.error(error); process.exitCode = 2; });

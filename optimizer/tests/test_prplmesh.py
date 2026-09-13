@@ -1,5 +1,6 @@
 import copy
 from datetime import datetime, timezone
+import threading
 
 import pytest
 
@@ -12,6 +13,72 @@ from optimizer.prplmesh import PrplMeshCandidateProvider, PrplMeshObserver, _fir
 NOW = datetime(2026, 8, 28, 18, 0, tzinfo=timezone.utc)
 STAMP = "2026-08-28T18:00:00.000Z"
 METRIC_STAMP = "2026-08-28T17:59:57.125Z"
+
+
+def test_candidate_registration_is_bounded_parallel_and_cached(monkeypatch):
+    provider = PrplMeshCandidateProvider(allow_simulated=True)
+    targets = {(f"radio-{index // 4}", f"station-{index}"): [] for index in range(8)}
+    metadata = {radio: {"channel": 36, "opclass": 115, "device_id": radio} for radio, _ in targets}
+    lock = threading.Lock()
+    release = threading.Event()
+    active = peak = 0
+    calls = []
+
+    def call(radio, method, request):
+        nonlocal active, peak
+        with lock:
+            active += 1
+            peak = max(peak, active)
+            calls.append((radio, request["un_station_mac"]))
+            if active == 4:
+                release.set()
+        assert release.wait(2), "registration was serialized"
+        assert method == "AddUnassociatedStation"
+        with lock:
+            active -= 1
+        return {"retval": ""}
+
+    monkeypatch.setattr(provider, "_call", call)
+    provider._register_targets(targets, metadata)
+    assert peak == 4 and active == 0
+    assert set(calls) == provider.registered == set(targets)
+    assert len(calls) == 8
+    provider._register_targets(targets, metadata)
+    assert len(calls) == 8
+
+
+def test_registration_failure_keeps_only_successes_and_retries_missing(monkeypatch):
+    provider = PrplMeshCandidateProvider(allow_simulated=True)
+    targets = {("radio", f"station-{index}"): [] for index in range(8)}
+    metadata = {"radio": {"channel": 36, "opclass": 115, "device_id": "agent"}}
+    successes = set()
+    failed = True
+
+    def call(radio, method, request):
+        if failed and request["un_station_mac"] == "station-0":
+            raise CandidateMetricsUnavailable("injected registration failure")
+        key = (radio, request["un_station_mac"])
+        assert key not in successes
+        successes.add(key)
+        return {"retval": ""}
+
+    monkeypatch.setattr(provider, "_call", call)
+    with pytest.raises(CandidateMetricsUnavailable, match="injected registration failure"):
+        provider._register_targets(targets, metadata)
+    assert provider.registered == successes
+    assert ("radio", "station-0") not in provider.registered
+    failed = False
+    provider._register_targets(targets, metadata)
+    assert provider.registered == successes == set(targets)
+
+
+def test_registration_supersession_does_not_call_native_api(monkeypatch):
+    provider = PrplMeshCandidateProvider(allow_simulated=True, generation_guard=lambda: False)
+    monkeypatch.setattr("optimizer.prplmesh.subprocess.run", lambda *args, **kwargs: pytest.fail("native call after supersession"))
+    with pytest.raises(CandidateSnapshotSuperseded):
+        provider._register_targets({("radio", "station"): []},
+                                   {"radio": {"channel": 36, "opclass": 115, "device_id": "agent"}})
+    assert not provider.registered and not provider.last_raw
 
 
 def _topology():
@@ -345,6 +412,25 @@ def test_candidate_provider_rejects_cached_metrics_after_update():
                                 candidate_provider=provider, clock=lambda: NOW)
     with pytest.raises(CandidateMetricsError, match="incomplete"):
         observer.observe()
+    incomplete = provider.last_raw[-1]
+    assert incomplete["operation"] == "incomplete"
+    assert incomplete["last_read_at"]
+    assert incomplete["freshness"] == [{
+        "radio": "Device.WiFi.DataElements.Network.Device.2.Radio.2",
+        "sta_mac": "02:00:00:10:01:00",
+        "baseline": (122, METRIC_STAMP), "last_read": (122, METRIC_STAMP),
+    }]
+
+
+def test_candidate_timeout_distinguishes_missing_from_unchanged_publication():
+    provider = _Provider()
+    provider._radio_metrics = lambda radio: {}
+    observer = PrplMeshObserver(fetcher=lambda url: _topology(),
+                                candidate_provider=provider, clock=lambda: NOW)
+    with pytest.raises(CandidateMetricsUnavailable, match="incomplete"):
+        observer.observe()
+    assert provider.last_raw[-1]["freshness"][0]["last_read"] is None
+    assert provider.last_raw[-1]["freshness"][0]["baseline"] is None
 
 
 def test_zero_candidate_completes_only_after_native_timestamp_advances():

@@ -17,6 +17,8 @@ from .model import Snapshot
 from .observer import ControllerObserver
 from .prplmesh import PrplMeshCandidateProvider, PrplMeshObserver
 from .policy import ThresholdPolicy
+from .load_policy import policy_for
+from .load_observer import NativeLoadProvider
 from .planners import (
     BackhaulEdgeObservation,
     BackhaulPlannerConfig,
@@ -69,10 +71,24 @@ def _live_policy(path: str, expected_clients: int | None) -> ThresholdPolicy:
     config = load_policy(path)
     if expected_clients is not None:
         config = replace(config, expected_clients=expected_clients)
-    return ThresholdPolicy(config)
+    return policy_for(config)
 
 
 def _live(args, mode: str) -> int:
+    config = load_policy(args.policy) if mode != "observe" else None
+    provider = None
+    try:
+        if config is not None and config.load_aware_enabled:
+            if args.candidate_provider != "controller":
+                raise SystemExit("load-aware live mode requires --candidate-provider controller")
+            provider = NativeLoadProvider("prpl-controller" if args.backend == "prplmesh" else "bpibroadband")
+        return _live_run(args, mode, provider)
+    finally:
+        if provider is not None:
+            provider.close()
+
+
+def _live_run(args, mode: str, load_provider=None) -> int:
     base_url = args.base_url or (
         "http://127.0.0.1:8092"
         if args.backend == "prplmesh"
@@ -129,6 +145,8 @@ def _live(args, mode: str) -> int:
     for index in range(args.count):
         try:
             snapshot = observer.observe()
+            if load_provider is not None:
+                snapshot = load_provider.enrich(snapshot, observer.last_raw)
         except (CandidateMetricsError, OSError, ValueError, KeyError) as error:
             journal.append(
                 "observation_error",
@@ -183,7 +201,7 @@ def _live(args, mode: str) -> int:
 
 
 def _replay(args) -> int:
-    policy = ThresholdPolicy(load_policy(args.policy))
+    policy = policy_for(load_policy(args.policy))
     journal = Journal(args.journal)
     state = PolicyState()
     count = 0
@@ -210,7 +228,7 @@ def _evaluate(args) -> int:
             if args.state_in
             else PolicyState()
         )
-        evaluation = ThresholdPolicy(load_policy(args.policy)).evaluate(snapshot, state)
+        evaluation = policy_for(load_policy(args.policy)).evaluate(snapshot, state)
     except (KeyError, TypeError, ValueError) as error:
         raise SystemExit(f"em-optimizer: invalid snapshot input: {error}") from error
 
@@ -373,7 +391,7 @@ def main(argv: list[str] | None = None) -> int:
         try:
             value = WorldSimulator(
                 load_json(args.world),
-                ThresholdPolicy(load_policy(args.policy)),
+                policy_for(load_policy(args.policy)),
                 config=SimulationConfig(
                     initial_band=args.initial_band,
                     metric_delay_ms=args.metric_delay_ms,

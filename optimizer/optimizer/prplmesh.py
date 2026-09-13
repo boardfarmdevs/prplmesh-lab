@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timezone
 from dataclasses import replace
 import json
@@ -403,6 +404,41 @@ class PrplMeshCandidateProvider:
             "elapsed_ms": round((time.monotonic() - started) * 1000, 3),
         })
 
+    def _register_targets(self, targets, radio_metadata):
+        pending = sorted(set(targets) - self.registered)
+        if not pending:
+            return
+        failure = None
+        with ThreadPoolExecutor(max_workers=min(4, len(pending)),
+                                thread_name_prefix="prpl-candidate-registration") as executor:
+            requests = {}
+            for radio, sta_mac in pending:
+                meta = radio_metadata[radio]
+                request = {
+                    "un_station_mac": sta_mac,
+                    "channel": int(meta["channel"]),
+                    "operating_class": int(meta["opclass"]),
+                    "agent_mac": meta["device_id"],
+                }
+                future = executor.submit(self._call, radio, "AddUnassociatedStation", request)
+                requests[future] = (radio, sta_mac, request)
+            for future in as_completed(requests):
+                if future.cancelled():
+                    continue
+                radio, sta_mac, request = requests[future]
+                try:
+                    response = future.result()
+                except Exception as error:
+                    failure = failure or error
+                    for outstanding in requests:
+                        outstanding.cancel()
+                else:
+                    self.last_raw.append({"operation": "register", "radio": radio,
+                                          "request": request, "response": response})
+                    self.registered.add((radio, sta_mac))
+        if failure is not None:
+            raise failure
+
     def __call__(
         self,
         clients: tuple[ClientObservation, ...],
@@ -452,22 +488,7 @@ class PrplMeshCandidateProvider:
                                "backend": "prplmesh_nbapi"}
         if not targets:
             return []
-        for radio, sta_mac in sorted(targets):
-            if (radio, sta_mac) in self.registered:
-                continue
-            meta = radio_metadata[radio]
-            request = {
-                "un_station_mac": sta_mac,
-                "channel": int(meta["channel"]),
-                "operating_class": int(meta["opclass"]),
-                "agent_mac": meta["device_id"],
-            }
-            response = self._call(radio, "AddUnassociatedStation", request)
-            self.last_raw.append(
-                {"operation": "register", "radio": radio, "request": request,
-                 "response": response}
-            )
-            self.registered.add((radio, sta_mac))
+        self._register_targets(targets, radio_metadata)
 
         radios = sorted({radio for radio, _ in targets})
         baseline = {
@@ -485,10 +506,14 @@ class PrplMeshCandidateProvider:
         metrics: dict[tuple[str, str], tuple[int, str]] = {}
         published = set()
         measured = []
+        last_read = {}
+        last_read_at = None
         while time.monotonic() < deadline:
             if self.generation_guard is not None and not self.generation_guard():
                 raise CandidateSnapshotSuperseded("prplMesh candidate generation was superseded")
-            for radio, values in self._read_radios(radios).items():
+            last_read = self._read_radios(radios)
+            last_read_at = format_time(datetime.now(timezone.utc))
+            for radio, values in last_read.items():
                 for sta_mac, value in values.items():
                     key = (radio, sta_mac)
                     if key not in baseline or parse_time(value[1]) > parse_time(baseline[key][1]):
@@ -512,6 +537,11 @@ class PrplMeshCandidateProvider:
         missing = sorted(expected - set(metrics))
         if missing:
             self.last_raw.append({"operation": "incomplete", "missing": sorted(missing),
+                                  "last_read_at": last_read_at,
+                                  "freshness": [{"radio": radio, "sta_mac": sta_mac,
+                                                 "baseline": baseline.get((radio, sta_mac)),
+                                                 "last_read": last_read.get(radio, {}).get(sta_mac)}
+                                                for radio, sta_mac in missing],
                                   "elapsed_ms": round((time.monotonic() - collection_started) * 1000, 3)})
             raise CandidateMetricsUnavailable(
                 f"prplMesh candidate metrics incomplete after {self.timeout_seconds}s: {missing}"

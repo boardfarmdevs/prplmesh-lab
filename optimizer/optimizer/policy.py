@@ -4,6 +4,7 @@ from dataclasses import asdict, dataclass
 from datetime import timedelta
 import hashlib
 import json
+import math
 from typing import Any
 
 from .model import CandidateObservation, ClientObservation, Snapshot, parse_time
@@ -29,17 +30,37 @@ class PolicyConfig:
     expected_devices: int = 5
     expected_clients: int = 10
     require_complete_client_roster: bool = True
+    load_aware_enabled: bool = False
+    load_high_utilization: int = 192
+    load_maximum_target_utilization: int = 128
+    load_minimum_advantage: int = 64
+    load_minimum_target_rcpi: int = 120
+    load_maximum_signal_loss_rcpi: int = 8
+    load_condition_hold_seconds: float = 5
+    load_settle_seconds: float = 15
+    load_maximum_age_seconds: float = 5
+    load_maximum_report_skew_seconds: float = 1
+    load_minimum_activity_packets_per_second: float = 10
 
     def __post_init__(self) -> None:
         if self.policy_version != 1:
             raise ValueError("only policy_version 1 is supported")
         if not isinstance(self.require_complete_client_roster, bool):
             raise ValueError("require_complete_client_roster must be boolean")
+        if type(self.load_aware_enabled) is not bool:
+            raise ValueError("load_aware_enabled must be boolean")
+        for name in ("load_high_utilization", "load_maximum_target_utilization", "load_minimum_advantage"):
+            if type(getattr(self, name)) is not int or not 0 <= getattr(self, name) <= 255:
+                raise ValueError(f"{name} must be a utilization octet")
+        if not 0 <= self.load_minimum_target_rcpi <= 220 or not 0 <= self.load_maximum_signal_loss_rcpi <= 220:
+            raise ValueError("invalid load policy RF margin")
         for name, value in asdict(self).items():
             if name == "policy_version":
                 continue
             if value < 0:
                 raise ValueError(f"{name} cannot be negative")
+            if name.startswith("load_") and not math.isfinite(value):
+                raise ValueError(f"{name} must be finite")
         if not 0 <= self.current_rcpi_below <= 220:
             raise ValueError("current_rcpi_below must be a valid RCPI")
         if not 0 <= self.minimum_band_upgrade_target_rcpi <= 220:
@@ -78,6 +99,7 @@ class Decision:
     target_rcpi: int | None = None
     hold_seconds: float = 0
     scores: tuple[CandidateScore, ...] = ()
+    load_evidence: dict[str, Any] | None = None
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
@@ -135,7 +157,11 @@ class ThresholdPolicy:
         return (
             client.rcpi < self.config.current_rcpi_below
             or self.config.band_upgrade_enabled
+            or self.config.load_aware_enabled
         )
+
+    def _load_selection(self, snapshot, client, candidates, now):
+        return None
 
     def evaluate(self, snapshot: Snapshot, prior: PolicyState | None = None) -> Evaluation:
         state = prior or PolicyState()
@@ -247,7 +273,7 @@ class ThresholdPolicy:
         if client.association_uptime_seconds < self.config.minimum_dwell_seconds:
             return Decision(action="none", reason="minimum_dwell_not_met", **base), stable
         current_is_weak = client.rcpi < self.config.current_rcpi_below
-        if not current_is_weak and not self.config.band_upgrade_enabled:
+        if not current_is_weak and not self.config.band_upgrade_enabled and not self.config.load_aware_enabled:
             return Decision(action="none", reason="current_link_acceptable", **base), stable
 
         observed_candidates = [
@@ -287,8 +313,13 @@ class ThresholdPolicy:
                 Decision(action="none", reason="candidate_snapshot_incomplete", scores=scores, **base),
                 stable,
             )
+        load = self._load_selection(snapshot, client, ranked, now)
+        if load:
+            base["load_evidence"] = load["evidence"]
+            if load["target"] is None:
+                return Decision(action="none", reason=load["reason"], scores=scores, **base), stable
         band_upgrade = False
-        if not current_is_weak:
+        if not current_is_weak and not load:
             if current_rank is None:
                 return Decision(action="none", reason="current_band_unknown", **base), stable
             upgrades = [
@@ -312,9 +343,9 @@ class ThresholdPolicy:
             )
             band_upgrade = True
 
-        best: CandidateObservation = ranked[0]
+        best: CandidateObservation = load["target"] if load else ranked[0]
         gain = int(best.rcpi) - client.rcpi
-        if not band_upgrade and gain < self.config.minimum_target_gain_rcpi:
+        if not load and not band_upgrade and gain < self.config.minimum_target_gain_rcpi:
             return (
                 Decision(action="none", reason="candidate_gain_too_small", scores=scores, **base),
                 stable,
@@ -324,6 +355,7 @@ class ThresholdPolicy:
             old.phase == "recommended"
             and old.source_bssid == client.connected_bssid
             and old.target_bssid == best.bssid
+            and (not load or old.load_epoch == load["evidence"]["current_epoch"])
         ):
             held = (
                 (now - parse_time(old.condition_since)).total_seconds()
@@ -348,10 +380,15 @@ class ThresholdPolicy:
             and old.source_bssid == client.connected_bssid
             and old.target_bssid == best.bssid
             and old.condition_since is not None
+            and (not load or old.load_epoch == load["evidence"]["current_epoch"])
         )
         condition_since = old.condition_since if same_condition else snapshot.observed_at
         held = (now - parse_time(condition_since)).total_seconds()
-        if held < self.config.condition_hold_seconds:
+        required_hold = self.config.load_condition_hold_seconds if load else self.config.condition_hold_seconds
+        new_report_needed = bool(load and required_hold > 0 and min(
+            parse_time(load["evidence"]["current_observed_at"]),
+            parse_time(load["evidence"]["target_observed_at"])) <= parse_time(condition_since))
+        if held < required_hold or new_report_needed:
             new = ClientPolicyState(
                 sta_mac=client.sta_mac,
                 phase="holding",
@@ -359,11 +396,13 @@ class ThresholdPolicy:
                 target_bssid=best.bssid,
                 condition_since=condition_since,
                 last_action_at=old.last_action_at,
+                load_epoch=load["evidence"]["current_epoch"] if load else None,
             )
             return (
                 Decision(
                     action="none",
-                    reason="condition_hold_not_met",
+                    reason=("load_waiting_for_new_report" if new_report_needed and held >= required_hold
+                            else "load_condition_hold_not_met" if load else "condition_hold_not_met"),
                     target_bssid=best.bssid,
                     target_band=best.band,
                     target_rcpi=best.rcpi,
@@ -384,11 +423,13 @@ class ThresholdPolicy:
             failure_count=old.failure_count,
             last_failure_reason=old.last_failure_reason,
             last_action_at=snapshot.observed_at,
+            load_epoch=load["evidence"]["current_epoch"] if load else None,
         )
         return (
             Decision(
                 action="steer",
                 reason=(
+                    "native_load_margin_hold_satisfied" if load else
                     "band_preference_hold_satisfied"
                     if band_upgrade else "threshold_margin_hold_satisfied"
                 ),

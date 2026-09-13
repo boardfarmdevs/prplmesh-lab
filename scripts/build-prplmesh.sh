@@ -20,6 +20,12 @@ for patch_file in "$ROOT"/patches/prplmesh/*.patch; do
     lxc file push "$patch_file" \
         "$BUILD_CONTAINER/root/prplmesh-patches/$(basename "$patch_file")"
 done
+lxc exec "$BUILD_CONTAINER" -- rm -rf /root/ubus-patches
+lxc exec "$BUILD_CONTAINER" -- mkdir -p /root/ubus-patches
+for patch_file in "$ROOT"/patches/ubus/*.patch; do
+    lxc file push "$patch_file" \
+        "$BUILD_CONTAINER/root/ubus-patches/$(basename "$patch_file")"
+done
 lxc exec "$BUILD_CONTAINER" -- env \
     PRPL_RELEASE="$PRPL_RELEASE" PRPL_COMMIT="$PRPL_COMMIT" \
     HOSTAP_COMMIT="$HOSTAP_COMMIT" BWL_TYPE="$BWL" \

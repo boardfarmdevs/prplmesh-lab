@@ -65,7 +65,9 @@ class SnapshotProjectionTests(unittest.TestCase):
         }
         with patch.object(server, "instances", return_value=[device]), patch.object(server, "ubus", return_value=objects) as native:
             value = server.topology()
-        native.assert_called_once_with(device, "_get", {"rel_path": "", "depth": 6})
+        self.assertEqual(native.call_count, 2)
+        native.assert_any_call(device, "_get", {"rel_path": "", "depth": 4})
+        native.assert_any_call(server.ROOT, "_get", {"rel_path": "Device.*.Radio.*.BSS.*.STA.", "depth": 1})
         self.assertEqual(len(value["devices"]), 1)
         observed = value["devices"][0]["radios"][0]["bsses"][0]["clients"][0]
         self.assertEqual(observed["signal_raw"], 122)
@@ -77,13 +79,43 @@ class SnapshotProjectionTests(unittest.TestCase):
 
         def read_device(path, method, arguments):
             self.assertEqual(method, "_get")
-            self.assertEqual(arguments["depth"], 6)
+            if path == server.ROOT:
+                return {}
+            self.assertEqual(arguments["depth"], 4)
             barrier.wait()
             return {path + ".": {"ID": path}}
 
         with patch.object(server, "instances", return_value=devices), patch.object(server, "ubus", side_effect=read_device):
             value = server.topology()
         self.assertEqual(len(value["devices"]), 5)
+
+    def test_roaming_membership_comes_from_one_atomic_station_read(self):
+        source = server.ROOT + ".Device.1.Radio.1.BSS.1"
+        target = server.ROOT + ".Device.2.Radio.1.BSS.1"
+        station = {"MACAddress": "02:00:00:10:04:00", "SignalStrength": 120}
+        snapshots = {}
+        for bss in (source, target):
+            device, _radio = bss.split(".Radio.")
+            radio, _bss = bss.split(".BSS.")
+            snapshots[device] = {device + ".": {"ID": device}, radio + ".": {"ID": radio},
+                                 bss + ".": {"BSSID": bss, "SSID": "private_ssid"},
+                                 bss + ".STA.1.": station}
+        def read(path, method, arguments):
+            if path == server.ROOT:
+                return {target + ".STA.1.": station}
+            return snapshots[path]
+        with patch.object(server, "instances", return_value=list(snapshots)), patch.object(server, "ubus", side_effect=read):
+            value = server.topology()
+        owners = [(bss["bssid"], client["id"]) for device in value["devices"] for radio in device["radios"]
+                  for bss in radio["bsses"] for client in bss["clients"]]
+        self.assertEqual(owners, [(target, station["MACAddress"])])
+
+    def test_failed_atomic_station_read_is_not_a_cached_roster(self):
+        for response in ([], None):
+            with self.subTest(response=response), patch.object(server, "instances", return_value=[]), \
+                    patch.object(server, "ubus", return_value=response):
+                with self.assertRaisesRegex(ValueError, "station snapshot"):
+                    server.topology()
 
     def test_failed_device_read_is_not_an_empty_topology(self):
         with patch.object(server, "instances", return_value=[server.ROOT + ".Device.1"]), patch.object(server, "ubus", side_effect=TimeoutError):

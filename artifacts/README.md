@@ -10,3 +10,8 @@ upstream source revisions and the patches stored in this repository:
 
 `SHA256SUMS` is generated beside them. The archives are ignored by Git because
 the prplMesh install archive is larger than GitHub's normal single-file limit.
+
+The dependency archive includes `usr/share/prplmesh-lab/ubus-provenance.env`.
+Packaging and expanded acceptance reject a stale source/patch-set/library
+digest. Normal node startup refreshes these dependencies, including for
+containers provisioned from an older runtime image.

@@ -1,6 +1,6 @@
 # Current prplMesh lab
 
-Reviewed 10 September 2026. This is a deployment/release summary, not a live
+Reviewed 13 September 2026. This is a deployment/release summary, not a live
 health monitor. Use [operations](operations.md) to check runtime health.
 
 ## Identity
@@ -48,13 +48,16 @@ The 0909 thin import passed bounded native, BTM and twenty-client traffic
 checks. RDK's Windows/VirtualBox box is a separate product; there is no prpl
 VirtualBox deployment in this release.
 
-The room improvement sweep exercised all fourteen rooms; prpl passed the
-corrected room gates, but still recorded a native collection timeout and
-superseded measurements. A finite pass is not a zero-latency or soak guarantee.
-Detailed room evidence is in
-`/home/rev/releases/0908/room-feature-improvements-20260909/`;
-thin-import evidence is in `/home/rev/releases/0909/evidence/`.
-Do not duplicate these reports as current manuals.
+The deployed laboratory HAL now preserves candidate socket identity across
+interruptions; the topology adapter reads coherent client membership. The
+pinned ubus dependency includes upstream reentrant-dispatch fixes. Cold
+candidate registration is bounded to four concurrent calls for uncached targets.
+Warm rounds reuse successful registrations. Internal
+startup payloads include these repairs, unlike the unchanged
+0909 release downloads. Current room, RF and native-to-browser qualifications
+live in [room acceptance](../reference/testing/room-acceptance.md), not duplicated
+release reports. A finite pass is not a zero-latency or soak guarantee.
+Thin-import evidence remains in `/home/rev/releases/0909/evidence/`.
 
 ## Boundaries and open issues
 

@@ -23,7 +23,7 @@ func main() {
 	if err != nil {
 		logger.Fatalf("load networks: %v", err)
 	}
-	source := upstream.New(*sourceURL, 5*time.Second, 750*time.Millisecond)
+	source := upstream.New(*sourceURL, 5*time.Second)
 	server, err := httpapi.New(source, networks, logger)
 	if err != nil {
 		logger.Fatalf("create server: %v", err)

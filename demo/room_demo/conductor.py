@@ -19,6 +19,8 @@ from optimizer.config import load_policy
 from optimizer.model import normalize_band, parse_time
 from optimizer.prplmesh import PrplMeshObserver, PrplMeshCandidateProvider
 from optimizer.policy import ThresholdPolicy
+from optimizer.load_policy import policy_for
+from optimizer.load_observer import NativeLoadProvider
 from optimizer.streaming import StreamingCandidateProvider
 from optimizer.state import ClientPolicyState, PolicyState
 from optimizer.verifier import OutcomeVerifier
@@ -239,6 +241,8 @@ def _client_optimizer_status(snapshot, evaluation, config, selected_sta_macs):
             remaining = max(0, config.minimum_dwell_seconds - client.association_uptime_seconds)
         elif decision.reason == "condition_hold_not_met":
             remaining = max(0, config.condition_hold_seconds - decision.hold_seconds)
+        elif decision.reason == "load_condition_hold_not_met":
+            remaining = max(0, config.load_condition_hold_seconds - decision.hold_seconds)
         elif decision.reason == "post_steer_cooldown" and state.cooldown_until:
             remaining = max(0, (parse_time(state.cooldown_until) - now).total_seconds())
         elif decision.reason == "steer_failure_backoff" and state.backoff_until:
@@ -317,6 +321,7 @@ class LiveConductor:
         self.store = store
         self.plan = plan
         self.manifest = manifest
+        self._load_provider = None
         self.mode = mode
         self.repo_root = repo_root
         self.base_url = base_url
@@ -685,6 +690,8 @@ class LiveConductor:
             thread.join(timeout=90)
         if self._streaming_provider is not None:
             self._streaming_provider.close()
+        if self._load_provider is not None:
+            self._load_provider.close()
         self._probe_executor.shutdown(wait=True)
         self._verification_executor.shutdown(wait=True)
 
@@ -890,9 +897,16 @@ class LiveConductor:
             # not require the old association to be below the weak-link
             # threshold before measuring alternatives.
             policy_config = _interactive_policy(policy_config)
+            if policy_config.load_aware_enabled:
+                original = load_policy(policy_path)
+                policy_config = replace(policy_config, minimum_dwell_seconds=original.minimum_dwell_seconds,
+                                        post_steer_cooldown_seconds=max(original.post_steer_cooldown_seconds,
+                                                                        original.load_settle_seconds))
         if self.profiling:
             policy_config = replace(policy_config, require_complete_client_roster=False)
-        policy = ThresholdPolicy(policy_config)
+        policy = policy_for(policy_config) if policy_config.load_aware_enabled else ThresholdPolicy(policy_config)
+        if policy_config.load_aware_enabled:
+            self._load_provider = NativeLoadProvider("prpl-controller")
         state = PolicyState()
         priority_role = None
         priority_until = 0.0
@@ -1104,6 +1118,8 @@ class LiveConductor:
                                 for item in snapshot.clients
                             ))
                 prior = state
+                if self._load_provider is not None:
+                    snapshot = self._load_provider.enrich(snapshot, observer.last_raw)
                 evaluation = policy.evaluate(snapshot, prior)
                 if not evaluation.decisions:
                     self.store.emit(
@@ -1124,6 +1140,16 @@ class LiveConductor:
                 ranked_steer_decisions = _ranked_action_batch(
                     steer_decisions, len(steer_decisions)
                 )
+                if policy_config.load_aware_enabled:
+                    unavailable = [item.sta_mac for item in evaluation.decisions
+                                   if item.reason in {"native_load_current_unavailable", "native_load_activity_unavailable"}]
+                    unsettled = [item.sta_mac for item in evaluation.decisions
+                                 if item.action == "steer" or item.reason in {
+                                     "load_condition_hold_not_met", "load_waiting_for_new_report",
+                                     "native_load_settling", "native_load_batch_deferred", "steer_pending"}]
+                    fleet.update(policy="native-load-v1", load_measurements_unavailable=unavailable,
+                                 clients_outside_policy_margin=len(unsettled),
+                                 converged=fleet["measurement_complete"] and not unavailable and not unsettled)
                 selected_action = (
                     ranked_steer_decisions[0]
                     if ranked_steer_decisions else None

@@ -48,12 +48,20 @@ class HostMonitor {
   }
 }
 
-async function startHostMonitor(host, directory) {
+async function startHostMonitor(host, directory, options = {}) {
+  const interval = options.interval ?? 2;
+  const duration = options.duration ?? 7200;
+  const processes = options.processes ?? false;
+  if (!Number.isFinite(interval) || interval < 0.1 || interval > 10 ||
+      !Number.isFinite(duration) || duration < interval || duration > 7200 || typeof processes !== 'boolean') {
+    throw new Error('Invalid host sampler options');
+  }
   const filename = path.join(directory, 'host-monitor.jsonl');
   if (fs.existsSync(filename)) throw new Error('Refusing to overwrite host samples');
   const source = fs.readFileSync(path.join(__dirname, 'room-feature-host-monitor.py'), 'utf8');
   const quote = value => "'" + value.replaceAll("'", "'\\''") + "'";
-  const child = spawn('ssh', ['--', host, 'python3 -u -c ' + quote(source) + ' --interval 2 --watch-stdin']);
+  const child = spawn('ssh', ['--', host, 'python3 -u -c ' + quote(source) +
+    ' --interval ' + interval + ' --duration ' + duration + ' --watch-stdin' + (processes ? ' --processes' : '')]);
   const monitor = new HostMonitor(child, filename);
   try { await monitor.ready; return monitor; }
   catch (error) { await monitor.stop(); throw error; }

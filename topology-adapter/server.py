@@ -95,7 +95,7 @@ def topology(objects=None):
         device_paths = instances("Device.")
         with ThreadPoolExecutor(max_workers=8) as executor:
             snapshots = executor.map(
-                lambda device: ubus(device, "_get", {"rel_path": "", "depth": 6}),
+                lambda device: ubus(device, "_get", {"rel_path": "", "depth": 4}),
                 device_paths,
             )
             objects = {}
@@ -103,6 +103,12 @@ def topology(objects=None):
                 if not isinstance(snapshot, dict):
                     raise ValueError("NBAPI device snapshot is not an object map")
                 objects.update(snapshot)
+        stations = ubus(ROOT, "_get", {"rel_path": "Device.*.Radio.*.BSS.*.STA.", "depth": 1})
+        if not isinstance(stations, dict):
+            raise ValueError("NBAPI station snapshot is not an object map")
+        station_path = re.compile(rf"{re.escape(ROOT)}\.Device\.\d+\.Radio\.\d+\.BSS\.\d+\.STA\.")
+        objects = {key: value for key, value in objects.items() if not station_path.match(key)}
+        objects.update(stations)
     if not isinstance(objects, dict):
         raise ValueError("NBAPI snapshot is not an object map")
 

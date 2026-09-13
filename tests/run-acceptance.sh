@@ -15,6 +15,10 @@ expected_patchset=$(
     cd "$ROOT"
     sha256sum patches/prplmesh/*.patch | sha256sum | awk '{print $1}'
 )
+expected_ubus_patchset=$(
+    cd "$ROOT"
+    sha256sum patches/ubus/*.patch | sha256sum | awk '{print $1}'
+)
 status_section "prplMesh expanded acceptance"
 status_action "Verifying runtime provenance on the controller and $agents agent(s)."
 for node in prpl-controller $(seq -f 'prpl-agent-%02g' 1 "$agents"); do
@@ -25,6 +29,16 @@ for node in prpl-controller $(seq -f 'prpl-agent-%02g' 1 "$agents"); do
     )
     if ! grep -Fxq "PRPL_PATCHSET_SHA256=$expected_patchset" <<<"$provenance"; then
         echo "$node uses a stale or unidentifiable prplMesh runtime artifact" >&2
+        exit 1
+    fi
+    if ! lxc exec "$node" -- env EXPECTED_UBUS_PATCHSET="$expected_ubus_patchset" bash -ec '
+        provenance=/usr/share/prplmesh-lab/ubus-provenance.env
+        grep -Fxq "UBUS_COMMIT=13a4438b4ebdf85d301999e0a615640ac4c9b0a8" "$provenance"
+        grep -Fxq "UBUS_PATCHSET_SHA256=$EXPECTED_UBUS_PATCHSET" "$provenance"
+        digest=$(sha256sum /usr/lib/libubus.so)
+        grep -Fxq "UBUS_LIBRARY_SHA256=${digest%% *}" "$provenance"
+    '; then
+        echo "$node uses a stale or unidentifiable ubus dependency" >&2
         exit 1
     fi
 done
