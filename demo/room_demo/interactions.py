@@ -512,7 +512,18 @@ class InteractiveMediumSession:
     def world_catalog(self) -> dict[str, Any]:
         if self.worlds is None:
             return {"enabled": False, "worlds": []}
-        return {"enabled": True, **self.worlds.catalog()}
+        return {
+            "enabled": True, **self.worlds.catalog(),
+            "client_bindings": {
+                role: {
+                    "role": role,
+                    "container": binding.get("container"),
+                    "sta_mac": binding.get("station_mac", binding.get("radio_permanent_mac")),
+                }
+                for role, binding in self.plan["bindings"].items()
+                if binding["role_type"] == "station"
+            },
+        }
 
     def _room_updates(self) -> list[dict[str, Any]]:
         by_key = {}

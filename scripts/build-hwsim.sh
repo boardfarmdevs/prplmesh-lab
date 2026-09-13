@@ -29,7 +29,7 @@ if [ ! -f "$SOURCE/mac80211_hwsim.c" ] || [ "${REFETCH:-0}" = 1 ]; then
     image_version=$(dpkg-query -W -f='${Version}' "linux-image-$KVER")
     (
         cd "$temporary"
-        apt-get source "linux-hwe-7.0=$image_version"
+        apt-get source "linux-hwe-7.0=$image_version" || apt-get source linux-hwe-7.0
     )
     driver=$(find "$temporary" -path '*/drivers/net/wireless/virtual/mac80211_hwsim.c' | head -n 1)
     test -n "$driver" || {
@@ -39,6 +39,10 @@ if [ ! -f "$SOURCE/mac80211_hwsim.c" ] || [ "${REFETCH:-0}" = 1 ]; then
     install -m 0644 "$driver" "$SOURCE/mac80211_hwsim.c"
     header=$(dirname "$driver")/mac80211_hwsim.h
     test ! -f "$header" || install -m 0644 "$header" "$SOURCE/mac80211_hwsim.h"
+    descriptor=$(find "$temporary" -maxdepth 1 -name 'linux-hwe-7.0_*.dsc' -print -quit)
+    test -n "$descriptor"
+    install -m 0644 "$descriptor" "$SOURCE/source-package.dsc"
+    (cd "$SOURCE"; sha256sum mac80211_hwsim.c mac80211_hwsim.h > source.sha256)
 fi
 
 apply_patch_file()
@@ -84,7 +88,7 @@ fi
 if [ "${LOAD_MODULE:-0}" = 1 ]; then
     modprobe -r mac80211_hwsim 2>/dev/null || true
     module_options=(
-        "radios=${HWSIM_RADIOS:-40}"
+        "radios=${HWSIM_RADIOS:-120}"
         "channels=${HWSIM_CHANNELS:-3}"
         "regtest=${HWSIM_REGTEST:-5}"
     )

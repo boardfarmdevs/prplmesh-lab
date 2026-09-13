@@ -9,6 +9,10 @@ Watch actual ownership in both views, not just the simulated candidate line.
 
 | World ID | Script | Clients / expected behavior |
 | --- | ---: | --- |
+| `fifty-client-counter-roam` | 36 s | 50; two walkers swap Ext-1/Ext-2 regions while 48 peers stay fixed; pause at 18 s, then return |
+| `band-upgrade-24-5` | 30 s | Same-AP 2.4/5 GHz upgrade/fallback; pinned client remains on 2.4 GHz |
+| `band-upgrade-5-6` | 30 s | Same-AP 5/6 GHz steering; inspect native BSSID, frequency and traffic |
+| `band-ap-counter-roam` | 30 s | Combined AP/band changes; consult the signed band's checkpoint expectations |
 | `home-a-stationary` | 60 s | 10; fixed geometry, no sustained unnecessary AP churn |
 | `home-a-one-client-handover` | 20 s | 11; one walker crosses toward another eligible AP |
 | `large-room-extender-evacuation` | 20 s | 12; moving extender weakens its client links; clients should seek better APs |
@@ -26,6 +30,13 @@ Watch actual ownership in both views, not just the simulated candidate line.
 
 **Quick demo:** One Client Handover. **Most visible population change:** Flash
 Crowd. **Most interesting guided roaming:** Perimeter Counter-Roam.
+**Capacity demonstration:** Fifty Client Counter-Roam requires the 0913 pool.
+The room and topology must both contain exactly 50 online clients, without
+showing the other 50 provisioned stations. Its two walkers move during 6–12 s
+and 24–30 s. At the 18 s pause verify eligible serving APs before resuming;
+at 36 s verify the return. Reference peers may steer after load but should not
+keep churning once settled. Loading Default must restore 20 online clients
+without changing any container or radio identity.
 Its checkpoint pauses add real waiting time; sixty seconds of scripted motion
 does not promise sixty seconds to finish all verified handovers.
 

@@ -558,7 +558,18 @@ async function run(args) {
     bindings = Object.fromEntries(current.network.clients.map(client => [client.role, client]));
     if (Object.keys(bindings).length !== 20) throw new Error('Preflight requires default twenty-client baseline after room-service restart');
     save('bindings.json', bindings);
-    const catalog = (await request('/api/demo/worlds')).worlds;
+    const catalogResponse = await request('/api/demo/worlds');
+    if (catalogResponse.client_bindings) {
+      const pool = catalogResponse.client_bindings;
+      if (Object.keys(pool).length !== initial.pool_clients ||
+          Object.entries(bindings).some(([role, client]) => lower(pool[role]?.sta_mac) !== lower(client.sta_mac)) ||
+          Object.values(pool).some(client => !client.sta_mac || !client.container)) {
+        throw new Error('Catalog client identities do not match the provisioned pool and live baseline');
+      }
+      bindings = pool;
+      save('bindings.json', bindings);
+    }
+    const catalog = catalogResponse.worlds;
     report.catalog = catalog;
     eventTask = events();
     await room.goto(args['room-url']);
