@@ -56,6 +56,17 @@ traffic/TID updates cannot refresh the old owner's station data.
 checks coalesced recovery and source ownership, and retains an unrepaired
 negative control.
 
+`prplmesh/0019-controller-order-associated-client-recovery.patch` qualifies
+Associated Clients recovery against newer native association/departure events.
+An old AP can retain an authorized station after the client roams; its older
+Topology Response must not reclaim ownership or resurrect disconnected history.
+Reported whole-second association ages are conservative bounds; saturated or
+ambiguous ages cannot override a newer known event. Recovered joins run normal
+native connection completion, including previous-AP cleanup, metrics reset and
+steering/DHCP task notification. Empty reports remove only current ownership;
+erased global stations detach from their BSS. Compiled regression tests in
+`tests/test_prpl_topology_ownership.py` include negative controls for each guard.
+
 `prplmesh/0017-controller-reconcile-recreated-agent-model.patch` repairs child
 STA data-model paths when a native Agent is removed and recreated under a new
 Device instance. Successful parent removal invalidates its old STA paths;
