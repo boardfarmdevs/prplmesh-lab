@@ -10,6 +10,7 @@ PATCH = ROOT / "patches/prplmesh/0017-controller-reconcile-recreated-agent-model
 
 
 def fragments():
+    subprocess.run(["git", "apply", "--numstat", str(PATCH)], check=True, capture_output=True)
     return "\n".join(line[1:] for line in PATCH.read_text().splitlines()
                      if line.startswith(("+", " ")) and not line.startswith("+++"))
 
