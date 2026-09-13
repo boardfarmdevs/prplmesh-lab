@@ -45,6 +45,17 @@ radio-correctness subset, not the complete current manifest.
 
 ## prplMesh native-platform correction
 
+`prplmesh/0018-controller-reconcile-conflicting-station-reports.patch` requests
+one native Topology Response per conflicting associated-link report. A missed
+association notification otherwise leaves the old owner in the controller
+indefinitely, directing later BTM requests to an AP the client has left.
+Only the authoritative Associated Clients response changes membership; signal
+samples never do. Reports must belong to the sending Agent, and foreign-AL
+traffic/TID updates cannot refresh the old owner's station data.
+`tests/test_prpl_station_reconciliation.py` compiles the real link handler,
+checks coalesced recovery and source ownership, and retains an unrepaired
+negative control.
+
 `prplmesh/0017-controller-reconcile-recreated-agent-model.patch` repairs child
 STA data-model paths when a native Agent is removed and recreated under a new
 Device instance. Successful parent removal invalidates its old STA paths;
