@@ -79,6 +79,12 @@ grep -q 'EXPERIMENTAL wmediumd' "$SOURCE/mac80211_hwsim.c"
 printf 'obj-m += mac80211_hwsim.o\n' > "$SOURCE/Makefile"
 make -C "$KBUILD" M="$SOURCE" modules
 
+cfg80211_options=()
+if [ "${INSTALL_MODULE:-0}" = 1 ]; then
+    cfg80211_options+=(--install)
+fi
+bash "$ROOT/scripts/cfg80211/build-cfg80211.sh" "$ROOT/build/cfg80211-source" "${cfg80211_options[@]}"
+
 if [ "${INSTALL_MODULE:-0}" = 1 ]; then
     install -D -m 0644 "$SOURCE/mac80211_hwsim.ko" \
         "/lib/modules/$KVER/updates/mac80211_hwsim.ko"
@@ -86,6 +92,11 @@ if [ "${INSTALL_MODULE:-0}" = 1 ]; then
 fi
 
 if [ "${LOAD_MODULE:-0}" = 1 ]; then
+    modprobe cfg80211
+    if [ "$(cat /sys/module/cfg80211/version 2>/dev/null)" != lab-netns-owner-1 ]; then
+        echo "Reboot the lab VM to load namespace-safe cfg80211 before loading hwsim." >&2
+        exit 1
+    fi
     modprobe -r mac80211_hwsim 2>/dev/null || true
     module_options=(
         "radios=${HWSIM_RADIOS:-120}"

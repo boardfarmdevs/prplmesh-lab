@@ -150,6 +150,11 @@ radio_pool_ready()
 
 ensure_radio_pool()
 {
+    modprobe cfg80211
+    if [ "$(cat /sys/module/cfg80211/version 2>/dev/null)" != lab-netns-owner-1 ]; then
+        echo "cfg80211 lacks namespace-safe socket cleanup; rebuild hwsim and reboot the lab VM" >&2
+        return 1
+    fi
     radio_pool_ready && return 0
     if lxc list '^prpl-(controller$|agent-|client-)' -c s --format csv | grep -q RUNNING; then
         echo "hwsim pool is incomplete while a prplMesh node is running" >&2
