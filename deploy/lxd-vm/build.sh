@@ -98,10 +98,14 @@ stop_vm()
     [ "$(state)" != RUNNING ] || lxc stop "$NAME" --timeout 300
 }
 
-check_vm()
-{
+check_vm() (
     local optimizer_pair optimizer_client optimizer_target
     start_vm
+    restore_room=false
+    trap 'result=$?; if "$restore_room"; then run systemctl start prplmesh-room-demo.service || result=$?; fi; exit "$result"' EXIT
+    room_state=$(run systemctl show prplmesh-room-demo.service -p ActiveState --value)
+    case "$room_state" in active|activating) restore_room=true ;; esac
+    run systemctl stop prplmesh-room-demo.service || return
     run env PRPL_AGENT_COUNT=4 PRPL_CLIENT_COUNT="$CLIENTS" PRPL_TOPOLOGY=star \
         PROVISIONED_CLIENT_COUNT="$CLIENTS" HWSIM_RADIOS="$RADIOS" \
         PRPL_WMEDIUMD_CONFIG=/var/lib/prplmesh-lab/wmediumd.conf \
@@ -122,7 +126,7 @@ check_vm()
         PRPL_WMEDIUMD_CONFIG=/var/lib/prplmesh-lab/wmediumd.conf \
         /opt/prplmesh-lab/tests/optimizer-dynamic.sh recommend \
         "$optimizer_client" "$optimizer_target"
-}
+)
 
 build_vm()
 {
