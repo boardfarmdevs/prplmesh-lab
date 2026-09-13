@@ -35,6 +35,7 @@ PATCHES=(
     0025-wmediumd-preserve-confirmed-client-departures.patch
     0026-wmediumd-fill-spatial-reservation-gaps.patch
     0027-wmediumd-preserve-earliest-scheduler-deadline.patch
+    0028-wmediumd-native-receive-contexts.patch
 )
 
 case "${1:-}" in

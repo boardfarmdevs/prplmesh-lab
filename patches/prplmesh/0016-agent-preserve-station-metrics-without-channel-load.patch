@@ -1,0 +1,152 @@
+Subject: [PATCH] agent: preserve station metrics when channel load is unavailable
+
+Qualified channel utilization is optional in the hwsim lab. The monitor omits
+its AP Metrics TLV when that measurement is unavailable, but still emits native
+station and extended BSS metrics. Enumerating only AP Metrics discarded those
+independent observations and left associated RSSI at its initial zero value.
+
+Use the union of measured AP and extended BSS identities, retain station data,
+and emit AP Metrics only when that actual TLV was received. Unknown utilization
+stays absent; a valid measured zero is preserved.
+
+--- a/agent/src/beerocks/slave/tasks/link_metrics_collection_task.cpp
++++ b/agent/src/beerocks/slave/tasks/link_metrics_collection_task.cpp
+@@ -1058,17 +1058,23 @@
+ 
+     LOG(INFO) << "Found AP_Metrics_Query map for MID : " << std::hex << mid_index;
+ 
+-    for (const auto &ap_metrics_tlv : ap_metrics_tlv_list) {
+-        wfa_map::tlvApExtendedMetrics *ap_extended_metrics_tlv     = 0;
+-        wfa_map::tlvAffiliatedApMetrics *affiliated_ap_metrics_tlv = 0;
+-
+-        if (!ap_metrics_tlv) {
+-            LOG(WARNING) << "found null ap_metrics_tlv in response, skipping. mid=" << std::hex
+-                         << mid;
+-            continue;
++    std::unordered_map<sMacAddr, std::shared_ptr<wfa_map::tlvApMetrics>> bss_metrics;
++    for (const auto &metrics : ap_metrics_tlv_list) {
++        if (metrics) {
++            bss_metrics[metrics->bssid()] = metrics;
+         }
++    }
++    for (const auto &metrics : ap_extended_metrics_tlv_list) {
++        if (metrics) {
++            bss_metrics.emplace(metrics->bssid(), nullptr);
++        }
++    }
+ 
+-        auto bssid_tlv = ap_metrics_tlv->bssid();
++    for (const auto &entry : bss_metrics) {
++        const auto &bssid_tlv      = entry.first;
++        const auto &ap_metrics_tlv = entry.second;
++        wfa_map::tlvApExtendedMetrics *ap_extended_metrics_tlv     = 0;
++        wfa_map::tlvAffiliatedApMetrics *affiliated_ap_metrics_tlv = 0;
+         for (const auto &tmp : ap_extended_metrics_tlv_list) {
+             if (tmp->bssid() == bssid_tlv) {
+                 ap_extended_metrics_tlv = &*tmp;
+@@ -1095,7 +1101,7 @@
+             return;
+         }
+ 
+-        sApExtendedMetrics extended_metrics{.bssid = ap_metrics_tlv->bssid()};
++        sApExtendedMetrics extended_metrics{.bssid = bssid_tlv};
+ 
+         if (ap_extended_metrics_tlv) {
+             extended_metrics.broadcast_bytes_sent = ap_extended_metrics_tlv->broadcast_bytes_sent();
+@@ -1109,16 +1115,19 @@
+                 ap_extended_metrics_tlv->unicast_bytes_received();
+         }
+ 
+-        sApMetrics metric;
++        sApMetrics metric{};
+         // Copy data to the response vector
+-        metric.bssid               = ap_metrics_tlv->bssid();
+-        metric.channel_utilization = ap_metrics_tlv->channel_utilization();
+-        metric.number_of_stas_currently_associated =
+-            ap_metrics_tlv->number_of_stas_currently_associated();
+-        metric.estimated_service_parameters = ap_metrics_tlv->estimated_service_parameters();
+-        auto info                           = ap_metrics_tlv->estimated_service_info_field();
+-        for (size_t i = 0; i < ap_metrics_tlv->estimated_service_info_field_length(); i++) {
+-            metric.estimated_service_info_field.push_back(info[i]);
++        metric.bssid     = bssid_tlv;
++        metric.available = bool(ap_metrics_tlv);
++        if (ap_metrics_tlv) {
++            metric.channel_utilization = ap_metrics_tlv->channel_utilization();
++            metric.number_of_stas_currently_associated =
++                ap_metrics_tlv->number_of_stas_currently_associated();
++            metric.estimated_service_parameters = ap_metrics_tlv->estimated_service_parameters();
++            auto info = ap_metrics_tlv->estimated_service_info_field();
++            for (size_t index = 0; index < ap_metrics_tlv->estimated_service_info_field_length(); index++) {
++                metric.estimated_service_info_field.push_back(info[index]);
++            }
+         }
+ 
+         // Check the BSSID to which STA is connected before adding it (to avoid duplication)
+@@ -1197,7 +1206,7 @@
+ 
+         // Fill Affiliated Ap Metrics
+         sAffiliatedApMetrics affiliated_ap_metrics = {};
+-        affiliated_ap_metrics.bssid                = ap_metrics_tlv->bssid();
++        affiliated_ap_metrics.bssid                = bssid_tlv;
+ 
+         if (affiliated_ap_metrics_tlv) {
+             affiliated_ap_metrics.packets_sent     = affiliated_ap_metrics_tlv->packets_sent();
+@@ -1288,27 +1297,29 @@
+ 
+     // Prepare tlvApMetrics for each processed query
+     for (const auto &response : m_ap_metric_response) {
+-        auto ap_metrics_response_tlv = m_cmdu_tx.addClass<wfa_map::tlvApMetrics>();
+-        if (!ap_metrics_response_tlv) {
+-            LOG(ERROR) << "Failed addClass<wfa_map::tlvApMetrics>";
+-            return;
+-        }
++        if (response.metric.available) {
++            auto ap_metrics_response_tlv = m_cmdu_tx.addClass<wfa_map::tlvApMetrics>();
++            if (!ap_metrics_response_tlv) {
++                LOG(ERROR) << "Failed addClass<wfa_map::tlvApMetrics>";
++                return;
++            }
+ 
+-        ap_metrics_response_tlv->bssid()               = response.metric.bssid;
+-        ap_metrics_response_tlv->channel_utilization() = response.metric.channel_utilization;
+-        ap_metrics_response_tlv->number_of_stas_currently_associated() =
+-            response.metric.number_of_stas_currently_associated;
+-        ap_metrics_response_tlv->estimated_service_parameters() =
+-            response.metric.estimated_service_parameters;
+-        if (!ap_metrics_response_tlv->alloc_estimated_service_info_field(
+-                response.metric.estimated_service_info_field.size())) {
+-            LOG(ERROR) << "Couldn't allocate "
+-                          "ap_metrics_response_tlv->alloc_estimated_service_info_field";
+-            return;
++            ap_metrics_response_tlv->bssid()               = response.metric.bssid;
++            ap_metrics_response_tlv->channel_utilization() = response.metric.channel_utilization;
++            ap_metrics_response_tlv->number_of_stas_currently_associated() =
++                response.metric.number_of_stas_currently_associated;
++            ap_metrics_response_tlv->estimated_service_parameters() =
++                response.metric.estimated_service_parameters;
++            if (!ap_metrics_response_tlv->alloc_estimated_service_info_field(
++                    response.metric.estimated_service_info_field.size())) {
++                LOG(ERROR) << "Couldn't allocate "
++                              "ap_metrics_response_tlv->alloc_estimated_service_info_field";
++                return;
++            }
++            std::copy_n(response.metric.estimated_service_info_field.begin(),
++                        response.metric.estimated_service_info_field.size(),
++                        ap_metrics_response_tlv->estimated_service_info_field());
+         }
+-        std::copy_n(response.metric.estimated_service_info_field.begin(),
+-                    response.metric.estimated_service_info_field.size(),
+-                    ap_metrics_response_tlv->estimated_service_info_field());
+ 
+         auto ap_extended_metrics_tlv = m_cmdu_tx.addClass<wfa_map::tlvApExtendedMetrics>();
+ 
+--- a/agent/src/beerocks/slave/tasks/link_metrics_collection_task.h
++++ b/agent/src/beerocks/slave/tasks/link_metrics_collection_task.h
+@@ -263,6 +263,7 @@
+ 
+     struct sApMetrics {
+         sMacAddr bssid;
++        bool available = false;
+         uint8_t channel_utilization;
+         uint16_t number_of_stas_currently_associated;
+         wfa_map::tlvApMetrics::sEstimatedService estimated_service_parameters;

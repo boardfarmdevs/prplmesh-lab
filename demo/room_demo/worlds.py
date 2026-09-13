@@ -9,6 +9,7 @@ from typing import Any
 from wmdcfg.world import _hash, _merge_nodes, _validate_layout, load_json, verify_world_plan
 
 from .interactions import InteractionError
+from .band_profiles import validate_profiles
 
 
 class BoundWorlds:
@@ -73,6 +74,7 @@ class BoundWorlds:
                 raise ValueError("world does not match its installed layout")
             self.rf_nodes(world, layout)
             roles = world["roles"]
+            validate_profiles(world)
             if not isinstance(roles, dict) or not roles:
                 raise ValueError("world requires bound roles")
             for role, kind in roles.items():

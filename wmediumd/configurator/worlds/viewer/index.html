@@ -1803,7 +1803,7 @@
     const fresh = Number.isFinite(age) && age >= 0 && age <= 60 && status.status !== 'unavailable' &&
       (!progress || progress.kind === 'optimizer.progress');
     const healthy = fresh && (!healthState || healthState.healthy !== false);
-    const settled = ['candidate_gain_too_small', 'current_link_acceptable'].includes((status.decision || {}).reason);
+    const settled = ['candidate_gain_too_small', 'current_link_acceptable', 'no_safe_band_upgrade'].includes((status.decision || {}).reason);
     return {
       phase: !fresh ? 'unknown' : phase === 'stable' ? (healthy && settled ? 'healthy' : 'waiting') : phaseClass(phase),
       mode: !status.automatic_actuation ? '' : !fresh ? 'unknown' :
@@ -1819,6 +1819,11 @@
       steer_failure_backoff: 'Waiting before retrying a failed move',
       candidate_gain_too_small: 'No sufficiently stronger measured AP',
       current_link_acceptable: 'Current link meets policy',
+      no_safe_band_upgrade: 'Current band meets policy; no safe higher-band move',
+      band_preference_hold_satisfied: 'Preferred band confirmed; ready to steer',
+      band_waiting_for_new_scan: 'Confirming the preferred band with a new received scan',
+      band_measurement_direction_mismatch: 'Blocked: serving and candidate signal directions differ',
+      current_band_unknown: 'Blocked: current band is unknown',
       current_metric_missing: 'Blocked: current signal is missing',
       current_metric_freshness_unknown: 'Blocked: current signal age is unknown',
       current_metric_stale: 'Blocked: current signal is stale',
@@ -1884,9 +1889,11 @@
     } else if (healthState && healthState.healthy === false) {
       heading = 'Waiting for lab health recovery';
       detail = 'The latest health check is degraded; convergence is not confirmed.';
-    } else if (fleet.converged && freshEvaluation && fleet.roster_complete !== false && fleet.measurement_complete !== false) {
+    } else if (fleet.converged && freshEvaluation && fleet.roster_complete !== false && fleet.measurement_complete !== false && fleet.band_measurements_complete !== false) {
       heading = 'Converged: all clients checked';
-      detail = 'Last check: all clients were within ' + (Number(fleet.minimum_gain_rcpi || 1) / 2) + ' dB of their strongest measured AP. Monitoring continues.';
+      detail = fleet.policy === 'received-scan-band-preference-v1'
+        ? 'Last check: clients meet the AP and band policy, using fresh client-received scans for band comparisons. A preferred band can have a weaker signal. Monitoring continues.'
+        : 'Last check: all clients were within ' + (Number(fleet.minimum_gain_rcpi || 1) / 2) + ' dB of their strongest measured AP. Monitoring continues.';
     } else if (blocked.length) {
       heading = blocked.length + ' clients waiting or blocked';
       const counts = {};

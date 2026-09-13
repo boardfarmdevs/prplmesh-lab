@@ -45,5 +45,8 @@ emit home-five-agent.json extender-loss-recovery.json home-a-extender-loss-recov
 emit home-five-agent.json asymmetric-link.json home-a-asymmetric-link.world.json
 emit home-five-agent.json band-walk-small.json home-a-band-walk-small.world.json
 emit home-five-agent.json private-client-room-walk.json home-a-private-client-room-walk.world.json
+emit band-steering-lane.json band-upgrade-24-5.json band-upgrade-24-5.world.json
+emit band-steering-lane.json band-upgrade-5-6.json band-upgrade-5-6.world.json
+emit band-steering-lane.json band-ap-counter-roam.json band-ap-counter-roam.world.json
 
 echo "golden RF sequences: ${mode#--} passed"

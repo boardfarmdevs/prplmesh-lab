@@ -52,7 +52,9 @@ async function main() {
           {...evaluated, fleet: {roster_complete: false, missing_clients: ['missing'], unexpected_clients: ['offline']},
             unavailable_cohort_reason: 'Waiting for fresh candidate evidence. '.repeat(25) + 'END OF STATUS',
             client_decisions: decisions},
-          {...evaluated, client_decisions: decisions.slice(0, 1)}, {}, evaluated];
+          {...evaluated, client_decisions: decisions.slice(0, 1)}, {}, evaluated,
+          {...evaluated, decision: {reason: 'no_safe_band_upgrade', current_rcpi: 132},
+            fleet: {...evaluated.fleet, policy: 'received-scan-band-preference-v1', band_measurements_complete: true}}];
         const sidebarElement = document.querySelector('aside');
         const samples = [];
         const check = label => {
@@ -78,6 +80,12 @@ async function main() {
                 recorded_at: new Date().toISOString(), label: 'Event ' + eventIndex + ': ' + 'activity '.repeat(index * 3)}));
               renderLivePanels();
               await nextFrame();
+              if (state?.fleet?.policy === 'received-scan-band-preference-v1') {
+                const statusText = document.querySelector('#optimizerStatus').textContent;
+                if (!statusText.includes('AP and band policy') || statusText.includes('strongest measured AP')) throw new Error('band policy is incorrectly described as strongest-signal convergence');
+                const badge = document.querySelector('#optimizerMetrics .phase');
+                if (badge.textContent !== 'stable' || !badge.classList.contains('healthy')) throw new Error('settled band policy lacks its healthy badge');
+              }
               if (document.querySelector('#optimizerActivity').open !== expanded) throw new Error('measurement details disclosure changed without user input');
               check(expanded ? 'expanded' : 'collapsed');
             }
@@ -139,7 +147,7 @@ async function main() {
       assert.equal(await page.locator('#optimizerActivity').evaluate(element => element.open), false);
       assert.equal(await page.evaluate(() => playCalls), 0, 'scrolling/expanding details must not play the lab');
       assert.deepEqual(errors, []);
-      console.log('PASS: stable sidebar during 54 updates, full details and keyboard access at ' + viewport.width + '×' + viewport.height);
+      console.log('PASS: stable sidebar during 60 updates, truthful band status, full details and keyboard access at ' + viewport.width + '×' + viewport.height);
     }
   } finally {
     await browser.close();

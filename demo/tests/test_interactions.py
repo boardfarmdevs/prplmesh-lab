@@ -5,7 +5,7 @@ import threading
 import time
 import unittest
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 from wmdcfg.actuator import ActuatorError, DaemonStatus
 from room_demo.engine import RoomEngine
@@ -171,6 +171,18 @@ class InteractiveMediumSessionTests(unittest.TestCase):
                 "sta_01", token=self.lease["token"], expected_revision=0,
                 position=[7, 2], final=True,
             )
+
+    def test_failed_band_settings_restore_cannot_report_restored_rf(self):
+        journal = Mock()
+        failure = RuntimeError("native band settings restore failed")
+        journal.restore_client_networks.side_effect = failure
+        with patch.object(self.session, "recovery", journal):
+            with self.assertRaisesRegex(RuntimeError, "band settings restore failed"):
+                self.session.restore()
+        self.assertFalse(self.session._restored)
+        journal.failed.assert_called_once_with(failure)
+        journal.completed.assert_not_called()
+        journal.resume_clients.assert_not_called()
 
     def test_projection_read_never_queues_behind_an_rf_transaction(self):
         engine = RoomEngine(self.session)

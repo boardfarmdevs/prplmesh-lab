@@ -30,6 +30,8 @@ from .events import EventStore
 from .topology import project_topology
 from .client_wifi import read_client_link
 from .interactions import InteractionError
+from optimizer.band_steering import BandSteeringMeasurements, band_fleet_status, band_policy, evaluate_band_clients
+from optimizer.band_scan import SOURCE as BAND_SCAN_SOURCE
 
 
 DEVICE_ROLES = {
@@ -46,6 +48,8 @@ CANDIDATE_PRIORITY_WINDOW_SECONDS = 120
 
 def _action_measurements_fresh(decision, snapshot, maximum_age, now):
     client = snapshot.client(decision.sta_mac)
+    if client is not None and client.measurement_source == BAND_SCAN_SOURCE:
+        maximum_age = min(maximum_age, 2)
     candidate = next((item for item in snapshot.candidates_for(decision.sta_mac)
                       if item.bssid == decision.target_bssid and item.eligible), None)
     return all(item is not None and item.metric_observed_at is not None
@@ -236,11 +240,12 @@ def _client_optimizer_status(snapshot, evaluation, config, selected_sta_macs):
         if client is None:
             continue
         state = evaluation.state.for_sta(client.sta_mac)
+        client_config = band_policy(config).config if client.measurement_source == BAND_SCAN_SOURCE else config
         remaining = 0.0
         if decision.reason == "minimum_dwell_not_met":
-            remaining = max(0, config.minimum_dwell_seconds - client.association_uptime_seconds)
+            remaining = max(0, client_config.minimum_dwell_seconds - client.association_uptime_seconds)
         elif decision.reason == "condition_hold_not_met":
-            remaining = max(0, config.condition_hold_seconds - decision.hold_seconds)
+            remaining = max(0, client_config.condition_hold_seconds - decision.hold_seconds)
         elif decision.reason == "load_condition_hold_not_met":
             remaining = max(0, config.load_condition_hold_seconds - decision.hold_seconds)
         elif decision.reason == "post_steer_cooldown" and state.cooldown_until:
@@ -345,6 +350,9 @@ class LiveConductor:
         self._candidate_active = threading.Event()
         self._candidate_updated = threading.Event()
         self._streaming_provider = None
+        self._band_measurements = BandSteeringMeasurements(
+            updated=self._candidate_updated.set,
+            telemetry=lambda value: self.store.emit("optimizer.band_scan", self._time(), value, producer="optimizer"))
         self._link_sample_lock = threading.Lock()
         self._client_sample_locks: dict[str, Any] = {}
         self._probe_executor = ThreadPoolExecutor(max_workers=4, thread_name_prefix="room-link-probe")
@@ -637,7 +645,8 @@ class LiveConductor:
         else:
             if hero["ssid"] != self.manifest["hero"]["expected_ssid"]:
                 failures.append(f"hero SSID={hero['ssid']!r}")
-            if hero["band"] != self.manifest["hero"]["expected_band"]:
+            if (hero["band"] not in {"2.4", "5", "6"} if self.interactive else
+                    hero["band"] != self.manifest["hero"]["expected_band"]):
                 failures.append(f"hero band={hero['band']!r}")
             if hero["rcpi"] is None:
                 failures.append("hero RCPI is missing")
@@ -690,6 +699,7 @@ class LiveConductor:
             thread.join(timeout=90)
         if self._streaming_provider is not None:
             self._streaming_provider.close()
+        self._band_measurements.close()
         if self._load_provider is not None:
             self._load_provider.close()
         self._probe_executor.shutdown(wait=True)
@@ -917,6 +927,7 @@ class LiveConductor:
             if self.interactive and self.room_state and not self.profiling else None,
             client_selector=lambda client, observed_at: (
                 (self.interactive or client.sta_mac == self.hero_mac)
+                and len((room_before or {}).get("band_steering", {}).get(client.sta_mac, {}).get("profile", {}).get("allowed_bands", [])) <= 1
                 and (_candidate_measurement_needed(policy, state, client, observed_at)
                      if self.interactive else policy.requires_candidate_measurement(client, observed_at))
             ),
@@ -1120,7 +1131,12 @@ class LiveConductor:
                 prior = state
                 if self._load_provider is not None:
                     snapshot = self._load_provider.enrich(snapshot, observer.last_raw)
-                evaluation = policy.evaluate(snapshot, prior)
+                band_profiles = {station: profile for station, profile in (room_after or {}).get("band_steering", {}).items()
+                                 if len(profile["profile"]["allowed_bands"]) > 1}
+                snapshot = self._band_measurements.enrich(snapshot, band_profiles,
+                                                         self.store.world_epoch() if band_profiles else None)
+                band_stations = set(band_profiles) & {client.sta_mac for client in snapshot.clients}
+                evaluation = evaluate_band_clients(policy, snapshot, prior, band_stations)
                 if not evaluation.decisions:
                     self.store.emit(
                         "optimizer.measurement.waiting", self._time(),
@@ -1131,12 +1147,16 @@ class LiveConductor:
                 steer_decisions = [
                     item for item in evaluation.decisions if item.action == "steer"
                 ]
-                fleet = _fleet_status(snapshot, provider.last_selected_sta_macs & {
+                self._band_measurements.schedule(
+                    {item.sta_mac for item in steer_decisions} | set(pending_verifications)
+                    | {item.sta_mac for item in state.clients if item.phase == "pending"})
+                fleet = _fleet_status(snapshot, (provider.last_selected_sta_macs | self._band_measurements.selected) & {
                     item.sta_mac for item in snapshot.clients if item.rcpi is not None
                 }, policy.config.reject_stale_metrics_after_seconds, policy.config.minimum_target_gain_rcpi,
                    {self._mac_by_role[role] for role, value in room_after["roles"].items()
                     if value.get("present") and role in self._mac_by_role} if room_after else None,
                    native_roster_macs)
+                fleet = band_fleet_status(fleet, snapshot, policy, band_stations, self._band_measurements)
                 ranked_steer_decisions = _ranked_action_batch(
                     steer_decisions, len(steer_decisions)
                 )
@@ -1170,6 +1190,7 @@ class LiveConductor:
                 subject_mac = decision.sta_mac
                 subject_role = self._role_by_mac.get(subject_mac, preferred_role)
                 subject_container = self._container_by_mac[subject_mac]
+                display_config = band_policy(policy.config).config if subject_mac in band_stations else policy.config
                 now = self._time()
                 window_open, window_kind = self._action_window(now, action_window)
                 can_act = (
@@ -1189,6 +1210,7 @@ class LiveConductor:
                 if self.profiling:
                     action_batch = [item for item in action_batch if item.sta_mac not in pending_verifications][
                         :max(0, 5 - len(pending_verifications))]
+                action_batch = [item for item in action_batch if not self._band_measurements.in_flight(item.sta_mac)]
                 if action_batch:
                     selected_action = action_batch[0]
                 if steer_decisions and self.mode == "recommend":
@@ -1220,9 +1242,9 @@ class LiveConductor:
                         "subject_container": subject_container,
                         "decision": decision.to_dict(),
                         "evaluated_at": snapshot.observed_at,
-                        "minimum_dwell_seconds": policy.config.minimum_dwell_seconds,
-                        "condition_hold_seconds": policy.config.condition_hold_seconds,
-                        "post_steer_cooldown_seconds": policy.config.post_steer_cooldown_seconds,
+                        "minimum_dwell_seconds": display_config.minimum_dwell_seconds,
+                        "condition_hold_seconds": display_config.condition_hold_seconds,
+                        "post_steer_cooldown_seconds": display_config.post_steer_cooldown_seconds,
                         "blocking_preview_seconds": 0 if self.interactive else 3,
                         "client_decisions": [
                             {**item, "role": self._role_by_mac.get(item["sta_mac"]),
@@ -1230,7 +1252,8 @@ class LiveConductor:
                              "target_role": self._ap_role_by_bssid.get(item["target_bssid"])}
                             for item in _client_optimizer_status(
                                 snapshot, evaluation, policy.config,
-                                provider.last_requested_sta_macs if self.profiling else provider.last_selected_sta_macs
+                                (provider.last_requested_sta_macs if self.profiling else provider.last_selected_sta_macs)
+                                | self._band_measurements.requested
                             )
                         ],
                         "policy_state": asdict(subject_state),
@@ -1259,7 +1282,8 @@ class LiveConductor:
                             if self.steering_transaction is not None else
                             "unassisted_native_btm" if self.profiling else "btm_request"
                         ),
-                        "optimization_goal": "best_eligible_same_network_band_ap",
+                        "optimization_goal": "safe_band_preference_and_best_eligible_ap" if band_profiles else "best_eligible_same_network_band_ap",
+                        "band_steering": self._band_measurements.status,
                         "minimum_target_gain_rcpi": policy.config.minimum_target_gain_rcpi,
                         "expected_online_clients": policy.config.expected_clients,
                         "partial_roster_progression": not policy.config.require_complete_client_roster,

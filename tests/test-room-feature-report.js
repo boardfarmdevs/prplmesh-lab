@@ -1,6 +1,9 @@
 'use strict';
 const assert = require('node:assert/strict');
-const {hostSummary, qualificationPassed} = require('./room-feature-report.js');
+const fs = require('node:fs');
+const os = require('node:os');
+const path = require('node:path');
+const {hostSummary, qualificationPassed, summarize} = require('./room-feature-report.js');
 const {fronthaulOutages} = require('./room-feature-acceptance.js');
 const start = '2026-09-12T00:00:00Z';
 const end = '2026-09-12T00:00:10Z';
@@ -42,3 +45,34 @@ for (const change of [{tested: 0, passed: 0}, {passed: 13}, {failure: 'failed'},
   assert.equal(qualificationPassed({...qualified, ...change}), false);
 }
 console.log('PASS: the five-second fronthaul outage gate and qualification failures cannot report success');
+
+const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'band-report-'));
+try {
+  const write = (name, value) => fs.writeFileSync(path.join(directory, name), JSON.stringify(value));
+  const golden = {name: 'band', roles: {client: 'station'}, duration_ms: 1000,
+    generations: [{time_ms: 0, present: {client: true}}],
+    band_steering: {client: {allowed_bands: ['2.4', '5'], initial_band: '2.4'}},
+    band_steering_expectations: [{time_ms: 0, roles: {client: {band: '5', ap: 'gateway'}}}]};
+  write('band.world.json', golden);
+  write('report.json', {started: start, finished: end, errors: [], eventGaps: [], rooms: [{id: 'band', passed: true,
+    bandSteering: {passed: true}, load: {passed: true}, initial: {passed: true}, final: {passed: true},
+    playback: {completed: true}, checkpoints: [], scriptCorrect: true, sceneCorrect: true,
+    presencePhases: [{topologyVerified: true}], kernel: {passed: true}, errors: []}]});
+  write('band-loaded.json', {current: {network: {mesh: {nodes: [{role: 'gateway', device_id: 'device'}]}}}});
+  const samples = [0, 1000].map(time => ({monoMs: time, wallTime: start, phase: 'playing', playback: {time_ms: time},
+    scriptErrors: [], sceneErrors: [], meshCount: 6, duplicates: false, viewMatchesRoom: true,
+    viewMatchesModel: true, meshViewMatches: true, roster: true,
+    associations: [{mac: 'aa', bssid: 'bb', owner: 'device', visible: true, label: 'Client'}],
+    roomAssociations: [{mac: 'aa', bssid: 'bb', ap: 'gateway'}]}));
+  fs.writeFileSync(path.join(directory, 'band-samples.jsonl'), samples.map(sample => JSON.stringify(sample)).join('\n'));
+  fs.writeFileSync(path.join(directory, 'events.jsonl'), '');
+  const audited = summarize(directory, directory);
+  assert.equal(audited.rooms[0].bandSteering.passed, false);
+  assert.equal(audited.passed, 0);
+  delete golden.band_steering;
+  write('band.world.json', golden);
+  assert.equal(summarize(directory, directory).passed, 1);
+} finally {
+  fs.rmSync(directory, {recursive: true, force: true});
+}
+console.log('PASS: band audit reconstructs native proof from raw events rather than trusting a success badge');

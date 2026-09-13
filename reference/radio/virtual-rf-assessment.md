@@ -13,6 +13,11 @@ Evidence extends through 2026-09-11 Pacific / 2026-09-12 UTC. Phases 1–2 deplo
 the module, daemon and native providers, testing fixed fields, traffic, retunes,
 failure and recovery. No soak or physical-capacity qualification was run.
 
+For subsequent client cross-band work, see [band steering and dedicated-room
+qualification](../optimizer/band-steering.md): capability-aware passive scans,
+native receive-channel reporting, and independent signal/load telemetry. Its
+room results do not replace the RF-capacity qualification limits in this assessment.
+
 ## Navigation
 
 - [Conclusions](#1-conclusions)

@@ -142,7 +142,15 @@ Receiver queue draining is not calibrated physical capacity.
 
 ## Current qualification
 
-September 13, 2026 UTC, `codex/0908-clean`: the final independent catalogs pass
+The current catalog includes three dedicated band-steering rooms in addition
+to the fourteen original scenarios. See [band-steering qualification](../optimizer/band-steering.md#results)
+for the current seventeen-room results, native receive-channel requirements,
+verified band transitions and preparation limitations. The table below is the
+earlier RF baseline, not coverage of the three added rooms.
+
+### Pre-band RF baseline
+
+September 13, 2026 UTC, `codex/0908-clean`: the pre-band independent catalogs pass
 **14/14 on each stack**, including the unchanged five-second extender-loss
 departure gate. Every available room loads and plays at 1×, with initial,
 checkpoint and final policy convergence, fullscreen room/topology inspection,
