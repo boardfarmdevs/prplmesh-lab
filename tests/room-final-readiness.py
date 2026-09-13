@@ -39,6 +39,23 @@ def convergence_state(optimizer, clients):
     }
 
 
+def default_roster(health, clients, state):
+    stations = {f"sta_{kind}_{ordinal:02d}" for kind in ("mobile", "static")
+                for ordinal in range(1, 11)}
+    mesh = {"gateway", *(f"extender_{ordinal}" for ordinal in range(1, 5))}
+    dormant = {f"sta_pool_{ordinal:03d}" for ordinal in range(21, 101)}
+    roles = state.get("roles") or {}
+    present = {role for role, value in roles.items() if value.get("present") is True}
+    addresses = [client.get("sta_mac") for client in clients]
+    return (health.get("api_total") == 20 and len(clients) == 20
+            and all(isinstance(address, str) and address for address in addresses)
+            and len({address.lower() for address in addresses}) == 20
+            and {client.get("role") for client in clients} == stations
+            and state.get("selected_world") == "home-five-agent--private-client-room-walk"
+            and state.get("pool_clients") == 100 and state.get("expected_online_clients") == 20
+            and set(roles) == stations | mesh | dormant and present == stations | mesh)
+
+
 def main():
     parser = argparse.ArgumentParser(description="Read-only default room freshness/convergence check.")
     parser.add_argument("--room-url", required=True)
@@ -71,7 +88,7 @@ def main():
                 sample["convergence"] = convergence
                 checks = {
                     "healthy": bool(health.get("healthy")),
-                    "default_roster": health.get("api_total") == 20 and len({client["sta_mac"] for client in clients}) == len(clients) == 20 and state["expected_online_clients"] == 20 and all(role["present"] for role in state["roles"].values()),
+                    "default_roster": default_roster(health, clients, state),
                     "paused_unleased": state["playback"]["status"] == "paused" and state["playback"]["time_ms"] == 0 and not state["lease"]["held"] and not state["fault"],
                     "action_limit": optimizer.get("maximum_actions") == 100,
                     "current_epoch": current["environment_epoch"] == state["environment_epoch"] == optimizer.get("environment_epoch"),
