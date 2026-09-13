@@ -15,8 +15,8 @@ def fragments():
                      if line.startswith(("+", " ")) and not line.startswith("+++"))
 
 
-@pytest.mark.parametrize("repair_enabled", [True, False])
-def test_native_model_recreation(tmp_path, repair_enabled):
+@pytest.mark.parametrize("repair_mode", ["complete", "missing", "disconnected", "orphan"])
+def test_native_model_recreation(tmp_path, repair_mode):
     compiler = shutil.which("c++")
     if not compiler:
         pytest.skip("C++ compiler required for native recovery fragments")
@@ -28,8 +28,12 @@ def test_native_model_recreation(tmp_path, repair_enabled):
                     source.index('    LOG(DEBUG) << "Setting byte counter')]
     channel = source[source.index("            bool has_current_channel"):
                      source.index("            radio->bsses.keep_new_prepare();")]
-    if not repair_enabled:
+    if repair_mode == "missing":
         repair = ""
+    elif repair_mode == "disconnected":
+        repair = repair.replace("station.state == beerocks::STATE_CONNECTED && ", "")
+    elif repair_mode == "orphan":
+        repair = repair.replace("get_station(station.mac) == entry.second &&", "")
     program = r'''
 #include <cassert>
 #include <memory>
@@ -37,7 +41,10 @@ def test_native_model_recreation(tmp_path, repair_enabled):
 #include <unordered_map>
 #include <vector>
 struct Bss;
+namespace beerocks { enum State { STATE_DISCONNECTED, STATE_CONNECTED }; }
 struct Station {
+    int mac = 0;
+    beerocks::State state = beerocks::STATE_CONNECTED;
     std::string dm_path;
     std::weak_ptr<Bss> owner;
     bool backhaul = false;
@@ -54,6 +61,10 @@ struct Database {
     std::unordered_map<int, std::shared_ptr<Agent>> m_agents;
     std::unordered_map<int, std::shared_ptr<Station>> m_stations;
     bool remove_success = true, add_success = true;
+    std::shared_ptr<Station> get_station(int mac) {
+        auto found = m_stations.find(mac);
+        return found == m_stations.end() ? nullptr : found->second;
+    }
     bool dm_remove_device_element(int) { return remove_success; }
     bool dm_add_sta_element(int, int, Station &station) {
         station.dm_path = station.get_bss()->dm_path + ".STA.100";
@@ -89,14 +100,17 @@ int main() {
     other->dm_path = "Device.7.Radio.3.BSS.1";
     const std::vector<std::string> paths = {
         "Device.5.Radio.3.BSS.1.STA.1", "", "Device.6.Radio.3.BSS.11.STA.1",
-        "Device.6.Radio.3.BSS.1.STA.12", "Device.7.Radio.3.BSS.1.STA.1", ""
+        "Device.6.Radio.3.BSS.1.STA.12", "Device.7.Radio.3.BSS.1.STA.1", "", "", ""
     };
     for (unsigned index = 0; index < paths.size(); index++) {
         auto station = std::make_shared<Station>();
+        station->mac = index;
         station->dm_path = paths[index];
         station->owner = index == 4 ? other : bss;
         station->backhaul = index == 5;
+        if (index == 6) station->state = beerocks::STATE_DISCONNECTED;
         bss->connected_stations[index] = station;
+        if (index != 7) database.m_stations[index] = station;
     }
     assert(database.publish(bss));
     for (int index = 0; index < 3; index++) {
@@ -106,8 +120,8 @@ int main() {
     }
     assert(database.publish(bss));
     for (int index = 0; index < 3; index++) assert(bss->connected_stations.at(index)->associations == 1);
-    for (int index = 3; index < 6; index++) {
-        assert(bss->connected_stations.at(index)->associations == 0);
+    for (unsigned index = 3; index < paths.size(); index++) {
+        if (bss->connected_stations.at(index)->associations != 0) return 1;
         assert(bss->connected_stations.at(index)->dm_path == paths[index]);
     }
     bss->connected_stations.at(0)->dm_path.clear();
@@ -141,7 +155,7 @@ int main() {
     subprocess.run([compiler, "-std=c++14", "-Wall", "-Wextra", "-Werror", str(cpp), "-o", str(binary)],
                    check=True, capture_output=True, text=True, timeout=30)
     result = subprocess.run([str(binary)], timeout=5)
-    assert result.returncode == (0 if repair_enabled else 1)
+    assert result.returncode == (0 if repair_mode == "complete" else 1)
 
 
 def test_native_channel_recovery_uses_report_not_synthetic_values():

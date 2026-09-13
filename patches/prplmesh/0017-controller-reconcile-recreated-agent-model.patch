@@ -7,7 +7,8 @@ path under the deleted Device instance. Associated RF reports remain valid
 but every NBAPI write fails and the viewer loses the client indefinitely.
 
 Reconcile connected non-backhaul STA paths when their actual BSS is published.
-Only repair stations still owned by that BSS; do not manufacture associations
+Only repair connected stations still registered in the database and owned by
+that BSS. Ignore disconnected history and orphaned BSS entries; do not manufacture associations
 from metric reports or refresh already-correct association timestamps. Match
 complete path components so BSS.1 cannot match BSS.11. Invalidate removed
 Device descendants only after successful native model removal.
@@ -19,7 +20,7 @@ no channel preferences and obtains the Agent's actual Operating Channel Report;
 known channels do not generate extra queries and unknown values are not filled.
 
 diff --git a/controller/src/beerocks/master/db/db.cpp b/controller/src/beerocks/master/db/db.cpp
-index 43b5ebc..a4df97c 100644
+index 43b5ebc..6b6e62b 100644
 --- a/controller/src/beerocks/master/db/db.cpp
 +++ b/controller/src/beerocks/master/db/db.cpp
 @@ -426,9 +426,18 @@ bool db::remove_agent(const sMacAddr &mac)
@@ -53,14 +54,15 @@ index 43b5ebc..a4df97c 100644
  
              LOG(DEBUG) << "Station is added to different BSS " << bssid
                         << " remove previous object";
-@@ -7399,6 +7409,14 @@ bool db::dm_set_radio_bss(const sMacAddr &al_mac, const sMacAddr &radio_mac, con
+@@ -7399,6 +7409,15 @@ bool db::dm_set_radio_bss(const sMacAddr &al_mac, const sMacAddr &radio_mac, con
      ret_val &= m_ambiorix_datamodel->set(bss->dm_path, "BackhaulUse", bss->backhaul);
      ret_val &= m_ambiorix_datamodel->set(bss->dm_path, "X_PRPLWARE-COM_VAPID", bss->get_vap_id());
      ret_val &= m_ambiorix_datamodel->set(bss->dm_path, "IsVBSS", is_vbss);
 +    const auto sta_prefix = bss->dm_path + ".STA.";
 +    for (const auto &entry : bss->connected_stations) {
 +        auto &station = *entry.second;
-+        if (!station.is_bSta() && station.get_bss() == bss &&
++        if (station.state == beerocks::STATE_CONNECTED && get_station(station.mac) == entry.second &&
++            !station.is_bSta() && station.get_bss() == bss &&
 +            station.dm_path.compare(0, sta_prefix.size(), sta_prefix) != 0) {
 +            ret_val &= dm_add_sta_element(al_mac, bssid, station);
 +        }
