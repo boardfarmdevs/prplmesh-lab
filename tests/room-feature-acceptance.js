@@ -568,11 +568,23 @@ async function run(args) {
     const initial = await request('/api/demo/interactions');
     if (initial.lease?.held || initial.recording?.active) throw new Error('Refusing to steal a control lease or interrupt recording');
     report.before = await guest('identity', args.flavor);
-    const current = await request('/api/demo/current');
+    let current;
+    const baselineDeadline = performance.now() + 60000;
+    do {
+      current = await request('/api/demo/current');
+      bindings = Object.fromEntries(current.network.clients.map(client => [client.role, client]));
+      if (current.health.healthy && current.health.api_total === 20 &&
+          current.health.expected_online_clients === 20 && Object.keys(bindings).length === 20) break;
+      await new Promise(resolve => setTimeout(resolve, 200));
+    } while (performance.now() < baselineDeadline);
     report.temporaryActionLimit = current.optimizer.maximum_actions;
     eventSequence = current.sequence;
     bindings = Object.fromEntries(current.network.clients.map(client => [client.role, client]));
-    if (Object.keys(bindings).length !== 20) throw new Error('Preflight requires default twenty-client baseline after room-service restart');
+    if (!current.health.healthy || current.health.api_total !== 20 ||
+        current.health.expected_online_clients !== 20 || Object.keys(bindings).length !== 20) {
+      save('preflight-current.json', current);
+      throw new Error('Preflight requires a healthy default twenty-client baseline after room-service restart');
+    }
     save('bindings.json', bindings);
     const catalogResponse = await request('/api/demo/worlds');
     if (catalogResponse.client_bindings) {
