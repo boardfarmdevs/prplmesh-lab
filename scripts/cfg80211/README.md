@@ -32,7 +32,9 @@ release evidence. This host-kernel build is separate from Yocto's shared
 downloads and sstate caches.
 
 Installation writes `updates/cfg80211.ko` and runs `depmod`. It does not unload
-radios from a running lab. Stop the lab and reboot its VM after installing over
+radios from a running lab. Installed source identity and module checksums are
+retained under `/usr/share/hwsim-lab/cfg80211/`, independently of build cleanup.
+Stop the lab and reboot its VM after installing over
 an already-loaded stock module. Startup refuses an unpatched loaded module.
 Verify both installed and loaded versions:
 

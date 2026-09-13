@@ -246,7 +246,7 @@ EOF"
 
     run env DEBIAN_FRONTEND=noninteractive bash -c '
         apt-get update
-        apt-get install -y build-essential ca-certificates dpkg-dev git golang-go iw jq \
+        apt-get install -y build-essential ca-certificates curl dpkg-dev git golang-go iw jq \
           libconfig-dev libnl-3-dev libnl-genl-3-dev libnl-route-3-dev meson \
           ninja-build patch pkg-config python3 python3-venv rsync snapd
         sed "s/^Types: deb$/Types: deb-src/" /etc/apt/sources.list.d/ubuntu.sources \

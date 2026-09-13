@@ -69,6 +69,10 @@ test "$(modinfo -F version "$SOURCE/wireless/cfg80211.ko")" = lab-netns-owner-1
 sha256sum "$SOURCE/wireless/cfg80211.ko" > "$SOURCE/module.sha256"
 if [ "$INSTALL" = --install ]; then
     sudo install -D -m 0644 "$SOURCE/wireless/cfg80211.ko" "/lib/modules/$KVER/updates/cfg80211.ko"
+    provenance=/usr/share/hwsim-lab/cfg80211
+    sudo install -d -m 0755 "$provenance"
+    sudo install -m 0644 "$SOURCE/source.identity" "$SOURCE/source-package.dsc" "$SOURCE/source.sha256" "$provenance/"
+    sha256sum "/lib/modules/$KVER/updates/cfg80211.ko" | sudo tee "$provenance/module.sha256" >/dev/null
     sudo depmod -a "$KVER"
     echo "Installed cfg80211; reboot the lab VM if the old module is already loaded."
 fi
