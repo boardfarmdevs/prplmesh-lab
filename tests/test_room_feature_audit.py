@@ -127,3 +127,36 @@ def test_command_preserves_failures_and_timeouts(monkeypatch):
     with pytest.raises(subprocess.TimeoutExpired) as caught:
         AUDIT.command("iw", timeout=3)
     assert caught.value.timeout == 3
+
+
+def test_full_pool_links_uses_one_inventory_and_native_network_namespaces(monkeypatch):
+    calls = []
+    mapping = {f"client_{index}": f"prpl-client-{index:02d}" for index in range(1, 101)}
+    instances = [{"name": container, "state": {"pid": index + 100, "status": "Running"}}
+                 for index, container in enumerate(mapping.values())]
+
+    def command(*arguments, **kwargs):
+        calls.append((arguments, kwargs))
+        return json.dumps(instances) if arguments[0] == "lxc" else LINK
+
+    monkeypatch.setattr(AUDIT, "command", command)
+    assert AUDIT.links(mapping) == dict.fromkeys(mapping, LINK)
+    assert calls[0] == (("lxc", "query", "/1.0/instances?recursion=2"), {"timeout": 5})
+    assert len(calls) == 101
+    assert all(arguments[0] == "nsenter" and arguments[3:] == ("--net", "--", "iw", "dev", "wlan0", "link")
+               and options == {"timeout": 3} for arguments, options in calls[1:])
+
+
+@pytest.mark.parametrize("mapping", [{}, {"client": "prpl-controller"},
+                                   {str(index): "wlan-client" for index in range(101)}])
+def test_full_pool_links_rejects_unbound_or_oversized_inventory(mapping):
+    with pytest.raises(ValueError, match="one to 100"):
+        AUDIT.links(mapping)
+
+
+@pytest.mark.parametrize("process,status", [(0, "Stopped"), (1, "Running"), (True, "Running")])
+def test_full_pool_links_preserves_missing_namespace_failure(monkeypatch, process, status):
+    monkeypatch.setattr(AUDIT, "command", lambda *args, **kwargs: json.dumps([
+        {"name": "wlan-client", "state": {"pid": process, "status": status}}]))
+    with pytest.raises(RuntimeError, match="namespace is unavailable"):
+        AUDIT.links({"client": "wlan-client"})
