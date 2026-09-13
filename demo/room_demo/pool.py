@@ -8,14 +8,19 @@ from wmdcfg.model import ScenarioError
 CLIENT_CAPACITY = 100
 
 
+def _client_order(container: str) -> tuple[str, int]:
+    prefix, _, suffix = container.rpartition("-")
+    return (prefix, int(suffix)) if suffix.isdigit() else (container, 0)
+
+
 def bind_client_pool(world: dict, binding_doc: dict, inventory: dict) -> dict:
     result = copy.deepcopy(binding_doc)
     bindings = result["roles"]
-    stations = sorted(item["container"] for item in inventory.get("radios", [])
-                      if item.get("kind") == "station")
+    stations = sorted((item["container"] for item in inventory.get("radios", [])
+                       if item.get("kind") == "station"), key=_client_order)
     if len(stations) > CLIENT_CAPACITY or len(stations) != len(set(stations)):
         raise ScenarioError("the room requires unique client identities within the 100-client capacity")
-    remaining = sorted(set(stations) - set(bindings.values()))
+    remaining = [container for container in stations if container not in bindings.values()]
     for ordinal, container in enumerate(remaining, 21):
         role = f"sta_pool_{ordinal:03d}"
         if role in bindings:

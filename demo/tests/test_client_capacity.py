@@ -112,6 +112,19 @@ class ClientCapacityTests(unittest.TestCase):
             self.assertTrue(engine.close())
             self.assertTrue(all(not overridden for value, overridden in client.values.values()))
 
+    def test_prpl_three_digit_client_is_last_not_between_ten_and_eleven(self):
+        station_roles = [role for role, kind in self.world["roles"].items() if kind == "station"]
+        bindings = {"roles": dict(zip(station_roles, (f"prpl-client-{ordinal:02d}"
+                                                    for ordinal in range(1, 21))))}
+        bindings["roles"].update({role: role for role, kind in self.world["roles"].items()
+                                  if kind == "fronthaul_ap"})
+        inventory = {"radios": [{"container": f"prpl-client-{ordinal:02d}", "kind": "station"}
+                                for ordinal in range(1, 101)]}
+        pool = bind_client_pool(self.world, bindings, inventory)["roles"]
+        self.assertEqual(pool["sta_pool_021"], "prpl-client-21")
+        self.assertEqual(pool["sta_pool_022"], "prpl-client-22")
+        self.assertEqual(pool["sta_pool_100"], "prpl-client-100")
+
 
 if __name__ == "__main__":
     unittest.main()

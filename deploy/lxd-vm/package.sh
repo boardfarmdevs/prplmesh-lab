@@ -5,14 +5,15 @@ ROOT=$(cd "$(dirname "$0")/../.." && pwd)
 # shellcheck source=profile.sh
 source "$ROOT/deploy/lxd-vm/profile.sh"
 PROFILE=$(prplmesh_profile_name "${PRPLMESH_LAB_PROFILE:-unified}")
+RELEASE_ID=${PRPLMESH_RELEASE_ID:-0913}
 CLIENTS=$(prplmesh_profile_clients "$PROFILE")
 RADIOS=$(prplmesh_profile_radios "$PROFILE")
 RELEASE_NAME=$(prplmesh_profile_release_name "$PROFILE")
 NAME=${PRPLMESH_VM_NAME:-$RELEASE_NAME}
-OUTPUT_DIR=${1:-$ROOT/release/0831}
+OUTPUT_DIR=${1:-$ROOT/release/$RELEASE_ID}
 SHORT=$(git -C "$ROOT" rev-parse --short=7 HEAD)
-BUNDLE="$OUTPUT_DIR/prplmesh-${CLIENTS}-0831-${SHORT}-lxd"
-OUTPUT="$BUNDLE/prplmesh-${CLIENTS}-0831-${SHORT}-lxd.tar.zst"
+BUNDLE="$OUTPUT_DIR/prplmesh-${RELEASE_ID}-${SHORT}-lxd"
+OUTPUT="$BUNDLE/prplmesh-${RELEASE_ID}-${SHORT}-lxd.tar.zst"
 TRIM_REPORT="$BUNDLE/trim-report.txt"
 WAS_RUNNING=false
 BUILD_STORAGE_POOL=
