@@ -597,7 +597,8 @@ class InteractiveMediumSession:
                         self._applied_values[key] = (value, overridden)
                     apply_timing["medium_apply_readback_ms"] = round((time.monotonic() - disconnected_at) * 1000, 3)
                 reconnect_started = time.monotonic()
-                with (self.band_profiles.transition(world.get("band_steering", {}))
+                with (self.band_profiles.transition(world.get("band_steering", {}),
+                                                   present_roles={role for role, state in roles.items() if state["present"]})
                       if self.band_profiles else nullcontext()):
                     parallel_reconnections(self.reconnect_client, (
                         role for role in self._allowed_roles if self.reconnect_client is not None and roles[role]["present"]

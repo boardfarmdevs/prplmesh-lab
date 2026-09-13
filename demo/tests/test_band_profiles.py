@@ -59,7 +59,7 @@ def test_band_settings_are_journaled_before_mutation_and_restored_on_default(tmp
     assert load_recovery(journal.path)["client_networks"][CONTAINER] == RECORD
     with profiles.transition({}):
         assert not profiles.active
-    settings.restore.assert_called_once_with(RECORD)
+    settings.restore.assert_called_once_with(RECORD, reconnect=True, wait=True)
     assert journal.client_networks() == {}
 
 
@@ -128,3 +128,60 @@ def test_successful_mutation_with_wrong_readback_is_not_accepted():
     settings.control = Mock(return_value="OK")
     with pytest.raises(ActuatorError, match="readback mismatch"):
         settings.write(RECORD, {**VALUES, "freq_list": "5180"})
+
+
+def test_leaving_profile_keeps_unavailable_client_disconnected(tmp_path):
+    profiles, settings, _scanner, journal = manager(tmp_path)
+    with profiles.transition({"client": PROFILE}):
+        pass
+    with profiles.transition({}, present_roles=set()):
+        assert not profiles.active
+    settings.restore.assert_called_once_with(RECORD, reconnect=False, wait=False)
+    assert not journal.client_networks()
+
+
+def test_restore_waits_for_completed_association_on_restored_frequency():
+    settings = ClientBandSettings(clock=Mock(return_value=0), sleep=Mock())
+    settings.write = Mock()
+    settings._ok = Mock()
+    settings.control = Mock(side_effect=[
+        "wpa_state=SCANNING",
+        "wpa_state=COMPLETED\nssid=private_ssid\nfreq=5975",
+        "wpa_state=COMPLETED\nssid=private_ssid\nfreq=2437",
+    ])
+    settings.restore(RECORD, wait=True)
+    settings._ok.assert_called_once_with(CONTAINER, "reassociate")
+    assert settings.sleep.call_count == 2
+    settings.write.assert_called_once_with(RECORD, VALUES)
+
+
+def test_restore_does_not_reassociate_an_unavailable_client():
+    settings = ClientBandSettings()
+    settings.write = Mock()
+    settings._ok = Mock()
+    settings.control = Mock()
+    settings.restore(RECORD, reconnect=False)
+    settings._ok.assert_called_once_with(CONTAINER, "disconnect")
+    settings.control.assert_not_called()
+
+
+def test_restore_fails_when_association_does_not_finish():
+    settings = ClientBandSettings(clock=Mock(side_effect=[0, 0, 13]), sleep=Mock())
+    settings.write = Mock()
+    settings._ok = Mock()
+    settings.control = Mock(return_value="wpa_state=SCANNING")
+    with pytest.raises(ActuatorError, match="restored band association timed out"):
+        settings.restore(RECORD, wait=True)
+
+
+def test_unrestricted_restore_requires_a_real_frequency_and_correct_ssid():
+    settings = ClientBandSettings(clock=Mock(return_value=0), sleep=Mock())
+    settings.write = Mock()
+    settings._ok = Mock()
+    settings.control = Mock(side_effect=[
+        "wpa_state=COMPLETED\nssid=private_ssid\nfreq=0",
+        "wpa_state=COMPLETED\nssid=other\nfreq=5180",
+        "wpa_state=COMPLETED\nssid=private_ssid\nfreq=5180",
+    ])
+    settings.restore({**RECORD, "values": {**VALUES, "freq_list": None, "scan_freq": None}}, wait=True)
+    assert settings.sleep.call_count == 2

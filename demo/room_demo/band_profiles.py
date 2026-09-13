@@ -85,7 +85,7 @@ class ClientBandSettings:
         if readback["values"] != values:
             raise ActuatorError("client band settings readback mismatch")
 
-    def restore(self, record):
+    def restore(self, record, *, reconnect=True, wait=False):
         with client_radio_lock(record["container"]):
             if "sae_pwe" not in record["values"]:
                 record = {**record, "values": {**record["values"], "sae_pwe": self.control(record["container"], "get", "sae_pwe")}}
@@ -94,7 +94,13 @@ class ClientBandSettings:
                 if current["values"]["ieee80211w"] != "3":
                     self._ok(record["container"], "reconfigure")
             self.write(record, record["values"])
-            self._ok(record["container"], "reassociate")
+            if reconnect:
+                self._ok(record["container"], "reassociate")
+                if wait:
+                    frequencies = record["values"]["freq_list"] or record["values"]["scan_freq"]
+                    self._wait_association(record, set(map(int, frequencies.split())) if frequencies else None, "restored")
+            else:
+                self._ok(record["container"], "disconnect")
 
     def initialize(self, record, values, initial_frequencies):
         with client_radio_lock(record["container"]):
@@ -104,16 +110,20 @@ class ClientBandSettings:
         initial = " ".join(map(str, sorted(initial_frequencies)))
         self.write(record, {**values, "freq_list": initial, "scan_freq": initial})
         self._ok(record["container"], "reassociate")
+        self._wait_association(record, initial_frequencies, "initial")
+        self.write(record, values)
+
+    def _wait_association(self, record, frequencies, phase):
         deadline = self.clock() + 12
         while self.clock() < deadline:
             status = dict(line.split("=", 1) for line in self.control(record["container"], "status").splitlines()
                           if "=" in line)
             if (status.get("wpa_state") == "COMPLETED" and status.get("ssid") == record["ssid"]
-                    and int(status.get("freq", 0)) in initial_frequencies):
-                self.write(record, values)
+                    and int(status.get("freq", 0)) > 0
+                    and (frequencies is None or int(status["freq"]) in frequencies)):
                 return
             self.sleep(0.1)
-        raise ActuatorError(f"{record['container']}: initial band association timed out")
+        raise ActuatorError(f"{record['container']}: {phase} band association timed out")
 
 
 class BandProfileManager:
@@ -154,7 +164,7 @@ class BandProfileManager:
                 "initial_frequencies_mhz": frequencies[profile["initial_band"]], "record": record}
 
     @contextmanager
-    def transition(self, profiles):
+    def transition(self, profiles, *, present_roles=None):
         prepared = {}
         with ThreadPoolExecutor(max_workers=4, thread_name_prefix="band-profile") as executor:
             futures = {role: executor.submit(self._prepare, role, profile) for role, profile in profiles.items()}
@@ -169,9 +179,15 @@ class BandProfileManager:
             self.recovery.preserve_client_network(container, record)
         try:
             leaving = {item["container"] for item in previous.values()} - {item["container"] for item in prepared.values()}
-            for container in leaving:
-                self.settings.restore(originals[container])
             with ThreadPoolExecutor(max_workers=4, thread_name_prefix="band-initial-association") as executor:
+                restorations = []
+                for item in previous.values():
+                    if item["container"] in leaving:
+                        online = present_roles is None or item["role"] in present_roles
+                        restorations.append(executor.submit(self.settings.restore, originals[item["container"]],
+                                                            reconnect=online, wait=online))
+                for future in restorations:
+                    future.result()
                 futures = [executor.submit(self.settings.initialize, item["record"], item["settings"],
                                            item["initial_frequencies_mhz"]) for item in prepared.values()]
                 for future in futures:

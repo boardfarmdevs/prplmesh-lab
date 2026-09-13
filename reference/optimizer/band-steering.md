@@ -132,8 +132,14 @@ the saved client settings. RDK's inherited PMF sentinel cannot be written
 literally with SET_NETWORK; restoring it requires supplicant reconfiguration,
 followed by exact settings readback. Recovery must retain a failed record
 rather than declare successful restoration.
+During a room switch, leaving band profiles wait for an online client's
+completed association on its restored allowed frequencies before releasing
+the configuration transaction. Offline roles stay disconnected. This bounded
+setup check prevents an asynchronous reconfiguration racing the next policy
+decision; it is not a measured native BTM or a longer convergence deadline.
 
-The provisioned pool stays at twenty clients and six logical mesh roles.
+The 0913 provisioned pool has capacity for 100 clients and six logical mesh
+roles; the default room activates twenty clients.
 The dedicated room currently enables ten clients; other containers stay running
 but their WLAN stations are absent from the room.
 
