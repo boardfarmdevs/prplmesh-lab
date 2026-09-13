@@ -1,0 +1,40 @@
+diff --git a/src/ap/sta_info.h b/src/ap/sta_info.h
+--- a/src/ap/sta_info.h
++++ b/src/ap/sta_info.h
+@@ -244,6 +244,7 @@ struct sta_info {
+ #endif /* CONFIG_FST */
+ 
+ 	struct os_reltime connected_time;
++	unsigned int authorization_event_pending:1;
+ 
+ #ifdef CONFIG_SAE
+ 	struct sae_data *sae;
+diff --git a/src/ap/ieee802_11.c b/src/ap/ieee802_11.c
+--- a/src/ap/ieee802_11.c
++++ b/src/ap/ieee802_11.c
+@@ -6457,6 +6457,8 @@ static void handle_assoc_cb(struct hostapd_data *hapd,
+ 	if (status != WLAN_STATUS_SUCCESS)
+ 		return;
+ 
++	sta->authorization_event_pending = 1;
++
+ 	/* Stop previous accounting session, if one is started, and allocate
+ 	 * new session id for the new session. */
+ 	accounting_sta_stop(hapd, sta);
+diff --git a/src/ap/sta_info.c b/src/ap/sta_info.c
+--- a/src/ap/sta_info.c
++++ b/src/ap/sta_info.c
+@@ -1270,9 +1270,12 @@ void ap_sta_set_authorized(struct hostapd_data *hapd, struct sta_info *sta,
+ 	u8 ip_addr_buf[4];
+ #endif /* CONFIG_P2P */
+ 
+-	if (!!authorized == !!(sta->flags & WLAN_STA_AUTHORIZED))
++	if (!!authorized == !!(sta->flags & WLAN_STA_AUTHORIZED) &&
++	    !(authorized && sta->authorization_event_pending))
+ 		return;
+ 
++	sta->authorization_event_pending = 0;
++
+ 	if (authorized)
+ 		sta->flags |= WLAN_STA_AUTHORIZED;
+ 	else

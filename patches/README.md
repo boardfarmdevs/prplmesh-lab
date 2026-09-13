@@ -56,6 +56,22 @@ traffic/TID updates cannot refresh the old owner's station data.
 checks coalesced recovery and source ownership, and retains an unrepaired
 negative control.
 
+`hostap/0002-notify-successful-reauthorization.patch` fixes a stock-hostapd
+nl80211 management-frame notification gap. A client can return to an AP whose
+old authorized record survived its departure. Completing another association
+and authorization updates the kernel and hostapd connection age, but the
+unchanged authorization bit previously suppressed `AP-STA-CONNECTED`. The Agent
+then retained the earlier association age and the controller correctly rejected
+that apparently older ownership claim. An acknowledged successful association
+now arms one notification for completed authorization; ordinary rekey callbacks
+and repeated authorization calls remain deduplicated. No client is deauthorized
+or declared connected before authorization. This patch covers hostapd's
+software-managed association path used by nl80211, not driver-offloaded/FILS
+callbacks. `tests/test_hostap_reauthorization.py` compiles the event guard and
+checks initial joins, returning authorized clients, duplicate calls and failure
+cleanup, including an unpatched negative control. Live room qualification is
+required separately.
+
 `prplmesh/0019-controller-order-associated-client-recovery.patch` qualifies
 Associated Clients recovery against newer native association/departure events.
 An old AP can retain an authorized station after the client roams; its older
