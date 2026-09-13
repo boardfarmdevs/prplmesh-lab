@@ -331,6 +331,14 @@ async function run(args) {
       throw error;
     }
   }
+  async function auditKernel(sampleResult) {
+    if (!sampleResult) return {passed: false, errors: [{reason: 'model_snapshot_unavailable'}]};
+    const started = performance.now();
+    const clientContainers = Object.fromEntries(Object.entries(bindings).map(([role, client]) => [role, client.container]));
+    const links = await guest('links', JSON.stringify(clientContainers));
+    return {...kernelClientAudit(bindings, sampleResult.wanted, sampleResult.roomAssociations, links),
+      elapsedMs: performance.now() - started, observedAt: new Date().toISOString()};
+  }
   async function events() {
     while (!stopped) {
       try {
@@ -593,6 +601,8 @@ async function run(args) {
           requestTiming: loaded.requestTiming, server: loaded.result, goldenSha256: world.golden_sha256};
         if (!activeRoom.load.passed) throw new Error('Deployed golden identity does not match the selected room');
         activeRoom.initial = await settle(world, Number(args['initial-timeout'] || 90), 'loaded');
+        activeRoom.initial.kernel = await auditKernel(activeRoom.initial.final);
+        activeRoom.initial.passed &&= activeRoom.initial.kernel.passed;
         await screenshot('loaded');
         await room.bringToFront();
         if (!await room.evaluate(() => Boolean(document.fullscreenElement))) await room.locator('#roomFullscreen').click();
@@ -624,6 +634,8 @@ async function run(args) {
             visited.add(checkpoint);
             const started = performance.now();
             const settled = await settle(world, Number(args['checkpoint-timeout'] || 60), 'checkpoint-' + checkpoint);
+            settled.kernel = await auditKernel(settled.final);
+            settled.passed &&= settled.kernel.passed;
             activeRoom.checkpoints.push({timeMs: checkpoint, ...settled});
             await screenshot('checkpoint-' + checkpoint);
             await clickPlay(); checkpointMs += performance.now() - started;
@@ -635,9 +647,7 @@ async function run(args) {
         if (!completed) throw new Error('Playback exceeded bounded wall-clock deadline');
         activeRoom.final = await settle(world, Number(args['final-timeout'] || 120), 'final');
         await screenshot('final');
-        const offline = Object.fromEntries(Object.entries(bindings).filter(([, client]) => !lastSample.result.wanted.includes(lower(client.sta_mac))).map(([role, client]) => [role, client.container]));
-        const links = await guest('links', JSON.stringify(offline));
-        activeRoom.kernel = {offlineCount: Object.keys(offline).length, passed: Object.values(links).every(value => value.includes('Not connected')), links};
+        activeRoom.kernel = await auditKernel(activeRoom.final.final);
       } catch (error) {
         activeRoom.errors.push({phase, message: error.stack});
       } finally {
@@ -687,6 +697,26 @@ async function run(args) {
   return report;
 }
 
-module.exports = {expectedFrame, evaluate, distribution, eventPerformance, viewAgreement, recordedEventKind, fronthaulOutages, bandExpectations, bandSteeringSummary, bandNativeErrors};
+function kernelClientAudit(bindings, wanted, associations, links) {
+  const online = new Set(wanted.map(lower));
+  const model = new Map(associations.map(client => [lower(client.mac), lower(client.bssid)]));
+  const bound = new Set(Object.values(bindings).map(client => lower(client.sta_mac)));
+  const errors = [...online].filter(mac => !bound.has(mac)).map(mac => ({mac, reason: 'unbound_online_client'}));
+  for (const [role, client] of Object.entries(bindings)) {
+    const mac = lower(client.sta_mac);
+    const link = links[role];
+    const connected = typeof link === 'string' ? link.match(/^Connected to ([0-9a-f:]{17})\b/im) : null;
+    if (online.has(mac)) {
+      const actual = connected ? lower(connected[1]) : null;
+      const expected = model.get(mac) || null;
+      if (!actual || !expected || actual !== expected) errors.push({role, mac, expected, actual, reason: 'native_owner_mismatch'});
+    } else if (typeof link !== 'string' || !/^Not connected\.\s*$/.test(link)) {
+      errors.push({role, mac, reason: 'offline_client_connected_or_unobserved'});
+    }
+  }
+  return {onlineCount: online.size, offlineCount: bound.size - online.size, passed: errors.length === 0, errors, links};
+}
+
+module.exports = {expectedFrame, evaluate, distribution, eventPerformance, viewAgreement, recordedEventKind, fronthaulOutages, bandExpectations, bandSteeringSummary, bandNativeErrors, kernelClientAudit};
 if (require.main === module) run(argumentsFrom(process.argv.slice(2))).then(report => { process.exitCode = report.passed ? 0 : 1; })
   .catch(error => { console.error(error); process.exitCode = 2; });

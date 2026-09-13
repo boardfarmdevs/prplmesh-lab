@@ -1,6 +1,21 @@
 'use strict';
 const assert = require('node:assert/strict');
-const {expectedFrame, evaluate, distribution, eventPerformance, viewAgreement, recordedEventKind} = require('./room-feature-acceptance.js');
+const {expectedFrame, evaluate, distribution, eventPerformance, viewAgreement, recordedEventKind, kernelClientAudit} = require('./room-feature-acceptance.js');
+const kernelBindings = {active: {sta_mac: '02:00:00:10:04:00'}, dormant: {sta_mac: '02:00:00:20:32:00'}};
+const kernelWanted = ['02:00:00:10:04:00'];
+const kernelModel = [{mac: kernelWanted[0], bssid: '02:00:00:00:08:00'}];
+const kernelLinks = {active: 'Connected to 02:00:00:00:08:00 (on wlan0)\n\tfreq: 5975', dormant: 'Not connected.'};
+const nativeCheck = (links = kernelLinks, model = kernelModel, wanted = kernelWanted) =>
+  kernelClientAudit(kernelBindings, wanted, model, links);
+assert.equal(nativeCheck().passed, true);
+assert.equal(nativeCheck().onlineCount, 1);
+assert.equal(nativeCheck().offlineCount, 1);
+assert.equal(nativeCheck({...kernelLinks, active: 'Connected to 02:00:00:00:02:00 (on wlan0)'}).passed, false);
+assert.equal(nativeCheck(kernelLinks, []).passed, false);
+assert.equal(nativeCheck({...kernelLinks, active: 'Not connected.'}).passed, false);
+assert.equal(nativeCheck({...kernelLinks, dormant: kernelLinks.active}).passed, false);
+assert.equal(nativeCheck({active: kernelLinks.active}).passed, false);
+assert.equal(nativeCheck(kernelLinks, kernelModel, [...kernelWanted, '02:00:00:00:ff:00']).passed, false);
 const now = Date.now();
 const timestamp = new Date(now).toISOString();
 const world = {roles: {client: 'station'}, generations: [

@@ -50,6 +50,13 @@ Keep failures and incomplete runs in separate evidence directories.
 | Cleanup | Default twenty-client world, paused, no lease/fault; original service/action cap restored |
 
 A continuously moving target need not be strictly converged every instant.
+At each initial, checkpoint and final settled boundary, the harness reads
+`iw dev wlan0 link` for the complete fixed pool with four bounded workers.
+Every online client must match its native-model BSSID; every offline client
+must be disconnected. Missing observations fail. The independent audit's
+`elapsedMs` is recorded separately from convergence timing; it does not relax
+the 60/45/90-second policy bounds. Earlier reports checked only offline clients
+and selected live probes, not every online client's physical owner.
 Record one-second target sampling cadence and actual gaps; screenshots can
 slow sampling. Do not infer continuous failure across unobserved intervals.
 
