@@ -1,0 +1,109 @@
+Subject: [PATCH] controller: reconcile children after agent model recreation
+
+A renewed agent can bind an already connected STA to its new in-memory BSS
+before that BSS has a northbound path. Subsequent topology reports compare
+unchanged MAC/BSSID membership and skip the existing STA, leaving its cached
+path under the deleted Device instance. Associated RF reports remain valid
+but every NBAPI write fails and the viewer loses the client indefinitely.
+
+Reconcile connected non-backhaul STA paths when their actual BSS is published.
+Only repair stations still owned by that BSS; do not manufacture associations
+from metric reports or refresh already-correct association timestamps. Match
+complete path components so BSS.1 cannot match BSS.11. Invalidate removed
+Device descendants only after successful native model removal.
+
+A recreated radio can also miss its operating channel report during onboarding.
+If an authoritative topology response finds no current channel, request the
+existing empty Channel Selection exchange once for that response. This changes
+no channel preferences and obtains the Agent's actual Operating Channel Report;
+known channels do not generate extra queries and unknown values are not filled.
+
+diff --git a/controller/src/beerocks/master/db/db.cpp b/controller/src/beerocks/master/db/db.cpp
+index 43b5ebc..a4df97c 100644
+--- a/controller/src/beerocks/master/db/db.cpp
++++ b/controller/src/beerocks/master/db/db.cpp
+@@ -426,9 +426,18 @@ bool db::remove_agent(const sMacAddr &mac)
+         return false;
+     }
+ 
++    if (!dm_remove_device_element(mac)) {
++        return false;
++    }
++    const auto removed_prefix = agent->dm_path + ".Radio.";
++    for (const auto &entry : m_stations) {
++        auto &station = *entry.second;
++        if (station.dm_path.compare(0, removed_prefix.size(), removed_prefix) == 0) {
++            station.dm_path.clear();
++        }
++    }
+     m_agents.erase(mac);
+-
+-    return dm_remove_device_element(mac);
++    return true;
+ }
+ 
+ std::shared_ptr<Station> db::add_backhaul_station(const sMacAddr &mac, const sMacAddr &parent_mac,
+@@ -6706,7 +6715,8 @@ bool db::dm_add_sta_element(const sMacAddr &al_mac, const sMacAddr &bssid, Stati
+     if (!station.dm_path.empty()) {
+ 
+         // Verify if STA is added under different BSS. If so, remove old data model object.
+-        if (station.dm_path.find(bss->dm_path) == std::string::npos) {
++        const auto expected_prefix = bss->dm_path + ".STA.";
++        if (station.dm_path.compare(0, expected_prefix.size(), expected_prefix) != 0) {
+ 
+             LOG(DEBUG) << "Station is added to different BSS " << bssid
+                        << " remove previous object";
+@@ -7399,6 +7409,14 @@ bool db::dm_set_radio_bss(const sMacAddr &al_mac, const sMacAddr &radio_mac, con
+     ret_val &= m_ambiorix_datamodel->set(bss->dm_path, "BackhaulUse", bss->backhaul);
+     ret_val &= m_ambiorix_datamodel->set(bss->dm_path, "X_PRPLWARE-COM_VAPID", bss->get_vap_id());
+     ret_val &= m_ambiorix_datamodel->set(bss->dm_path, "IsVBSS", is_vbss);
++    const auto sta_prefix = bss->dm_path + ".STA.";
++    for (const auto &entry : bss->connected_stations) {
++        auto &station = *entry.second;
++        if (!station.is_bSta() && station.get_bss() == bss &&
++            station.dm_path.compare(0, sta_prefix.size(), sta_prefix) != 0) {
++            ret_val &= dm_add_sta_element(al_mac, bssid, station);
++        }
++    }
+     LOG(DEBUG) << "Setting byte counter unit to " << agent->byte_counter_units;
+     ret_val &= m_ambiorix_datamodel->set(bss->dm_path, "ByteCounterUnits",
+                                          static_cast<uint32_t>(agent->byte_counter_units));
+diff --git a/controller/src/beerocks/master/tasks/topology_task.cpp b/controller/src/beerocks/master/tasks/topology_task.cpp
+index 770a4dd..d4d5ea9 100644
+--- a/controller/src/beerocks/master/tasks/topology_task.cpp
++++ b/controller/src/beerocks/master/tasks/topology_task.cpp
+@@ -294,6 +294,7 @@ bool topology_task::handle_topology_response(const sMacAddr &src_mac,
+         }
+     }
+ 
++    bool needs_operating_channel_report = false;
+     auto tlvApInformation = cmdu_rx.getClass<wfa_map::tlvApOperationalBSS>();
+     if (tlvApInformation) {
+         for (uint8_t i = 0; i < tlvApInformation->radio_list_length(); i++) {
+@@ -308,6 +309,12 @@ bool topology_task::handle_topology_response(const sMacAddr &src_mac,
+                 continue;
+             }
+ 
++            bool has_current_channel = false;
++            for (const auto &profile : radio->current_operating_class_profile) {
++                has_current_channel |= profile.op_class != 0 && profile.channel != 0;
++            }
++            needs_operating_channel_report |= !has_current_channel;
++
+             radio->bsses.keep_new_prepare();
+             for (uint8_t j = 0; j < radio_entry.radio_bss_list_length(); j++) {
+                 auto bss_entry = std::get<1>(radio_entry.radio_bss_list(j));
+@@ -714,6 +721,14 @@ bool topology_task::handle_topology_response(const sMacAddr &src_mac,
+         LOG(ERROR) << "handle_associated_clients_tlv failed";
+     }
+ 
++    if (needs_operating_channel_report) {
++        if (!cmdu_tx.create(0, ieee1905_1::eMessageType::CHANNEL_SELECTION_REQUEST_MESSAGE) ||
++            !son_actions::send_cmdu_to_agent(al_mac, cmdu_tx, database)) {
++            LOG(ERROR) << "Failed to request missing operating channel report from " << al_mac;
++            return false;
++        }
++    }
++
+     return true;
+ }
