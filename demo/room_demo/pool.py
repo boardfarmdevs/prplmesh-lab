@@ -8,6 +8,16 @@ from wmdcfg.model import ScenarioError
 CLIENT_CAPACITY = 100
 
 
+def pool_manifest(manifest: dict, plan: dict) -> dict:
+    clients = sum(binding["role_type"] == "station" for binding in plan["bindings"].values())
+    if not 0 < clients <= CLIENT_CAPACITY or clients % 2:
+        raise ScenarioError("the lab pool requires balanced private/IoT cohorts within 100 clients")
+    result = copy.deepcopy(manifest)
+    result["health"].update(expected_clients=clients, expected_private_clients=clients // 2,
+                            expected_iot_clients=clients // 2)
+    return result
+
+
 def _client_order(container: str) -> tuple[str, int]:
     prefix, _, suffix = container.rpartition("-")
     return (prefix, int(suffix)) if suffix.isdigit() else (container, 0)

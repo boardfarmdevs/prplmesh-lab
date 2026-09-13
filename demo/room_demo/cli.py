@@ -30,7 +30,7 @@ from .band_profiles import BandProfileManager
 from .recovery import RecoveryJournal, inventory_identity, load_recovery, recover_medium
 from .server import RoomDemoServer
 from .worlds import BoundWorlds
-from .pool import bind_client_pool
+from .pool import bind_client_pool, pool_manifest
 from .client_wifi import disconnected_client, resume_bound_client
 
 
@@ -307,6 +307,7 @@ def _interactive(args) -> int:
         raise ActuatorError("interactive --max-actions must be a positive integer")
     manifest, world_path, bindings_path = _paths(args)
     world, source, inventory, binding_doc, plan = _prepare(world_path, bindings_path, pool=True)
+    manifest = pool_manifest(manifest, plan)
     layout, layout_path = _layout_for(world)
     runtime_world = InteractiveMediumSession.runtime_world(world, layout)
     timestamp = dt.datetime.now(dt.timezone.utc).strftime("%Y%m%dT%H%M%SZ")
