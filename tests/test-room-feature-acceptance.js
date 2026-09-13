@@ -1,6 +1,11 @@
 'use strict';
 const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const path = require('node:path');
 const {expectedFrame, evaluate, distribution, eventPerformance, viewAgreement, recordedEventKind, kernelClientAudit} = require('./room-feature-acceptance.js');
+const harnessSource = fs.readFileSync(path.join(__dirname, 'room-feature-acceptance.js'), 'utf8');
+assert.match(harnessSource, /activeRoom\.final = await settle\([^;]+;\s*activeRoom\.kernel = await auditKernel\(activeRoom\.final\.final\);\s*await screenshot\('final'\);/);
+assert.ok(harnessSource.includes('modelAgeAtStartMs: started - sampleResult.monoMs'));
 const kernelBindings = {active: {sta_mac: '02:00:00:10:04:00'}, dormant: {sta_mac: '02:00:00:20:32:00'}};
 const kernelWanted = ['02:00:00:10:04:00'];
 const kernelModel = [{mac: kernelWanted[0], bssid: '02:00:00:00:08:00'}];

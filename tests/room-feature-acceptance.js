@@ -337,7 +337,8 @@ async function run(args) {
     const clientContainers = Object.fromEntries(Object.entries(bindings).map(([role, client]) => [role, client.container]));
     const links = await guest('links', JSON.stringify(clientContainers));
     return {...kernelClientAudit(bindings, sampleResult.wanted, sampleResult.roomAssociations, links),
-      elapsedMs: performance.now() - started, observedAt: new Date().toISOString()};
+      elapsedMs: performance.now() - started, observedAt: new Date().toISOString(),
+      modelObservedAt: sampleResult.wallTime, modelAgeAtStartMs: started - sampleResult.monoMs};
   }
   async function events() {
     while (!stopped) {
@@ -646,8 +647,8 @@ async function run(args) {
           checkpointWaitSeconds: checkpointMs / 1000, checkpointsVisited: [...visited]};
         if (!completed) throw new Error('Playback exceeded bounded wall-clock deadline');
         activeRoom.final = await settle(world, Number(args['final-timeout'] || 120), 'final');
-        await screenshot('final');
         activeRoom.kernel = await auditKernel(activeRoom.final.final);
+        await screenshot('final');
       } catch (error) {
         activeRoom.errors.push({phase, message: error.stack});
       } finally {

@@ -57,6 +57,9 @@ must be disconnected. Missing observations fail. The independent audit's
 `elapsedMs` is recorded separately from convergence timing; it does not relax
 the 60/45/90-second policy bounds. Earlier reports checked only offline clients
 and selected live probes, not every online client's physical owner.
+Physical audits precede screenshots at all three boundaries. Their model
+timestamp and age at audit start are recorded: screenshot delays must not
+compare a later physical association against an old native snapshot.
 Record one-second target sampling cadence and actual gaps; screenshots can
 slow sampling. Do not infer continuous failure across unobserved intervals.
 
