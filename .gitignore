@@ -2,6 +2,7 @@
 /artifacts/*
 !/artifacts/README.md
 /controller-ui/bin/
+/controller-ui/web/static/vendor/
 /evidence/**/*.pcap
 /evidence/**/*.pcapng
 /evidence/**/*.log

@@ -6,6 +6,7 @@ SERVICE_USER=${PRPL_UI_USER:-${SUDO_USER:-$USER}}
 UNIT=/etc/systemd/system/prplmesh-controller-ui.service
 
 cd "$ROOT/controller-ui"
+bash prepare-web-assets.sh
 mkdir -p bin
 go test -buildvcs=false ./...
 # Appliance source archives intentionally omit .git. Disable VCS stamping so

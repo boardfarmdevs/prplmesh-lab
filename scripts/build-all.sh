@@ -16,6 +16,7 @@ sudo "$ROOT/scripts/radio-lab.sh" radio-pool
 sudo "$ROOT/scripts/radio-lab.sh" deploy
 
 echo
-echo 'Build and provisioning complete. Start the accepted profile with:'
-echo '  sudo PRPL_AGENT_COUNT=4 PRPL_CLIENT_COUNT=20 PRPL_TOPOLOGY=chain scripts/radio-lab.sh start'
-echo '  sudo PRPL_AGENT_COUNT=4 PRPL_CLIENT_COUNT=20 PRPL_TOPOLOGY=chain scripts/radio-lab.sh clients'
+echo 'Build and provisioning complete. Start the fixed 100-client baseline with:'
+echo '  sudo PRPL_AGENT_COUNT=4 PRPL_CLIENT_COUNT=100 PRPL_TOPOLOGY=star scripts/radio-lab.sh start'
+echo '  sudo PRPL_AGENT_COUNT=4 PRPL_CLIENT_COUNT=100 PRPL_TOPOLOGY=star scripts/radio-lab.sh clients'
+echo 'The room service selects 20 online clients by default after baseline acceptance.'

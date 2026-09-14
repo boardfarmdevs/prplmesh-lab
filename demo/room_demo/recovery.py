@@ -11,6 +11,7 @@ from typing import Any
 
 from wmdcfg.actuator import ActuatorError, ControlClient
 from .client_wifi import reconnect_client
+from .band_profiles import restore_client_network
 
 
 SCHEMA = "easymesh.room-demo.recovery.v1"
@@ -112,7 +113,7 @@ class RecoveryJournal:
         with self._lock:
             if self.path.exists():
                 prior = load_recovery(self.path)
-                if prior.get("state") in INCOMPLETE_STATES or prior.get("paused_clients"):
+                if prior.get("state") in INCOMPLETE_STATES or prior.get("paused_clients") or prior.get("client_networks"):
                     raise ActuatorError(
                         f"{self.path}: incomplete room run {prior.get('run_id')} "
                         f"is {prior.get('state')}; run room-demo recover first"
@@ -145,6 +146,28 @@ class RecoveryJournal:
                 "error": None,
             }
             self._write()
+
+    def client_networks(self) -> dict:
+        with self._lock:
+            return copy.deepcopy((self._document or {}).get("client_networks", {}))
+
+    def preserve_client_network(self, container: str, record: dict) -> None:
+        with self._lock:
+            if self._document is None:
+                raise ActuatorError("band settings require a prepared RF recovery journal")
+            self._document.setdefault("client_networks", {}).setdefault(container, copy.deepcopy(record))
+            self._write()
+
+    def release_client_network(self, container: str) -> None:
+        with self._lock:
+            if self._document is not None:
+                self._document.get("client_networks", {}).pop(container, None)
+                self._write()
+
+    def restore_client_networks(self) -> None:
+        for container, record in self.client_networks().items():
+            restore_client_network(record)
+            self.release_client_network(container)
 
     def pause_client(self, container: str) -> None:
         with self._lock:
@@ -238,7 +261,7 @@ def recover_medium(
     """Restore an interrupted session only against its exact medium instance."""
     document = load_recovery(path)
     if document.get("state") == "restored":
-        if document.get("paused_clients"):
+        if document.get("paused_clients") or document.get("client_networks"):
             client = client_factory(socket_path)
             try:
                 status = client.connect()
@@ -340,6 +363,10 @@ def _save_recovered(path: Path, document: dict[str, Any]) -> None:
 
 
 def _resume_recovered_clients(path: Path, document: dict[str, Any]) -> None:
+    for container, record in list(document.get("client_networks", {}).items()):
+        restore_client_network(record)
+        del document["client_networks"][container]
+        _save_recovered(path, document)
     for container in list(document.get("paused_clients", [])):
         reconnect_client(container)
         document["paused_clients"].remove(container)

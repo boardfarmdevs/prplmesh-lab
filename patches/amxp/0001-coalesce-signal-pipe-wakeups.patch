@@ -1,0 +1,198 @@
+From: EasyMesh Lab
+Subject: [PATCH] amxp: coalesce signal wakeups without dropping queued events
+
+The 100-client lab produces more model notifications in one event-loop turn
+than the notification pipe can hold. A blocking byte per event deadlocks the
+same thread that must drain the pipe. Keep one level-triggered wakeup while
+any unsuspended signal manager has queued work, with nonblocking pipe ends.
+Queue contents and per-manager delivery semantics remain unchanged.
+
+Base: libamxp v2.0.0 (873b530), Ambiorix v7.1.0.
+
+diff --git a/src/amxp_signal.c b/src/amxp_signal.c
+index d2d9244..fe79325 100644
+--- a/src/amxp_signal.c
++++ b/src/amxp_signal.c
+@@ -62,6 +62,7 @@
+ #include <fcntl.h>
+ #include <unistd.h>
+ #include <pthread.h>
++#include <errno.h>
+ 
+ #include <amxc/amxc.h>
+ #include <amxp/amxp.h>
+@@ -74,6 +75,7 @@ typedef struct _signal_ctrl {
+     amxc_llist_t sigmngrs;
+     amxc_llist_t pending_sigmngrs;
+     pthread_mutex_t mutex;
++    bool notified;
+ } signal_ctrl_t;
+ 
+ typedef struct _signal_queue_item {
+@@ -96,6 +98,25 @@ static int amxp_signal_queue_unlock(void) {
+     return pthread_mutex_unlock(&amxp_sigctrl.mutex);
+ }
+ 
++static int amxp_signal_sync_fd(void) {
++    ssize_t transferred;
++    char notification;
++    bool pending = !amxc_llist_is_empty(&amxp_sigctrl.pending_sigmngrs);
++
++    if(pending == amxp_sigctrl.notified) {
++        return 0;
++    }
++    do {
++        transferred = pending ? write(amxp_sigctrl.sigpipe[1], "S", 1) :
++                      read(amxp_sigctrl.sigpipe[0], &notification, 1);
++    } while((transferred < 0) && (errno == EINTR));
++    if((transferred != 1) && !((transferred < 0) && (errno == EAGAIN))) {
++        return -1;
++    }
++    amxp_sigctrl.notified = pending;
++    return 0;
++}
++
+ void amxp_free_slots(amxc_llist_it_t* it) {
+     amxp_slot_t* slot = amxc_llist_it_get_data(it, amxp_slot_t, it);
+     amxc_llist_it_take(it);
+@@ -210,6 +231,9 @@ static int amxp_signal_create_pipe(void) {
+     flags = fcntl(amxp_sigctrl.sigpipe[0], F_GETFL, 0);
+     when_true(flags < 0, exit);
+     when_true(fcntl(amxp_sigctrl.sigpipe[0], F_SETFL, flags | O_NONBLOCK) < 0, exit);
++    flags = fcntl(amxp_sigctrl.sigpipe[1], F_GETFL, 0);
++    when_true(flags < 0, exit);
++    when_true(fcntl(amxp_sigctrl.sigpipe[1], F_SETFL, flags | O_NONBLOCK) < 0, exit);
+     when_true(fcntl(amxp_sigctrl.sigpipe[0], F_SETFD, amxp_sigctrl.sigpipe[0] | FD_CLOEXEC) < 0, exit);
+     when_true(fcntl(amxp_sigctrl.sigpipe[1], F_SETFD, amxp_sigctrl.sigpipe[1] | FD_CLOEXEC) < 0, exit);
+ 
+@@ -405,7 +429,6 @@ exit:
+ int amxp_sigmngr_clean(amxp_signal_mngr_t* sig_mngr) {
+     int retval = -1;
+     amxc_llist_it_t* it = NULL;
+-    char buffer[1];
+ 
+     when_null(sig_mngr, exit);
+ 
+@@ -415,9 +438,9 @@ int amxp_sigmngr_clean(amxp_signal_mngr_t* sig_mngr) {
+     it = amxc_lqueue_remove(&sig_mngr->signal_queue);
+     while(it) {
+         amxp_free_queued_signals(it);
+-        when_true_status(read(amxp_sigctrl.sigpipe[0], buffer, 1) == -1, exit, amxp_signal_queue_unlock());
+         it = amxc_lqueue_remove(&sig_mngr->signal_queue);
+     }
++    amxp_signal_sync_fd();
+     amxc_llist_clean(&sig_mngr->regexp_slots, amxp_free_slots);
+     amxc_htable_clean(&sig_mngr->signals, amxp_free_signals);
+ 
+@@ -538,19 +561,16 @@ int amxp_sigmngr_deferred_call(amxp_signal_mngr_t* const sig_mngr,
+                                const amxc_var_t* const data,
+                                void* priv) {
+     int retval = -1;
+-    int write_length = 0;
+     amxp_signal_mngr_t* mngr = (sig_mngr == NULL) ? &amxp_sigmngr : sig_mngr;
+ 
+     when_null(fn, exit);
+ 
+     amxp_signal_queue_lock();
+ 
+-    if(!mngr->suspended) {
+-        write_length = write(amxp_sigctrl.sigpipe[1], "S", 1);
+-        when_true_status(write_length != 1, exit, amxp_signal_queue_unlock());
+-    }
+-
+     retval = amxp_deferred_queue(mngr, fn, data, priv);
++    if(retval == 0) {
++        retval = amxp_signal_sync_fd();
++    }
+ 
+     amxp_signal_queue_unlock();
+ 
+@@ -570,19 +590,15 @@ int amxp_sigmngr_enable(amxp_signal_mngr_t* const sig_mngr,
+ 
+ int amxp_sigmngr_suspend(amxp_signal_mngr_t* const sig_mngr) {
+     int retval = -1;
+-    char buffer[1];
+     amxp_signal_mngr_t* mngr = (sig_mngr == NULL) ? &amxp_sigmngr : sig_mngr;
+ 
+     when_true(mngr->suspended, exit);
+ 
+     amxp_signal_queue_lock();
+ 
+-    amxc_llist_iterate(it, &mngr->signal_queue) {
+-        when_true_status(read(amxp_sigctrl.sigpipe[0], buffer, 1) == -1, exit, amxp_signal_queue_unlock());
+-    }
+-
+     amxc_llist_append(&amxp_sigctrl.sigmngrs, &mngr->it);
+     mngr->suspended = true;
++    amxp_signal_sync_fd();
+ 
+     amxp_signal_queue_unlock();
+ 
+@@ -594,20 +610,15 @@ exit:
+ 
+ int amxp_sigmngr_resume(amxp_signal_mngr_t* const sig_mngr) {
+     int retval = -1;
+-    int write_length = 0;
+     amxp_signal_mngr_t* mngr = (sig_mngr == NULL) ? &amxp_sigmngr : sig_mngr;
+ 
+     when_false(mngr->suspended, exit);
+-    mngr->suspended = false;
+-
+     amxp_signal_queue_lock();
+-
+-    amxc_llist_iterate(it, &mngr->signal_queue) {
+-        write_length = write(amxp_sigctrl.sigpipe[1], "S", 1);
+-        when_true_status(write_length != 1, exit, amxp_signal_queue_unlock());
++    mngr->suspended = false;
++    if(!amxc_lqueue_is_empty(&mngr->signal_queue)) {
++        amxc_llist_append(&amxp_sigctrl.pending_sigmngrs, &mngr->it);
+     }
+-
+-    amxc_llist_append(&amxp_sigctrl.pending_sigmngrs, &mngr->it);
++    amxp_signal_sync_fd();
+ 
+     amxp_signal_queue_unlock();
+ 
+@@ -742,7 +753,6 @@ exit:
+ int amxp_signal_emit(const amxp_signal_t* const signal,
+                      const amxc_var_t* const data) {
+     int retval = -1;
+-    int write_length = 0;
+     amxp_signal_mngr_t* sig_mngr = NULL;
+     when_null(signal, exit);
+     when_null(signal->mngr, exit);
+@@ -753,12 +763,10 @@ int amxp_signal_emit(const amxp_signal_t* const signal,
+ 
+     amxp_signal_queue_lock();
+ 
+-    if(!sig_mngr->suspended) {
+-        write_length = write(amxp_sigctrl.sigpipe[1], "S", 1);
+-        when_true_status(write_length != 1, exit, amxp_signal_queue_unlock());
+-    }
+-
+     retval = amxp_signal_queue(signal, data);
++    if(retval == 0) {
++        retval = amxp_signal_sync_fd();
++    }
+ 
+     amxp_signal_queue_unlock();
+ 
+@@ -768,17 +776,14 @@ exit:
+ 
+ int amxp_signal_read(void) {
+     int retval = -1;
+-    int read_length = 0;
+-    char buffer[1];
+     signal_queue_item_t* item = NULL;
+     amxc_htable_it_t* hit = NULL;
+     amxp_signal_t* signal = NULL;
+ 
+     amxp_signal_queue_lock();
+ 
+-    read_length = read(amxp_sigctrl.sigpipe[0], buffer, 1);
+-    when_true_status(read_length < 1, exit, amxp_signal_queue_unlock());
+     item = amxp_signal_dequeue();
++    amxp_signal_sync_fd();
+     when_null_status(item, exit, amxp_signal_queue_unlock());
+ 
+     amxp_signal_queue_unlock();

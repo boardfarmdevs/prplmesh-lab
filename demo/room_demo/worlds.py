@@ -9,16 +9,17 @@ from typing import Any
 from wmdcfg.world import _hash, _merge_nodes, _validate_layout, load_json, verify_world_plan
 
 from .interactions import InteractionError
+from .band_profiles import validate_profiles
 
 
 class BoundWorlds:
     """Select geometry and an online subset of an immutable, already bound lab."""
 
-    def __init__(self, world: dict, layout: dict, root: Path):
+    def __init__(self, world: dict, layout: dict, root: Path, *, roles: dict | None = None):
         self.default_world = copy.deepcopy(world)
         self.default_layout = copy.deepcopy(layout)
         self.root = root
-        self.roles = dict(world["roles"])
+        self.roles = dict(world["roles"] if roles is None else roles)
         self.mesh_roles = {
             role for role, kind in self.roles.items() if kind == "fronthaul_ap"
         }
@@ -73,6 +74,7 @@ class BoundWorlds:
                 raise ValueError("world does not match its installed layout")
             self.rf_nodes(world, layout)
             roles = world["roles"]
+            validate_profiles(world)
             if not isinstance(roles, dict) or not roles:
                 raise ValueError("world requires bound roles")
             for role, kind in roles.items():

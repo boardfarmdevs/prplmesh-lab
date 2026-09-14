@@ -18,6 +18,7 @@ profile_scenario=$(mktemp /tmp/prpl-optimizer-scenario-profile.XXXXXX.wmd)
 plan=$(mktemp /tmp/prpl-optimizer-plan.XXXXXX.json)
 journal=$(mktemp /tmp/prpl-optimizer-journal.XXXXXX.jsonl)
 scenario_log=$(mktemp /tmp/prpl-optimizer-scenario.XXXXXX.log)
+scenario_output=$(mktemp -d /tmp/prpl-optimizer-run.XXXXXX)
 optimizer_log=$(mktemp /tmp/prpl-optimizer-output.XXXXXX.log)
 scenario_pid=
 
@@ -138,10 +139,12 @@ python3 -m wmdcfg.cli compile "$profile_scenario" \
 
 status_action "Starting the wmediumd crossover: $CLIENT $source -> $target ($target_bssid)."
 status_note "The source weakens, the target strengthens, and the original matrix is restored at completion."
-python3 -m wmdcfg.cli run --backend "$MEDIUM_BACKEND" "$plan" \
+python3 -m wmdcfg.cli run --backend "$MEDIUM_BACKEND" --output-root "$scenario_output" "$plan" \
     >"$scenario_log" 2>&1 &
 scenario_pid=$!
-status_wait_seconds 2 "allowing the scenario control stream to become active"
+status_wait "Waiting for the crossover's committed RF generation before collecting native metrics."
+python3 "$ROOT/tests/optimizer-scenario-ready.py" "$plan" "$scenario_output" \
+    --pid "$scenario_pid" --timeout 90
 
 cd "$ROOT/optimizer"
 args=(
@@ -155,7 +158,7 @@ args=(
 if [ "$MODE" = act ]; then
     args+=(--yes-act --max-actions 1)
 fi
-status_wait "Collecting serialized NBAPI candidate metrics (timeout ${candidate_timeout}s) and evaluating policy gates."
+status_wait "Collecting native NBAPI candidate metrics (timeout ${candidate_timeout}s) and evaluating policy gates."
 if [ "$MODE" = act ]; then
     status_note "Action mode may send one BTM request and then verifies the resulting association."
 else

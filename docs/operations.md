@@ -5,8 +5,9 @@
 ## Install once
 
 Use the [LXD appliance guide](../deploy/lxd-vm/README.md) for checksummed thin
-import, profile selection and port overrides. Choose profile 20 for the room;
-50/100-client profiles require separate qualification and adequate resources.
+import and port overrides. 0913 has one fixed 100-client pool; the default
+room selects 20 online and other rooms select their own subset. There is no
+VM size profile. Allow eight vCPUs and 16 GiB RAM for the appliance.
 For native builds use [from source](from-scratch.md); for a dedicated direct
 radio host use [bare metal](../deploy/bare-metal/README.md).
 
@@ -19,7 +20,7 @@ a URL or add [monitoring](../reference/observability/monitoring.md).
 On the physical LXD host, replace the name with the actual selected instance:
 
 ```sh
-VM=prplmesh-20-0908
+VM=prplmesh-0913
 lxc config get "$VM" boot.autostart
 lxc start "$VM"
 lxc exec "$VM" -- systemctl is-active prplmesh-lab.service prplmesh-room-demo.service
@@ -62,6 +63,11 @@ directly against an already-active lab with the room stopped.
 For room-specific tests, leave its service running and use
 [the browser acceptance plan](../reference/testing/room-acceptance.md).
 Do not run a second conductor or RF-assisted manual steer alongside it.
+
+The privileged room provider pins the native controller's mount namespace for
+direct ubus calls. If the native controller container is restarted independently,
+restart the room service afterward. A dead or replaced namespace fails closed;
+it must not reuse registrations from the previous controller generation.
 
 Recovery verifies journal, daemon generation and stable inventory before
 restoring RF/client presence. Preserve a rejected journal and diagnose the

@@ -4,16 +4,17 @@ Start with an x86-64 Ubuntu 24.04 host running Linux 7.0. This mode owns the
 host hwsim module, wmediumd process and LXD instance namespace; do not run a
 second wireless lab on the same host.
 
-Extract the 0831 source artifact into a new directory and verify it:
+Use the canonical source branch in a new directory:
 
 ```sh
-tar -xjf prplmesh-lab-0831-COMMIT-source.tar.bz2
-cd prplmesh-lab-0831-COMMIT
-sha256sum -c artifacts/SHA256SUMS
+git clone --branch codex/0913-clean https://github.com/boardfarmdevs/prplmesh-lab.git prplmesh-lab-0913-clean
+cd prplmesh-lab-0913-clean
 ```
 
 Install the host packages and initialize LXD as described in
-`docs/from-scratch.md`, then use the packaged prplMesh/hostap runtime archives:
+[the source guide](../../docs/from-scratch.md). Build the native artifacts there,
+or copy the three checksummed prplMesh/hostap archives and their `SHA256SUMS`
+from an accepted release into `artifacts/`, then install them:
 
 ```sh
 scripts/preflight.sh

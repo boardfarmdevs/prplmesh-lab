@@ -19,6 +19,20 @@ for (const name of ['esc', 'phaseClass', 'optimizerBadgeClasses', 'optimizerReas
 context.optimizerState = {fleet: {converged: true}, evaluated_at: '2026-09-07T02:59:55Z'};
 context.renderOptimizerStatus();
 assert.match(elements['#optimizerStatus'].innerHTML, /Converged: all clients checked/);
+context.optimizerState.fleet = {converged: true, policy: 'received-scan-band-preference-v1', band_measurements_complete: true};
+context.renderOptimizerStatus();
+assert.match(elements['#optimizerStatus'].innerHTML, /AP and band policy/);
+assert.match(elements['#optimizerStatus'].innerHTML, /fresh client-received scans/);
+assert.doesNotMatch(elements['#optimizerStatus'].innerHTML, /within .*strongest measured AP/);
+context.optimizerState.fleet.band_measurements_complete = false;
+context.renderOptimizerStatus();
+assert.doesNotMatch(elements['#optimizerStatus'].innerHTML, /Converged:/);
+context.optimizerState.fleet = {converged: true};
+assert.match(context.optimizerReason('no_safe_band_upgrade'), /Current band meets policy/);
+assert.match(context.optimizerReason('band_preference_hold_satisfied'), /Preferred band confirmed/);
+assert.match(context.optimizerReason('band_waiting_for_new_scan'), /new received scan/);
+assert.match(context.optimizerReason('band_measurement_direction_mismatch'), /signal directions differ/);
+assert.match(context.optimizerReason('current_band_unknown'), /Blocked: current band is unknown/);
 context.optimizerState.progress = {kind: 'optimizer.progress', phase: 'candidate_queries', completed_queries: 2, total_queries: 5, selected_clients: 4, total_clients: 20};
 context.renderOptimizerStatus();
 assert.match(elements['#optimizerActivityDetails'].textContent, /2 \/ 5 queries completed/);
@@ -100,6 +114,11 @@ context.optimizerState = {evaluated_at: '2026-09-07T02:59:55Z', automatic_actuat
   automatic_actuation_ready: true, actions_used: 0, maximum_actions: 100,
   decision: {reason: 'candidate_gain_too_small'}};
 assert.equal(context.optimizerBadgeClasses('stable').phase, 'healthy');
+context.optimizerState.decision.reason = 'no_safe_band_upgrade';
+assert.equal(context.optimizerBadgeClasses('stable').phase, 'healthy');
+context.optimizerState.decision.reason = 'band_waiting_for_new_scan';
+assert.equal(context.optimizerBadgeClasses('stable').phase, 'waiting');
+context.optimizerState.decision.reason = 'candidate_gain_too_small';
 assert.equal(context.optimizerBadgeClasses('stable').mode, 'healthy');
 context.optimizerState.progress = {kind: 'optimizer.progress'};
 assert.equal(context.optimizerBadgeClasses('stable').mode, 'healthy');

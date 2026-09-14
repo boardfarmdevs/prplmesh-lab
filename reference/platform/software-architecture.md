@@ -223,6 +223,16 @@ test interface.
 
 ### NBAPI and Ambiorix/ubus
 
+The 0913 dependency build backports a lossless signal-pipe wakeup repair to
+[libamxp v2.0.0](https://gitlab.com/prpl-foundation/components/ambiorix/libraries/libamxp/-/tree/v2.0.0).
+Large client-metric/model bursts must not block the event loop while queuing
+their own notifications. The queue retains every payload; one readable byte
+represents all pending work until it is drained. Packaging and native
+acceptance verify the dependency's source, patch-set and binary hashes.
+See the [patch contract](../../patches/README.md) and
+[native burst regression](../../tests/amxp-signal-burst.sh). Raising NBAPI
+timeouts or reducing measurement frequency is not a substitute for this fix.
+
 The NBAPI adapter maps the controller model to the standardized
 `Device.WiFi.DataElements` hierarchy. Ambiorix supplies the data-model runtime;
 `ubusd`, libubox, the Ambiorix libraries, the ubus adaptor, and `mod-dmext`

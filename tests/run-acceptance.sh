@@ -19,6 +19,10 @@ expected_ubus_patchset=$(
     cd "$ROOT"
     sha256sum patches/ubus/*.patch | sha256sum | awk '{print $1}'
 )
+expected_amxp_patchset=$(
+    cd "$ROOT"
+    sha256sum patches/amxp/*.patch | sha256sum | awk '{print $1}'
+)
 status_section "prplMesh expanded acceptance"
 status_action "Verifying runtime provenance on the controller and $agents agent(s)."
 for node in prpl-controller $(seq -f 'prpl-agent-%02g' 1 "$agents"); do
@@ -39,6 +43,16 @@ for node in prpl-controller $(seq -f 'prpl-agent-%02g' 1 "$agents"); do
         grep -Fxq "UBUS_LIBRARY_SHA256=${digest%% *}" "$provenance"
     '; then
         echo "$node uses a stale or unidentifiable ubus dependency" >&2
+        exit 1
+    fi
+    if ! lxc exec "$node" -- env EXPECTED_AMXP_PATCHSET="$expected_amxp_patchset" bash -ec '
+        provenance=/usr/share/prplmesh-lab/amxp-provenance.env
+        grep -Fxq "AMXP_COMMIT=873b53069855414d35b821fcb46ed0f8ae108b3e" "$provenance"
+        grep -Fxq "AMXP_PATCHSET_SHA256=$EXPECTED_AMXP_PATCHSET" "$provenance"
+        digest=$(sha256sum /usr/lib/x86_64-linux-gnu/libamxp.so.2.0.0)
+        grep -Fxq "AMXP_LIBRARY_SHA256=${digest%% *}" "$provenance"
+    '; then
+        echo "$node uses a stale or unidentifiable signal-manager dependency" >&2
         exit 1
     fi
 done

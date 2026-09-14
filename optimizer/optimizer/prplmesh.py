@@ -11,6 +11,7 @@ from typing import Any, Callable, Iterable
 from urllib.request import urlopen
 
 from .candidates import CandidateMetricsError, CandidateMetricsUnavailable, CandidateSnapshotSuperseded
+from .lxd_ubus import ControllerNamespaceChanged, LxdUbusTransport
 from .model import (
     CandidateObservation,
     ClientObservation,
@@ -277,6 +278,7 @@ class PrplMeshCandidateProvider:
         batch_radio_reads: bool = True,
     ) -> None:
         self.controller = controller
+        self.transport = LxdUbusTransport(controller)
         self.allow_simulated = allow_simulated
         self.timeout_seconds = timeout_seconds
         self.client_selector = client_selector
@@ -287,6 +289,7 @@ class PrplMeshCandidateProvider:
         self.batch_radio_reads = batch_radio_reads
         self.registered: set[tuple[str, str]] = set()
         self.object_cache: dict[tuple[str, str], str] = {}
+        self.defer_registration_query = False
         self.last_raw: list[dict[str, Any]] = []
         self.last_selected_sta_macs: set[str] = set()
         self.last_requested_sta_macs: set[str] = set()
@@ -297,21 +300,13 @@ class PrplMeshCandidateProvider:
         if self.generation_guard is not None and not self.generation_guard():
             raise CandidateSnapshotSuperseded("prplMesh candidate generation was superseded")
         started = time.monotonic()
-        transaction = {"operation": "nbapi", "object": obj, "method": method,
+        transaction = {"operation": "nbapi", "object": obj, "method": method, "transport": self.transport.name,
                        "requested_at": format_time(datetime.now(timezone.utc))}
         self.last_raw.append(transaction)
         try:
-            completed = subprocess.run(
-                [
-                    "lxc", "exec", self.controller, "--", "ubus", "-t", "5", "call",
-                    obj, method, json.dumps(payload, separators=(",", ":")),
-                ],
-                check=True,
-                text=True,
-                capture_output=True,
-                timeout=12,
-            )
-        except (subprocess.CalledProcessError, subprocess.TimeoutExpired) as error:
+            completed = self.transport(obj, method, payload)
+        except (subprocess.CalledProcessError, subprocess.TimeoutExpired, OSError,
+                ControllerNamespaceChanged) as error:
             transaction["error"] = str(error)
             raise CandidateMetricsUnavailable(
                 f"prplMesh NBAPI call failed: {obj} {method}"
@@ -346,6 +341,12 @@ class PrplMeshCandidateProvider:
             discovered[(device_id, radio_id)] = radio
         if not discovered:
             raise CandidateMetricsUnavailable("NBAPI radio inventory is empty")
+        description = self._call(next(iter(discovered.values())), "_describe",
+                                 {"functions": True, "parameters": False, "objects": False})
+        arguments = description.get("functions", {}).get("AddUnassociatedStation", {}).get("arguments", [])
+        self.defer_registration_query = any(argument.get("name") == "defer_query"
+                                             and argument.get("type_name") == "bool"
+                                             for argument in arguments)
         self.object_cache = discovered
         return self.object_cache
 
@@ -420,6 +421,8 @@ class PrplMeshCandidateProvider:
                     "operating_class": int(meta["opclass"]),
                     "agent_mac": meta["device_id"],
                 }
+                if self.defer_registration_query:
+                    request["defer_query"] = True
                 future = executor.submit(self._call, radio, "AddUnassociatedStation", request)
                 requests[future] = (radio, sta_mac, request)
             for future in as_completed(requests):
@@ -485,6 +488,7 @@ class PrplMeshCandidateProvider:
         self.last_requested_sta_macs = set(self.last_selected_sta_macs)
         self.last_selection = {"eligible_clients": len(clients),
                                "selected_clients": len(self.last_selected_sta_macs),
+                               "native_registration_deferred": self.defer_registration_query,
                                "backend": "prplmesh_nbapi"}
         if not targets:
             return []

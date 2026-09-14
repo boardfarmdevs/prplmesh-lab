@@ -284,7 +284,7 @@ class _Provider(PrplMeshCandidateProvider):
         return {"02:00:00:10:01:00": (122, timestamp)}
 
 
-def test_radio_discovery_is_one_read_and_does_not_publish_failed_cache(monkeypatch):
+def test_radio_discovery_caches_inventory_and_capability_without_publishing_failed_cache(monkeypatch):
     provider = PrplMeshCandidateProvider()
     device = provider.NETWORK + ".Device.1"
     radio_one, radio_two = device + ".Radio.1", device + ".Radio.2"
@@ -304,7 +304,9 @@ def test_radio_discovery_is_one_read_and_does_not_publish_failed_cache(monkeypat
     monkeypatch.setattr(provider, "_call", completed_read)
     assert len(provider._radio_objects()) == 2
     assert len(provider._radio_objects()) == 2
-    assert calls == [(provider.NETWORK, "_get", {"rel_path": "Device.*.", "depth": 2})] * 2
+    assert calls == [(provider.NETWORK, "_get", {"rel_path": "Device.*.", "depth": 2})] * 2 + [
+        (radio_one, "_describe", {"functions": True, "parameters": False, "objects": False})]
+    assert not provider.defer_registration_query
 
 
 def test_orphaned_radio_does_not_leave_a_partial_inventory(monkeypatch):
@@ -317,6 +319,48 @@ def test_orphaned_radio_does_not_leave_a_partial_inventory(monkeypatch):
     with pytest.raises(CandidateMetricsUnavailable, match="no discovered parent"):
         provider._radio_objects()
     assert provider.object_cache == {}
+
+
+@pytest.mark.parametrize("type_name,supported", [("bool", True), ("cstring_t", False), (None, False)])
+def test_registration_deferral_requires_native_boolean_capability(monkeypatch, type_name, supported):
+    provider = PrplMeshCandidateProvider()
+    device = provider.NETWORK + ".Device.1"
+    radio = device + ".Radio.1"
+    requests = []
+
+    def call(obj, method, payload):
+        requests.append((obj, method, payload))
+        if method == "_get":
+            return {device: {"ID": "02:00:00:27:01:01"}, radio: {"ID": "02:00:00:00:01:00"}}
+        if method == "_describe":
+            return {"functions": {"AddUnassociatedStation": {"arguments": [
+                {"name": "defer_query", "type_name": type_name}]}}}
+        return {"retval": ""}
+
+    monkeypatch.setattr(provider, "_call", call)
+    provider._radio_objects()
+    assert provider.defer_registration_query is supported
+    provider._register_targets({(radio, "station"): []},
+                               {radio: {"channel": 36, "opclass": 115, "device_id": "agent"}})
+    assert requests[-1][1] == "AddUnassociatedStation"
+    assert requests[-1][2].get("defer_query", False) is supported
+    assert all(method != "UpdateUnassociatedStationsStats" for _object, method, _payload in requests)
+
+
+def test_capability_discovery_failure_does_not_cache_inventory(monkeypatch):
+    provider = PrplMeshCandidateProvider()
+    device = provider.NETWORK + ".Device.1"
+
+    def call(obj, method, payload):
+        if method == "_describe":
+            raise CandidateMetricsUnavailable("introspection failed")
+        return {device: {"ID": "02:00:00:27:01:01"},
+                device + ".Radio.1": {"ID": "02:00:00:00:01:00"}}
+
+    monkeypatch.setattr(provider, "_call", call)
+    with pytest.raises(CandidateMetricsUnavailable, match="introspection failed"):
+        provider._radio_objects()
+    assert not provider.object_cache and not provider.registered
 
 
 def test_candidate_provider_registers_updates_and_returns_standard_metric():

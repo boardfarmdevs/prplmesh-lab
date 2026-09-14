@@ -191,6 +191,7 @@ def _live_run(args, mode: str, load_provider=None) -> int:
                             decision.sta_mac,
                             decision.target_bssid,
                             timeout_seconds=policy.config.steer_timeout_seconds,
+                            source_bssid=decision.source_bssid,
                         )
                         journal.append("verification", verified.to_dict())
                     if action_attempts >= args.max_actions:

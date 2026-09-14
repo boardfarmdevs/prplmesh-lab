@@ -36,22 +36,28 @@ def test_ubus_build_and_provenance():
     assert 'UBUS_LIBRARY_SHA256=${digest%% *}' in acceptance
 
 
+@pytest.mark.parametrize('dependency,commit,library_path,end', [
+    ('ubus', '13a4438b4ebdf85d301999e0a615640ac4c9b0a8', '/usr/lib/libubus.so', 'amxp_provenance='),
+    ('amxp', '873b53069855414d35b821fcb46ed0f8ae108b3e',
+     '/usr/lib/x86_64-linux-gnu/libamxp.so.2.0.0', 'HOSTAP_COMMIT="$HOSTAP_COMMIT"'),
+])
 @pytest.mark.parametrize('fault', ['', 'patchset', 'library', 'missing'])
-def test_ubus_packaging_rejects_stale_provenance(tmp_path, fault):
+def test_dependency_packaging_rejects_stale_provenance(tmp_path, fault, dependency, commit, library_path, end):
     root = Path(__file__).resolve().parents[1]
     package = (root / 'scripts/container/package-artifacts-inside.sh').read_text()
-    guard = package[package.index('ubus_provenance='):package.index('HOSTAP_COMMIT="$HOSTAP_COMMIT"')]
-    library = tmp_path / 'libubus.so'
+    guard = package[package.index(dependency + '_provenance='):package.index(end)]
+    prefix = dependency.upper()
+    library = tmp_path / ('lib' + dependency + '.so')
     library.write_bytes(b'qualified dependency fixture')
-    provenance = tmp_path / 'ubus-provenance.env'
+    provenance = tmp_path / (dependency + '-provenance.env')
     if fault != 'missing':
-        provenance.write_text('UBUS_COMMIT=13a4438b4ebdf85d301999e0a615640ac4c9b0a8\n'
-                              f'UBUS_PATCHSET_SHA256={"old" if fault == "patchset" else "expected"}\n'
-                              f'UBUS_LIBRARY_SHA256={hashlib.sha256(library.read_bytes()).hexdigest()}\n')
+        provenance.write_text(f'{prefix}_COMMIT={commit}\n'
+                              f'{prefix}_PATCHSET_SHA256={"old" if fault == "patchset" else "expected"}\n'
+                              f'{prefix}_LIBRARY_SHA256={hashlib.sha256(library.read_bytes()).hexdigest()}\n')
     if fault == 'library':
         library.write_bytes(b'older installed library')
-    guard = guard.replace('/usr/share/prplmesh-lab/ubus-provenance.env', str(provenance))
-    guard = guard.replace('/usr/lib/libubus.so', str(library))
+    guard = guard.replace('/usr/share/prplmesh-lab/' + dependency + '-provenance.env', str(provenance))
+    guard = guard.replace(library_path, str(library))
     result = subprocess.run(['bash', '-eu', '-c', guard], capture_output=True,
-                            env=dict(os.environ, UBUS_PATCHSET_SHA256='expected'))
+                            env={**os.environ, prefix + '_PATCHSET_SHA256': 'expected'})
     assert (result.returncode == 0) == (not fault)

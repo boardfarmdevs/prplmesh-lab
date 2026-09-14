@@ -29,7 +29,7 @@ if [ ! -f "$SOURCE/mac80211_hwsim.c" ] || [ "${REFETCH:-0}" = 1 ]; then
     image_version=$(dpkg-query -W -f='${Version}' "linux-image-$KVER")
     (
         cd "$temporary"
-        apt-get source "linux-hwe-7.0=$image_version"
+        apt-get source "linux-hwe-7.0=$image_version" || apt-get source linux-hwe-7.0
     )
     driver=$(find "$temporary" -path '*/drivers/net/wireless/virtual/mac80211_hwsim.c' | head -n 1)
     test -n "$driver" || {
@@ -39,6 +39,10 @@ if [ ! -f "$SOURCE/mac80211_hwsim.c" ] || [ "${REFETCH:-0}" = 1 ]; then
     install -m 0644 "$driver" "$SOURCE/mac80211_hwsim.c"
     header=$(dirname "$driver")/mac80211_hwsim.h
     test ! -f "$header" || install -m 0644 "$header" "$SOURCE/mac80211_hwsim.h"
+    descriptor=$(find "$temporary" -maxdepth 1 -name 'linux-hwe-7.0_*.dsc' -print -quit)
+    test -n "$descriptor"
+    install -m 0644 "$descriptor" "$SOURCE/source-package.dsc"
+    (cd "$SOURCE"; sha256sum mac80211_hwsim.c mac80211_hwsim.h > source.sha256)
 fi
 
 apply_patch_file()
@@ -75,6 +79,12 @@ grep -q 'EXPERIMENTAL wmediumd' "$SOURCE/mac80211_hwsim.c"
 printf 'obj-m += mac80211_hwsim.o\n' > "$SOURCE/Makefile"
 make -C "$KBUILD" M="$SOURCE" modules
 
+cfg80211_options=()
+if [ "${INSTALL_MODULE:-0}" = 1 ]; then
+    cfg80211_options+=(--install)
+fi
+bash "$ROOT/scripts/cfg80211/build-cfg80211.sh" "$ROOT/build/cfg80211-source" "${cfg80211_options[@]}"
+
 if [ "${INSTALL_MODULE:-0}" = 1 ]; then
     install -D -m 0644 "$SOURCE/mac80211_hwsim.ko" \
         "/lib/modules/$KVER/updates/mac80211_hwsim.ko"
@@ -82,9 +92,14 @@ if [ "${INSTALL_MODULE:-0}" = 1 ]; then
 fi
 
 if [ "${LOAD_MODULE:-0}" = 1 ]; then
+    modprobe cfg80211
+    if [ "$(cat /sys/module/cfg80211/version 2>/dev/null)" != lab-netns-owner-1 ]; then
+        echo "Reboot the lab VM to load namespace-safe cfg80211 before loading hwsim." >&2
+        exit 1
+    fi
     modprobe -r mac80211_hwsim 2>/dev/null || true
     module_options=(
-        "radios=${HWSIM_RADIOS:-40}"
+        "radios=${HWSIM_RADIOS:-120}"
         "channels=${HWSIM_CHANNELS:-3}"
         "regtest=${HWSIM_REGTEST:-5}"
     )

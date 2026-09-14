@@ -72,3 +72,30 @@ def test_native_nanoseconds_work_on_python_310():
     assert module.parse_timestamp("2026-09-09T21:33:19.167399448Z") == dt.datetime(
         2026, 9, 9, 21, 33, 19, 167399, tzinfo=dt.timezone.utc)
     assert module.parse_timestamp("2026-09-09T21:33:19Z").microsecond == 0
+
+
+@pytest.mark.parametrize("fault", ["", "dormant_online", "missing_mesh", "small_pool",
+                                  "duplicate", "wrong_role", "wrong_room"])
+def test_default_room_has_twenty_online_and_eighty_dormant(fault):
+    stations = [f"sta_{kind}_{ordinal:02d}" for kind in ("mobile", "static")
+                for ordinal in range(1, 11)]
+    online = stations + ["gateway", *(f"extender_{ordinal}" for ordinal in range(1, 5))]
+    roles = {role: {"present": True} for role in online}
+    roles.update({f"sta_pool_{ordinal:03d}": {"present": False} for ordinal in range(21, 101)})
+    state = {"roles": roles, "pool_clients": 100, "expected_online_clients": 20,
+             "selected_world": "home-five-agent--private-client-room-walk"}
+    clients = [{"role": role, "sta_mac": f"02:00:00:00:00:{ordinal:02x}"}
+               for ordinal, role in enumerate(stations)]
+    if fault == "dormant_online":
+        roles["sta_pool_100"]["present"] = True
+    elif fault == "missing_mesh":
+        roles["extender_1"]["present"] = False
+    elif fault == "small_pool":
+        state["pool_clients"] = 20
+    elif fault == "duplicate":
+        clients[-1]["sta_mac"] = clients[0]["sta_mac"]
+    elif fault == "wrong_role":
+        clients[-1]["role"] = "sta_pool_100"
+    elif fault == "wrong_room":
+        state["selected_world"] = "home-five-agent--stationary"
+    assert readiness().default_roster({"api_total": 20}, clients, state) == (not fault)

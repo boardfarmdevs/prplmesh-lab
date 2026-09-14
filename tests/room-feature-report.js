@@ -1,7 +1,7 @@
 'use strict';
 const fs = require('node:fs');
 const path = require('node:path');
-const {distribution, eventPerformance, viewAgreement, fronthaulOutages} = require('./room-feature-acceptance.js');
+const {distribution, eventPerformance, viewAgreement, fronthaulOutages, bandSteeringSummary} = require('./room-feature-acceptance.js');
 
 function readJsonLines(filename) {
   return fs.readFileSync(filename, 'utf8').trim().split('\n').filter(Boolean).map(line => JSON.parse(line));
@@ -80,6 +80,9 @@ function summarize(directory, worlds = path.join(directory, '..', 'goldens')) {
         timeMs: audit.playback.time_ms, generationStable, checked: audit.links.length, mismatches};
     }
     const directionalRequired = room.id === 'home-a-asymmetric-link';
+    const relevant = events.filter(record => record.room === room.id);
+    const bandSteering = golden.band_steering ? bandSteeringSummary(golden, relevant,
+      relevant.filter(record => record.event.kind === 'optimizer.verification').map(record => record.event.payload)) : null;
     const playing = samples.filter(sample => sample.phase === 'playing');
     const agreement = viewAgreement(playing);
     const viewCorrect = agreement.passed && playing.every(sample => !sample.duplicates && sample.meshCount === 6 && sample.associations.every(client => client.visible && client.label));
@@ -87,9 +90,9 @@ function summarize(directory, worlds = path.join(directory, '..', 'goldens')) {
       room.checkpoints.every(checkpoint => checkpoint.passed) && room.scriptCorrect && room.sceneCorrect && viewCorrect &&
       room.presencePhases.every(entry => entry.topologyVerified) && room.kernel?.passed && !room.errors.length &&
       !report.errors.some(error => error.room === room.id);
-    return {id: room.id, passed: Boolean(basePassed) && owners.length === 0 && (!directionalRequired || directional?.passed === true) &&
+    return {id: room.id, passed: Boolean(basePassed) && owners.length === 0 && bandSteering?.passed !== false && (!directionalRequired || directional?.passed === true) &&
       outages.every(outage => outage.samples > 0 && !outage.remainingAssociations.length && outage.meshConnected),
-      directionalRequired, directional, fronthaulOutages: outages,
+      directionalRequired, directional, bandSteering, fronthaulOutages: outages,
       loadAckMs: room.load?.acknowledgementMs, initial: room.initial, final: room.final,
       playback: room.playback, checkpoints: room.checkpoints, phases, ownerErrors: owners,
       scriptCorrect: room.scriptCorrect, sceneCorrect: room.sceneCorrect, viewCorrect,

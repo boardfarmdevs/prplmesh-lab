@@ -1,0 +1,135 @@
+Subject: [PATCH] controller: reconcile conflicting station ownership reports
+
+A lost association notification must not leave the old BSS authoritative
+forever. Reject metrics that conflict with membership and request one native
+Topology Response from the reporting Agent, rather than deriving membership
+from signal samples. Authoritative Associated Clients handling performs the
+repair. Reject foreign-AL traffic/TID updates so they cannot refresh stale
+station counters and timestamps under the old owner.
+
+diff --git a/controller/src/beerocks/master/controller.cpp b/controller/src/beerocks/master/controller.cpp
+index 877a20b..6b71390 100755
+--- a/controller/src/beerocks/master/controller.cpp
++++ b/controller/src/beerocks/master/controller.cpp
+@@ -2354,45 +2354,55 @@ bool Controller::handle_tlv_ap_extended_metrics(std::shared_ptr<Agent> agent,
+ 
+     return ret_val;
+ }
+ 
+ bool Controller::handle_tlv_associated_sta_link_metrics(const sMacAddr &src_mac,
+                                                         ieee1905_1::CmduMessageRx &cmdu_rx)
+ {
+     bool ret_val = true;
++    bool needs_topology_query = false;
+ 
+     for (auto &sta_link_metric : cmdu_rx.getClassList<wfa_map::tlvAssociatedStaLinkMetrics>()) {
+ 
+         // STA Metrics can hold information from different BSS sources, mostly when steering
+         // Metrics of last registered and active value needs to be considered.
+         auto response_list = sta_link_metric->bssid_info_list(0);
+ 
+         if (!std::get<0>(response_list)) {
+             LOG(ERROR) << "Failed to get bssid info list.";
+             continue;
+         }
+ 
+         auto bssid_info = std::get<1>(response_list);
+ 
++        if (!database.get_bss(bssid_info.bssid, src_mac)) {
++            LOG(WARNING) << "Ignoring STA link metrics for a BSS not owned by Agent " << src_mac;
++            continue;
++        }
++
+         // Verify reported BSSID and data model registered STAs BSSID is same.
+         if (database.get_sta_parent(tlvf::mac_to_string(sta_link_metric->sta_mac())) !=
+             tlvf::mac_to_string(bssid_info.bssid)) {
+             LOG(INFO) << "Reported STA BSSID is not matching with datamodel. Reported bssid:"
+                       << bssid_info.bssid;
++            needs_topology_query = true;
+             continue;
+         }
+         if (!database.dm_set_sta_link_metrics(sta_link_metric->sta_mac(),
+                                               bssid_info.downlink_estimated_mac_data_rate_mbps,
+                                               bssid_info.uplink_estimated_mac_data_rate_mbps,
+                                               bssid_info.sta_measured_uplink_rcpi_dbm_enc)) {
+             LOG(ERROR) << "Failed to set link metrics for STA:" << sta_link_metric->sta_mac();
+             ret_val = false;
+         }
+     }
++    if (needs_topology_query) {
++        ret_val &= son_actions::send_topology_query_msg(src_mac, cmdu_tx, database);
++    }
+     return ret_val;
+ }
+ 
+ bool Controller::handle_cmdu_1905_available_spectrum_inquiry_message(
+     const sMacAddr &src_mac, ieee1905_1::CmduMessageRx &cmdu_rx)
+ {
+     const auto mid = cmdu_rx.getMessageId();
+ 
+@@ -2426,16 +2436,20 @@ bool Controller::handle_tlv_associated_sta_extended_link_metrics(const sMacAddr
+         auto metrics_list = sta_extended_link_metric->metrics_list(0);
+         if (!std::get<0>(metrics_list)) {
+             LOG(ERROR) << "Failed to get metrics info list.";
+             continue;
+         }
+ 
+         auto metrics = std::get<1>(metrics_list);
+ 
++        if (!database.get_bss(metrics.bssid, src_mac)) {
++            continue;
++        }
++
+         // Verify reported BSSID and data model registered STAs BSSID is same.
+         auto station = database.get_station(sta_extended_link_metric->associated_sta());
+         if (!station) {
+             LOG(ERROR) << "Failed to get station on db with mac: "
+                        << sta_extended_link_metric->associated_sta();
+             continue;
+         }
+ 
+@@ -2469,16 +2483,22 @@ bool Controller::handle_tlv_associated_sta_traffic_stats(const sMacAddr &src_mac
+ 
+     if (!agent) {
+         LOG(ERROR) << "Agent with mac is not found in database mac=" << src_mac;
+         return false;
+     }
+ 
+     for (auto &sta_traffic_stat : cmdu_rx.getClassList<wfa_map::tlvAssociatedStaTrafficStats>()) {
+ 
++        auto station = database.get_station(sta_traffic_stat->sta_mac());
++        auto parent_bss = station ? station->get_bss() : nullptr;
++        if (!parent_bss || !database.get_bss(parent_bss->bssid, src_mac)) {
++            continue;
++        }
++
+         db::sAssociatedStaTrafficStats stats;
+ 
+         // Recalculate counters according to Agent Byte Units.
+         stats.m_byte_received = database.recalculate_attr_to_byte_units(
+             agent->byte_counter_units, sta_traffic_stat->byte_received());
+ 
+         stats.m_byte_sent = database.recalculate_attr_to_byte_units(agent->byte_counter_units,
+                                                                     sta_traffic_stat->byte_sent());
+@@ -2513,16 +2533,21 @@ bool Controller::handle_tlv_associated_wifi6_sta_status_report(const sMacAddr &s
+ 
+         auto station = database.get_station(wifi6_sta_status_rep->sta_mac());
+         if (!station) {
+             LOG(ERROR) << "Failed to get station on db with mac: "
+                        << wifi6_sta_status_rep->sta_mac();
+             return false;
+         }
+ 
++        auto parent_bss = station->get_bss();
++        if (!parent_bss || !database.get_bss(parent_bss->bssid, src_mac)) {
++            continue;
++        }
++
+         std::vector<wfa_map::tlvAssociatedWiFi6StaStatusReport::sTidQueueSize> tid_queue_vector;
+         uint8_t tid_list_length = wifi6_sta_status_rep->tid_queue_size_list_length();
+ 
+         LOG(DEBUG) << "TID list length: " << tid_list_length
+                    << " of MAC address of the associated STA: " << wifi6_sta_status_rep->sta_mac();
+ 
+         for (uint8_t tid_index = 0; tid_index < tid_list_length; tid_index++) {
+             auto tid_tuple = wifi6_sta_status_rep->tid_queue_size_list(tid_index);

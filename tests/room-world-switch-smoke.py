@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import argparse
+import concurrent.futures
 import json
 from pathlib import Path
 import subprocess
@@ -16,21 +17,21 @@ def command(*arguments):
 
 
 def identities():
-    instances = json.loads(command("lxc", "list", "--format", "json"))
+    instances = json.loads(command("lxc", "query", "/1.0/instances?recursion=2"))
     result = {}
     for instance in instances:
         name = instance["name"]
         if not name.startswith(("prpl-client-", "prpl-agent-", "prpl-controller")):
             continue
-        state = json.loads(command("lxc", "query", f"/1.0/instances/{name}/state"))
+        state = instance["state"]
         if state["status"] != "Running":
             raise RuntimeError(f"{name} is not running")
         result[name] = state["pid"]
         if not name.startswith("prpl-client-"):
             result[name + "/services"] = command("lxc", "exec", name, "--",
                 "pgrep", "-a", "-f", "beerocks_|ieee1905_transport|hostapd -B")
-    if sum(name.startswith("prpl-client-") for name in result) != 20:
-        raise RuntimeError("requires the default 20-client pool")
+    if sum(name.startswith("prpl-client-") for name in result) != 100:
+        raise RuntimeError("requires the provisioned 100-client pool")
     result["medium-process"] = command("pgrep", "-a", "-x", "wmediumd")
     return result
 
@@ -117,10 +118,13 @@ def main():
                     and health.get("healthy") is True and health.get("expected_online_clients") == expected
                     and (converged or not require_convergence)):
                 offline = [role for role in mac_by_role if not current["roles"][role]["present"]]
-                for role in offline:
+                def verify_offline(role):
                     link = command("lxc", "exec", containers_by_role[role], "--", "iw", "dev", "wlan0", "link")
                     if "Not connected" not in link:
                         raise RuntimeError(f"{role}: controller roster converged but isolated client remains connected")
+
+                with concurrent.futures.ThreadPoolExecutor(max_workers=4) as workers:
+                    list(workers.map(verify_offline, offline))
                 if stable_since is None:
                     stable_since = time.monotonic()
                 if time.monotonic() - stable_since < 10:
@@ -163,6 +167,12 @@ def main():
         if time.monotonic() >= preflight_deadline:
             raise RuntimeError("start acceptance from a healthy default 20-client room")
         time.sleep(2)
+    pool = request("/api/demo/worlds").get("client_bindings", {})
+    if len(pool) != 100 or any(pool.get(role, {}).get("sta_mac", "").lower() != mac
+                               for role, mac in mac_by_role.items()):
+        raise RuntimeError("catalog identities must cover the full pool and match the default room")
+    mac_by_role = {role: client["sta_mac"].lower() for role, client in pool.items()}
+    containers_by_role = {role: client["container"] for role, client in pool.items()}
     report["run_id"] = current["run_id"]
     try:
         lease = request("/api/demo/interactions/lease", {"owner": "prplmesh-world-switch-acceptance"})["token"]

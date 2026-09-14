@@ -6,7 +6,7 @@ ROOT=$(cd "$(dirname "$0")/../.." && pwd)
 source "$ROOT/deploy/lxd-vm/profile.sh"
 # shellcheck source=device-property.sh
 source "$ROOT/deploy/lxd-vm/device-property.sh"
-PROFILE=$(prplmesh_profile_name "${PRPLMESH_LAB_PROFILE:-20}")
+PROFILE=$(prplmesh_profile_name "${PRPLMESH_LAB_PROFILE:-unified}")
 CLIENTS=$(prplmesh_profile_clients "$PROFILE")
 RADIOS=$(prplmesh_profile_radios "$PROFILE")
 NAME=${PRPLMESH_VM_NAME:-$(prplmesh_profile_release_name "$PROFILE")}
@@ -21,6 +21,7 @@ HOST_IP=${PRPLMESH_UI_HOST_IP:-$(ip -4 route get 1.1.1.1 2>/dev/null |
 HOST_IP=${HOST_IP:-127.0.0.1}
 CONSOLE_PORT=${PRPLMESH_WMEDIUMD_CONSOLE_HOST_PORT:-8090}
 UI_PORT=${PRPLMESH_UI_HOST_PORT:-8091}
+ROOM_PORT=${PRPLMESH_ROOM_DEMO_HOST_PORT:-18891}
 RUNTIME_DEPS=${PRPL_RUNTIME_DEPS_ARCHIVE:-}
 PRPL_INSTALL=${PRPL_INSTALL_ARCHIVE:-}
 HOSTAP_RUNTIME=${PRPL_HOSTAP_ARCHIVE:-}
@@ -36,11 +37,12 @@ Clean-build inputs:
   PRPL_HOSTAP_ARCHIVE=/path/to/hostap-runtime-2.10.tar.gz
 
 Site overrides:
-  PRPLMESH_LAB_PROFILE=$CLIENTS (20, 50 or 100)
+  PRPLMESH_LAB_PROFILE=$CLIENTS (fixed capacity: 100 clients)
   PRPLMESH_VM_NAME=$NAME
   PRPLMESH_UI_HOST_IP=$HOST_IP
   PRPLMESH_WMEDIUMD_CONSOLE_HOST_PORT=$CONSOLE_PORT
   PRPLMESH_UI_HOST_PORT=$UI_PORT
+  PRPLMESH_ROOM_DEMO_HOST_PORT=$ROOM_PORT
   PRPLMESH_LXD_STORAGE=<outer LXD storage pool>
 EOF
 }
@@ -98,14 +100,18 @@ stop_vm()
     [ "$(state)" != RUNNING ] || lxc stop "$NAME" --timeout 300
 }
 
-check_vm()
-{
+check_vm() (
     local optimizer_pair optimizer_client optimizer_target
-    start_vm
+    start_vm || return
+    restore_room=false
+    trap 'result=$?; if "$restore_room"; then run systemctl start prplmesh-room-demo.service || result=$?; fi; exit "$result"' EXIT
+    room_state=$(run systemctl show prplmesh-room-demo.service -p ActiveState --value)
+    case "$room_state" in active|activating) restore_room=true ;; esac
+    run systemctl stop prplmesh-room-demo.service || return
     run env PRPL_AGENT_COUNT=4 PRPL_CLIENT_COUNT="$CLIENTS" PRPL_TOPOLOGY=star \
         PROVISIONED_CLIENT_COUNT="$CLIENTS" HWSIM_RADIOS="$RADIOS" \
         PRPL_WMEDIUMD_CONFIG=/var/lib/prplmesh-lab/wmediumd.conf \
-        /opt/prplmesh-lab/tests/run-acceptance.sh
+        /opt/prplmesh-lab/tests/run-acceptance.sh || return
     optimizer_pair=$(run bash -c '
         set -eu
         inventory=$(mktemp /tmp/prpl-check-inventory.XXXXXX.json)
@@ -114,7 +120,7 @@ check_vm()
         python3 -m wmdcfg.cli inventory -o "$inventory" >/dev/null
         /opt/prplmesh-lab/deploy/lxd-vm/select-optimizer-stimulus.py \
             "$inventory" prpl-agent-02
-    ')
+    ') || return
     read -r optimizer_client optimizer_target <<<"$optimizer_pair"
     echo "optimizer acceptance pair: $optimizer_client -> $optimizer_target"
     run env PRPL_AGENT_COUNT=4 PRPL_CLIENT_COUNT="$CLIENTS" PRPL_TOPOLOGY=star \
@@ -122,7 +128,7 @@ check_vm()
         PRPL_WMEDIUMD_CONFIG=/var/lib/prplmesh-lab/wmediumd.conf \
         /opt/prplmesh-lab/tests/optimizer-dynamic.sh recommend \
         "$optimizer_client" "$optimizer_target"
-}
+)
 
 build_vm()
 {
@@ -185,6 +191,8 @@ build_vm()
         listen="tcp:$HOST_IP:$CONSOLE_PORT" connect="tcp:$guest_ip:8090"
     lxc config device add "$NAME" controller-ui proxy nat=true \
         listen="tcp:$HOST_IP:$UI_PORT" connect="tcp:$guest_ip:8091"
+    lxc config device add "$NAME" room-demo-viewer proxy nat=true \
+        listen="tcp:$HOST_IP:$ROOM_PORT" connect="tcp:$guest_ip:8891"
     lxc start "$NAME"
     wait_agent
 
@@ -238,7 +246,7 @@ EOF"
 
     run env DEBIAN_FRONTEND=noninteractive bash -c '
         apt-get update
-        apt-get install -y build-essential ca-certificates dpkg-dev git golang-go iw jq \
+        apt-get install -y build-essential ca-certificates curl dpkg-dev git golang-go iw jq \
           libconfig-dev libnl-3-dev libnl-genl-3-dev libnl-route-3-dev meson \
           ninja-build patch pkg-config python3 python3-venv rsync snapd
         sed "s/^Types: deb$/Types: deb-src/" /etc/apt/sources.list.d/ubuntu.sources \

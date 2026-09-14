@@ -1,0 +1,182 @@
+Subject: [PATCH] controller: allow registration without redundant fleet queries
+
+Keep AddUnassociatedStation's default collection behavior. An opt-in NBAPI
+boolean registers native radio/STA state without launching a query for every
+registered station. The client then explicitly requests one fresh collection.
+This avoids quadratic query bursts while retaining native result timestamps,
+registration validation, and legacy BML/NBAPI behavior.
+
+--- a/controller/src/beerocks/master/controller.h
++++ b/controller/src/beerocks/master/controller.h
+@@ -252,37 +252,38 @@
+      * @return void.
+      */
+     void start_optional_tasks();
+ 
+     /**
+      * @brief add an unassociated station to be monitored
+      * 
+      * @param station_mac_addr The MAC address of the unassociated station
+      * @param channel used by the measurement. Note that the agent may ignore this value and use his active channel. 
+      * @param preferred operating_class for the measurement.
+      * @param agent_mac_addr The MAC address of the agent, if null, all agents are concerned.
+      * @param radio_mac_addrress of the agent which supports the channel to be used for monitoring, if not given, it will be deduced automatically.
+      * 
+      * @return true if station added successfully, false if it exists already or any other issue.
+      */
+     bool add_unassociated_station(
+         const sMacAddr &station_mac_addr, uint8_t channel, uint8_t operating_class,
+         const sMacAddr &agent_mac_addr,
+-        const sMacAddr &radio_mac_addr = beerocks::net::network_utils::ZERO_MAC);
++        const sMacAddr &radio_mac_addr = beerocks::net::network_utils::ZERO_MAC,
++        bool defer_query = false);
+ 
+     /**
+      * @brief remove an unassociated station to be monitored
+      * 
+      * @param station_mac_addr The MAC address of the unassociated station
+      * @param agent_mac_addr The MAC address of the agent, if null, all agents are concerned.
+      * 
+      * @return true if station removed successfully, false if it does not exists  or any other issue.
+      */
+     bool remove_unassociated_station(
+         const sMacAddr &station_mac_addr, const sMacAddr &agent_mac_addr,
+         const sMacAddr &radio_mac_addr = beerocks::net::network_utils::ZERO_MAC);
+ 
+     /**
+      * @brief get all stats from all connected agents and update the DM.
+      * 
+      * @return true ifsuccess, false for any issue.
+      */
+--- a/controller/src/beerocks/master/controller.cpp
++++ b/controller/src/beerocks/master/controller.cpp
+@@ -5790,43 +5790,43 @@
+         LOG(ERROR) << "Profile3 1905 Layer Security Capability is not supplied for Agent "
+                    << src_mac << " with profile enum " << agent->profile;
+     }
+ 
+     return all_radio_capabilities_saved_successfully;
+ }
+ 
+ bool Controller::handle_cmdu_1905_early_ap_capability_report_message(
+     const sMacAddr &src_mac, ieee1905_1::CmduMessageRx &cmdu_rx)
+ {
+     auto mid = cmdu_rx.getMessageId();
+     LOG(INFO) << "Received EARLY_AP_CAPABILITY_REPORT_MESSAGE, mid=" << std::dec << int(mid);
+ 
+     return handle_ap_capability_report(src_mac, cmdu_rx, true);
+ }
+ 
+ bool Controller::add_unassociated_station(const sMacAddr &station_mac_addr, uint8_t channel,
+                                           uint8_t operating_class, const sMacAddr &agent_mac_addr,
+-                                          const sMacAddr &radio_mac_addr)
++                                          const sMacAddr &radio_mac_addr, bool defer_query)
+ {
+     if (!database.add_unassociated_station(station_mac_addr, channel, operating_class,
+                                            agent_mac_addr, radio_mac_addr)) {
+         return false;
+     }
+-    return send_unassociated_sta_link_metrics_query_message(cmdu_tx, database);
++    return defer_query || send_unassociated_sta_link_metrics_query_message(cmdu_tx, database);
+ }
+ 
+ bool Controller::remove_unassociated_station(const sMacAddr &station_mac_addr,
+                                              const sMacAddr &agent_mac_addr,
+                                              const sMacAddr &radio_mac_addr)
+ {
+     if (!database.remove_unassociated_station(station_mac_addr, agent_mac_addr, radio_mac_addr)) {
+         return false;
+     }
+ 
+     return send_unassociated_sta_link_metrics_query_message(cmdu_tx, database);
+ }
+ 
+ bool Controller::get_unassociated_stations_stats()
+ {
+     return send_unassociated_sta_link_metrics_query_message(cmdu_tx, database);
+ }
+ 
+--- a/controller/nbapi/on_action.cpp
++++ b/controller/nbapi/on_action.cpp
+@@ -1480,37 +1480,38 @@
+         LOG(ERROR) << station_mac_addr << " is not avalid mac_address!";
+         return amxd_status_invalid_value;
+     }
+ 
+     uint8_t channel = amxc_var_dyncast(uint8_t, GET_ARG(args, "channel"));
+     if (channel < 1) {
+         LOG(ERROR) << "entered channel is not valid! ";
+         return amxd_status_invalid_value;
+     }
+ 
+     uint8_t operating_class = amxc_var_dyncast(uint8_t, GET_ARG(args, "operating_class"));
+     if (operating_class < 1) {
+         LOG(ERROR) << "entered operating_class is not valid! ";
+         return amxd_status_invalid_value;
+     }
+ 
+     if (!controller_ctx->add_unassociated_station(tlvf::mac_from_string(station_mac_addr), channel,
+                                                   operating_class, tlvf::mac_from_string(agent_mac),
+-                                                  tlvf::mac_from_string(radio_mac))) {
++                                                  tlvf::mac_from_string(radio_mac),
++                                                  GET_BOOL(args, "defer_query"))) {
+         result = amxd_status_unknown_error;
+     }
+     return result;
+ }
+ 
+ /**
+  * @brief remove the unassociated station being monitored
+  * 
+  * Example of usage:
+  * Device.WiFi.DataElements.Network.Device.1.Radio.1.RemoveUnassociatedStation(un_station_mac="AA:BB:CC:DD:12:04")
+  *
+  */
+ amxd_status_t remove_unassociated_station(amxd_object_t *object, amxd_function_t *func,
+                                           amxc_var_t *args, amxc_var_t *ret)
+ {
+     amxd_status_t result(amxd_status_ok);
+ 
+     amxc_var_t value;
+--- a/controller/nbapi/odl/radio.odl.in
++++ b/controller/nbapi/odl/radio.odl.in
+@@ -124,37 +124,38 @@
+         object BackhaulSta {
+             %read-only string MACAddress = "";
+         }
+ 
+         /**
+         * Each instance represents a station (STA) that has been discovered by the Radio but is not associated to any of the BSS operating on the Radio.
+         * At most one entry in this table can exist with a given value for MACAddress.
+         * @version 2.19.1
+         */
+         %read-only object UnassociatedSTA []{
+             counted with UnassociatedSTANumberOfEntries;
+         }
+ 
+         /* Add a new  unassociated station to the UnassociatedSTA object*/
+         %instance bool AddUnassociatedStation(
+                 %in %mandatory string un_station_mac,
+                 %in %mandatory uint8 channel,
+                 %in %mandatory uint8 operating_class,
+-                %in string agent_mac
++                %in string agent_mac,
++                %in bool defer_query
+         );
+ 
+         /* Remove an unassociated station from the UnassociatedSTA object*/
+         %instance bool RemoveUnassociatedStation(
+             %in %mandatory string un_station_mac
+         );
+ 
+         %read-only object ScanResult [] {
+             counted with ScanResultNumberOfEntries;
+         }
+ 
+         /* Describes the Channel Availability Check (CAC) capabilities of a radio */
+         %read-only object CACCapability {
+             %read-only object CACMethod [] {
+                 counted with CACMethodNumberOfEntries;
+ 
+                 /**
+                 * CAC method supported;

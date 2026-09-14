@@ -28,6 +28,64 @@ function mapping(rows) {
   return rows.map(item => [lower(item.mac), lower(item.bssid), String(item.ssid || '')]).sort((left, right) => left[0].localeCompare(right[0]));
 }
 
+function bandName(value) {
+  return ({0: '2.4', 1: '5', 3: '6'})[value] || String(value);
+}
+
+function bandExpectations(world, timeMs, clients, view) {
+  const expected = world.band_steering_expectations?.find(item => item.time_ms === timeMs)?.roles || {};
+  const errors = [];
+  for (const [role, profile] of Object.entries(world.band_steering || {})) {
+    const client = clients.find(item => item.role === role);
+    const rendered = view.stations.find(item => lower(item.mac) === lower(client?.sta_mac));
+    const native = view.modelStations.find(item => lower(item.mac) === lower(client?.sta_mac));
+    if (!client || !profile.allowed_bands.includes(client.band)) errors.push(role + ': absent or disallowed band');
+    if (client && (bandName(rendered?.band) !== client.band || bandName(native?.band) !== client.band)) errors.push(role + ': topology/room band mismatch');
+    if (expected[role] && (client?.band !== expected[role].band || client?.connected_role !== expected[role].ap)) errors.push(role + ': expected ' + expected[role].ap + '/' + expected[role].band);
+  }
+  return errors;
+}
+
+function bandNativeErrors(world, probes, clients) {
+  return Object.keys(world.band_steering || {}).flatMap(role => {
+    const native = probes[role];
+    const client = clients.find(item => item.role === role);
+    const owner = native?.link?.match(/^Connected to ([0-9a-f:]{17})/i)?.[1];
+    const frequency = Number(native?.link?.match(/freq:\s*(\d+(?:\.\d+)?)/)?.[1]);
+    const band = frequency >= 2412 && frequency <= 2484 ? '2.4' :
+      frequency >= 4900 && frequency < 5925 ? '5' : frequency >= 5925 && frequency <= 7125 ? '6' : null;
+    return !native?.traffic_ok || native.stable_owner !== true || !client || !owner || !band ||
+      lower(native.station) !== lower(client.sta_mac) || lower(owner) !== lower(client.connected_bssid) || band !== client.band
+      ? [role + ': physical owner/band/traffic mismatch'] : [];
+  });
+}
+
+function bandSteeringSummary(world, events, verifications) {
+  const verifiedIds = new Set(verifications.filter(item => item.success && item.traffic_ok).map(item => item.action_id));
+  const actions = events.filter(record => record.event.kind === 'optimizer.action' && record.event.payload.phase === 'requested')
+    .map(record => record.event.payload);
+  const bandActions = actions.filter(item => item.decision.current_band !== item.decision.target_band);
+  const transitions = [];
+  for (const [role, profile] of Object.entries(world.band_steering)) {
+    const expected = [];
+    let previous = profile.initial_band;
+    for (const checkpoint of [...world.band_steering_expectations].sort((left, right) => left.time_ms - right.time_ms)) {
+      const target = checkpoint.roles[role]?.band;
+      if (target && target !== previous) expected.push({from: previous, to: target});
+      previous = target || previous;
+    }
+    const requested = bandActions.filter(item => item.subject_role === role);
+    const observed = requested.map(item => ({from: item.decision.current_band, to: item.decision.target_band}));
+    const unverified = actions.filter(item => item.subject_role === role && !verifiedIds.has(item.action_id)).map(item => item.action_id);
+    transitions.push({role, expected, observed, unverified,
+      passed: same(expected, observed) && !unverified.length && observed.every(item => profile.allowed_bands.includes(item.to))});
+  }
+  const unexpectedRoles = [...new Set(bandActions.filter(item => !world.band_steering[item.subject_role]).map(item => item.subject_role))];
+  return {passed: transitions.every(item => item.passed) && !unexpectedRoles.length, transitions, unexpectedRoles,
+    nativeVerifiedBandActions: bandActions.filter(item => verifiedIds.has(item.action_id)),
+    scanMeasurements: events.filter(record => record.event.kind === 'optimizer.band_scan' && record.event.payload.phase === 'received').length};
+}
+
 function evaluate(current, interactions, view, world, bindings, now = Date.now()) {
   const expected = expectedFrame(world, interactions.playback.time_ms);
   const wanted = Object.entries(bindings).filter(([role]) => expected[role]?.present).map(([, client]) => lower(client.sta_mac)).sort();
@@ -76,9 +134,10 @@ function evaluate(current, interactions, view, world, bindings, now = Date.now()
   const epochMatches = optimizer.environment_epoch === current.environment_epoch && current.environment_epoch === interactions.environment_epoch;
   const complete = fleet.measurement_complete === true && fleet.clients_checked === wanted.length && fleet.clients_evaluated === wanted.length;
   const mediumFault = interactions.fault || current.error || null;
+  const bandErrors = bandExpectations(world, interactions.playback.time_ms, clients, view);
   const qualified = roster && viewMatchesRoom && viewMatchesModel && view.meshCount === 6 && meshConnected && meshViewMatches &&
     healthy && epochMatches && metricsFresh && complete && decisionCoverage &&
-    evaluationAge >= -2 && evaluationAge <= 30 && scriptErrors.length === 0 && !mediumFault;
+    evaluationAge >= -2 && evaluationAge <= 30 && scriptErrors.length === 0 && !mediumFault && !bandErrors.length;
   const policyConverged = qualified && fleet.converged === true;
   const strongestApConverged = qualified && sameBandBest && fleet.clients_with_stronger_ap === 0;
   const converged = policyConverged;
@@ -90,7 +149,7 @@ function evaluate(current, interactions, view, world, bindings, now = Date.now()
     convergenceCriterion: 'configured-steering-policy',
     parents, wanted, actual, actions: optimizer.actions_used, actionLimit: optimizer.maximum_actions,
     decision: optimizer.decision?.reason, unavailable: optimizer.unavailable_cohort_reason || null,
-    mediumFault};
+    mediumFault, bandErrors};
 }
 
 function fronthaulOutages(world, samples) {
@@ -112,7 +171,7 @@ function distribution(values) {
 }
 
 function recordedEventKind(kind) {
-  return /^(optimizer\.(action|verification(?:\.discarded)?|collection)|rf\.generation\.applied|playback\.rf\.applied|interaction\.playback\.(paused|completed)|worker\.error|room\.world\.committed)$/.test(kind);
+  return /^(optimizer\.(action|verification(?:\.discarded)?|collection|band_scan)|rf\.generation\.applied|playback\.rf\.applied|interaction\.playback\.(paused|completed)|worker\.error|room\.world\.committed)$/.test(kind);
 }
 
 function eventPerformance(records) {
@@ -217,6 +276,13 @@ async function run(args) {
     args: ['--no-sandbox', '--ozone-platform=headless', '--enable-unsafe-swiftshader', '--use-gl=angle', '--use-angle=swiftshader',
       '--disable-background-timer-throttling', '--disable-renderer-backgrounding', '--disable-backgrounding-occluded-windows']});
   const context = await browser.newContext({viewport: {width: 1280, height: 900}});
+  const labOrigins = new Set([args['room-url'], args['topology-url']].map(value => new URL(value).origin));
+  report.browserNetwork = 'lab-origins-only';
+  await context.route('**/*', route => {
+    const address = new URL(route.request().url());
+    return !['http:', 'https:'].includes(address.protocol) || labOrigins.has(address.origin) ?
+      route.continue() : route.abort('blockedbyclient');
+  });
   const room = await context.newPage();
   const topology = await context.newPage();
   if (args['observer-cpus']) {
@@ -262,7 +328,24 @@ async function run(args) {
   }
   async function guest(operation, payload) {
     const command = 'lxc exec ' + quote(args.vm) + ' -- python3 /tmp/room-feature-guest-audit.py ' + quote(operation) + ' ' + quote(payload);
-    return JSON.parse((await execFileAsync('ssh', [args.host, command], {timeout: 45000, maxBuffer: 8 * 1024 * 1024})).stdout);
+    const started = performance.now();
+    try {
+      return JSON.parse((await execFileAsync('ssh', [args.host, command], {timeout: 45000, maxBuffer: 8 * 1024 * 1024})).stdout);
+    } catch (error) {
+      error.message += ' ' + JSON.stringify({operation, elapsedMs: performance.now() - started,
+        code: error.code, signal: error.signal, killed: error.killed,
+        stdout: error.stdout?.slice(-4000), stderr: error.stderr?.slice(-4000)});
+      throw error;
+    }
+  }
+  async function auditKernel(sampleResult) {
+    if (!sampleResult) return {passed: false, errors: [{reason: 'model_snapshot_unavailable'}]};
+    const started = performance.now();
+    const clientContainers = Object.fromEntries(Object.entries(bindings).map(([role, client]) => [role, client.container]));
+    const links = await guest('links', JSON.stringify(clientContainers));
+    return {...kernelClientAudit(bindings, sampleResult.wanted, sampleResult.roomAssociations, links),
+      elapsedMs: performance.now() - started, observedAt: new Date().toISOString(),
+      modelObservedAt: sampleResult.wallTime, modelAgeAtStartMs: started - sampleResult.monoMs};
   }
   async function events() {
     while (!stopped) {
@@ -313,11 +396,11 @@ async function run(args) {
         return {meshCount: document.querySelectorAll('#topology-visualization .nodes .node').length,
           stations: [...document.querySelectorAll('#topology-visualization .sta-node')].map(element => ({
             mac: element.__data__?.sta?.staMAC, bssid: element.__data__?.sta?.bssid,
-            ssid: element.__data__?.sta?.ssid, owner: String(element.__data__?.nodeRef?.id),
+            ssid: element.__data__?.sta?.ssid, band: element.__data__?.sta?.band, owner: String(element.__data__?.nodeRef?.id),
             label: element.querySelector('.sta-identity-label')?.textContent,
             visible: element.getBoundingClientRect().width > 0,
           })),
-          modelStations: nodes.flatMap(node => (node.STAList || []).map(sta => ({mac: sta.staMAC, bssid: sta.bssid, ssid: sta.ssid}))),
+          modelStations: nodes.flatMap(node => (node.STAList || []).map(sta => ({mac: sta.staMAC, bssid: sta.bssid, ssid: sta.ssid, band: sta.band}))),
           edges: (instance?.topology?.edges || []).map(edge => ({from: String(edge.from), to: String(edge.to)}))};
       }),
       room.evaluate(() => {
@@ -339,8 +422,14 @@ async function run(args) {
     const result = {monoMs: performance.now(), wallTime: new Date().toISOString(), phase,
       playback: interactions.playback, epoch: interactions.environment_epoch, ...checks,
       sceneErrors, sceneErrorDetails: sceneErrors.map(role => ({role, expected: sceneExpected[role], actual: visibleRoom.roles[role]})),
-      associations: view.stations, roomAssociations: current.network?.clients?.map(client => ({role: client.role, mac: client.sta_mac, bssid: client.connected_bssid, ap: client.connected_role, ssid: client.ssid})),
+      associations: view.stations, roomAssociations: current.network?.clients?.map(client => ({role: client.role, mac: client.sta_mac, bssid: client.connected_bssid, ap: client.connected_role, ssid: client.ssid, band: client.band})),
       visibleClock: visibleRoom.clock, requestMs: performance.now() - started};
+    if (world.band_steering) {
+      result.bandNative = await guest('band-links', JSON.stringify({target: args.flavor === 'rdk' ? '10.0.0.1' : '192.168.77.1',
+        mapping: Object.fromEntries(Object.keys(world.band_steering).map(role => [role, bindings[role].container]))}));
+      result.bandNativeErrors = bandNativeErrors(world, result.bandNative, current.network?.clients || []);
+      if (result.bandNativeErrors.length) result.converged = result.policyConverged = false;
+    }
     if (args['native-audits'] === '1' && ['playing', 'final'].includes(phase)) {
       const roles = activeRoom?.id === 'home-a-disappear-reappear' ? ['sta_mobile_01', 'sta_mobile_02'] :
         ['large-room-extender-evacuation', 'large-room-perimeter-counter-roam',
@@ -443,6 +532,10 @@ async function run(args) {
       observedClientCounts: [...new Set(during.map(sample => sample.actualClients))].sort((left, right) => left - right),
     };
     result.verifications = verifications;
+    const bandWorld = JSON.parse(fs.readFileSync(path.join(args.worlds, result.id + '.world.json')));
+    if (bandWorld.band_steering) {
+      result.bandSteering = bandSteeringSummary(bandWorld, relevant, verifications);
+    }
     result.scriptCorrect = during.length > 0 && during.every(sample => !sample.scriptErrors.length && !sample.mediumFault);
     result.sceneCorrect = during.length > 0 && during.every(sample => !sample.sceneErrors.length);
     result.viewCorrect = during.every(sample => !sample.duplicates && sample.meshCount === 6 && sample.associations.every(client => client.visible && client.label)) && agreement.passed;
@@ -463,7 +556,7 @@ async function run(args) {
       result.checkpoints.every(checkpoint => checkpoint.passed) && result.scriptCorrect && result.sceneCorrect && result.viewCorrect &&
       result.presencePhases.every(entry => entry.topologyVerified) &&
       result.fronthaulOutages.every(outage => outage.samples > 0 && !outage.remainingAssociations.length && outage.meshConnected) &&
-      result.kernel?.passed && !result.errors.length && !report.errors.some(error => error.room === result.id));
+      result.kernel?.passed && result.bandSteering?.passed !== false && !result.errors.length && !report.errors.some(error => error.room === result.id));
     result.sampleCount = result.samples.length;
     delete result.samples;
   }
@@ -475,13 +568,36 @@ async function run(args) {
     const initial = await request('/api/demo/interactions');
     if (initial.lease?.held || initial.recording?.active) throw new Error('Refusing to steal a control lease or interrupt recording');
     report.before = await guest('identity', args.flavor);
-    const current = await request('/api/demo/current');
+    let current;
+    const baselineDeadline = performance.now() + 60000;
+    do {
+      current = await request('/api/demo/current');
+      bindings = Object.fromEntries(current.network.clients.map(client => [client.role, client]));
+      if (current.health.healthy && current.health.api_total === 20 &&
+          current.health.expected_online_clients === 20 && Object.keys(bindings).length === 20) break;
+      await new Promise(resolve => setTimeout(resolve, 200));
+    } while (performance.now() < baselineDeadline);
     report.temporaryActionLimit = current.optimizer.maximum_actions;
     eventSequence = current.sequence;
     bindings = Object.fromEntries(current.network.clients.map(client => [client.role, client]));
-    if (Object.keys(bindings).length !== 20) throw new Error('Preflight requires default twenty-client baseline after room-service restart');
+    if (!current.health.healthy || current.health.api_total !== 20 ||
+        current.health.expected_online_clients !== 20 || Object.keys(bindings).length !== 20) {
+      save('preflight-current.json', current);
+      throw new Error('Preflight requires a healthy default twenty-client baseline after room-service restart');
+    }
     save('bindings.json', bindings);
-    const catalog = (await request('/api/demo/worlds')).worlds;
+    const catalogResponse = await request('/api/demo/worlds');
+    if (catalogResponse.client_bindings) {
+      const pool = catalogResponse.client_bindings;
+      if (Object.keys(pool).length !== initial.pool_clients ||
+          Object.entries(bindings).some(([role, client]) => lower(pool[role]?.sta_mac) !== lower(client.sta_mac)) ||
+          Object.values(pool).some(client => !client.sta_mac || !client.container)) {
+        throw new Error('Catalog client identities do not match the provisioned pool and live baseline');
+      }
+      bindings = pool;
+      save('bindings.json', bindings);
+    }
+    const catalog = catalogResponse.worlds;
     report.catalog = catalog;
     eventTask = events();
     await room.goto(args['room-url']);
@@ -505,6 +621,8 @@ async function run(args) {
           requestTiming: loaded.requestTiming, server: loaded.result, goldenSha256: world.golden_sha256};
         if (!activeRoom.load.passed) throw new Error('Deployed golden identity does not match the selected room');
         activeRoom.initial = await settle(world, Number(args['initial-timeout'] || 90), 'loaded');
+        activeRoom.initial.kernel = await auditKernel(activeRoom.initial.final);
+        activeRoom.initial.passed &&= activeRoom.initial.kernel.passed;
         await screenshot('loaded');
         await room.bringToFront();
         if (!await room.evaluate(() => Boolean(document.fullscreenElement))) await room.locator('#roomFullscreen').click();
@@ -536,6 +654,8 @@ async function run(args) {
             visited.add(checkpoint);
             const started = performance.now();
             const settled = await settle(world, Number(args['checkpoint-timeout'] || 60), 'checkpoint-' + checkpoint);
+            settled.kernel = await auditKernel(settled.final);
+            settled.passed &&= settled.kernel.passed;
             activeRoom.checkpoints.push({timeMs: checkpoint, ...settled});
             await screenshot('checkpoint-' + checkpoint);
             await clickPlay(); checkpointMs += performance.now() - started;
@@ -546,10 +666,8 @@ async function run(args) {
           checkpointWaitSeconds: checkpointMs / 1000, checkpointsVisited: [...visited]};
         if (!completed) throw new Error('Playback exceeded bounded wall-clock deadline');
         activeRoom.final = await settle(world, Number(args['final-timeout'] || 120), 'final');
+        activeRoom.kernel = await auditKernel(activeRoom.final.final);
         await screenshot('final');
-        const offline = Object.fromEntries(Object.entries(bindings).filter(([, client]) => !lastSample.result.wanted.includes(lower(client.sta_mac))).map(([role, client]) => [role, client.container]));
-        const links = await guest('links', JSON.stringify(offline));
-        activeRoom.kernel = {offlineCount: Object.keys(offline).length, passed: Object.values(links).every(value => value.includes('Not connected')), links};
       } catch (error) {
         activeRoom.errors.push({phase, message: error.stack});
       } finally {
@@ -599,6 +717,26 @@ async function run(args) {
   return report;
 }
 
-module.exports = {expectedFrame, evaluate, distribution, eventPerformance, viewAgreement, recordedEventKind, fronthaulOutages};
+function kernelClientAudit(bindings, wanted, associations, links) {
+  const online = new Set(wanted.map(lower));
+  const model = new Map(associations.map(client => [lower(client.mac), lower(client.bssid)]));
+  const bound = new Set(Object.values(bindings).map(client => lower(client.sta_mac)));
+  const errors = [...online].filter(mac => !bound.has(mac)).map(mac => ({mac, reason: 'unbound_online_client'}));
+  for (const [role, client] of Object.entries(bindings)) {
+    const mac = lower(client.sta_mac);
+    const link = links[role];
+    const connected = typeof link === 'string' ? link.match(/^Connected to ([0-9a-f:]{17})\b/im) : null;
+    if (online.has(mac)) {
+      const actual = connected ? lower(connected[1]) : null;
+      const expected = model.get(mac) || null;
+      if (!actual || !expected || actual !== expected) errors.push({role, mac, expected, actual, reason: 'native_owner_mismatch'});
+    } else if (typeof link !== 'string' || !/^Not connected\.\s*$/.test(link)) {
+      errors.push({role, mac, reason: 'offline_client_connected_or_unobserved'});
+    }
+  }
+  return {onlineCount: online.size, offlineCount: bound.size - online.size, passed: errors.length === 0, errors, links};
+}
+
+module.exports = {expectedFrame, evaluate, distribution, eventPerformance, viewAgreement, recordedEventKind, fronthaulOutages, bandExpectations, bandSteeringSummary, bandNativeErrors, kernelClientAudit};
 if (require.main === module) run(argumentsFrom(process.argv.slice(2))).then(report => { process.exitCode = report.passed ? 0 : 1; })
   .catch(error => { console.error(error); process.exitCode = 2; });

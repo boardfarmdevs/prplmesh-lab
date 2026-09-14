@@ -17,6 +17,10 @@ UBUS_PATCHSET_SHA256=$(
     cd "$ROOT"
     sha256sum patches/ubus/*.patch | sha256sum | awk '{print $1}'
 )
+AMXP_PATCHSET_SHA256=$(
+    cd "$ROOT"
+    sha256sum patches/amxp/*.patch | sha256sum | awk '{print $1}'
+)
 
 lxc start "$BUILD_CONTAINER" 2>/dev/null || true
 lxc exec "$BUILD_CONTAINER" -- rm -rf /root/hostap-patches
@@ -32,6 +36,7 @@ lxc exec "$BUILD_CONTAINER" -- env \
     PRPL_RELEASE="$PRPL_RELEASE" PRPL_COMMIT="$PRPL_COMMIT" \
     PRPL_PATCHSET_SHA256="$PRPL_PATCHSET_SHA256" \
     UBUS_PATCHSET_SHA256="$UBUS_PATCHSET_SHA256" \
+    AMXP_PATCHSET_SHA256="$AMXP_PATCHSET_SHA256" \
     HOSTAP_COMMIT="$HOSTAP_COMMIT" \
     /root/package-artifacts-inside.sh
 

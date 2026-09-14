@@ -20,6 +20,26 @@ The optimizer never reads a `.wmd` plan, wmediumd control state, intended
 target, or scenario phase. In hwsim, candidate observations are marked as
 simulated-radio measurements and require `--allow-simulated-candidates`.
 
+Root-in-VM candidate collection runs the same native `ubus` calls through
+descriptor-pinned controller mount/root namespaces. LXD discovers the controller
+once, not once per registration/query. Four registration workers remain bounded;
+only discovery is locked. Native publication timestamps, freshness and RPC
+deadlines are unchanged. Transactions record the transport and elapsed time.
+Non-root hosts retain `lxc exec`. Namespace failures never silently fall back;
+restart observation after a controller restart to discard its registration cache.
+
+On compatible native builds, `_describe` advertises the optional boolean
+`AddUnassociatedStation.defer_query`. Collection registers a cohort without
+issuing redundant fleet-wide queries for every addition, then uses the existing
+explicit `UpdateUnassociatedStationsStats` and waits for fresh native reports.
+Older controllers retain their original behavior; no unsupported option is sent.
+
+Verification reports `associated_with_other_ap` promptly if it observes the
+requested source and then a different, non-target AP. It does not wait out the
+whole association timeout after that native outcome. Missing observations or
+an unproven cached owner retain the original timeout; target success still
+requires traffic. This classification does not repair RF loss or force roaming.
+
 ## Opt-in Native Load Policy
 
 The default remains signal-only. Use `configs/load-aware-policy.yaml` instead
