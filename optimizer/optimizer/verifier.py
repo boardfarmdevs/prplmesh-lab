@@ -45,12 +45,15 @@ class OutcomeVerifier:
         *,
         timeout_seconds: float,
         poll_seconds: float = 1,
+        source_bssid: str | None = None,
     ) -> VerificationResult:
         sta_mac = normalize_mac(sta_mac)
         target_bssid = normalize_mac(target_bssid)
+        source_bssid = normalize_mac(source_bssid) if source_bssid else None
         started = self.monotonic()
         polls = 0
         final_bssid = None
+        source_observed = False
         while self.monotonic() - started <= timeout_seconds:
             if self.cancelled():
                 return VerificationResult(False, "verification_cancelled", polls,
@@ -62,6 +65,8 @@ class OutcomeVerifier:
                 client = snapshot.client(sta_mac)
                 final_bssid = client.connected_bssid if client else None
             polls += 1
+            if source_bssid is not None and final_bssid == source_bssid:
+                source_observed = True
             if final_bssid == target_bssid:
                 traffic = self.traffic_probe(sta_mac) if self.traffic_probe else None
                 return VerificationResult(
@@ -78,6 +83,9 @@ class OutcomeVerifier:
                     final_bssid=final_bssid,
                     traffic_ok=traffic,
                 )
+            if source_observed and final_bssid not in (None, source_bssid):
+                return VerificationResult(False, "associated_with_other_ap", polls,
+                                          self.monotonic() - started, final_bssid, None)
             self.sleeper(poll_seconds)
         return VerificationResult(
             success=False,

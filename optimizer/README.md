@@ -34,6 +34,12 @@ issuing redundant fleet-wide queries for every addition, then uses the existing
 explicit `UpdateUnassociatedStationsStats` and waits for fresh native reports.
 Older controllers retain their original behavior; no unsupported option is sent.
 
+Verification reports `associated_with_other_ap` promptly if it observes the
+requested source and then a different, non-target AP. It does not wait out the
+whole association timeout after that native outcome. Missing observations or
+an unproven cached owner retain the original timeout; target success still
+requires traffic. This classification does not repair RF loss or force roaming.
+
 ## Opt-in Native Load Policy
 
 The default remains signal-only. Use `configs/load-aware-policy.yaml` instead

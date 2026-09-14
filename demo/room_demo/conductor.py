@@ -721,7 +721,8 @@ class LiveConductor:
             or not self.store.role_present(subject_role),
         )
         verified = verifier.verify(decision.sta_mac, decision.target_bssid,
-                                   timeout_seconds=policy_config.steer_timeout_seconds, poll_seconds=0.1)
+                                   timeout_seconds=policy_config.steer_timeout_seconds, poll_seconds=0.1,
+                                   source_bssid=decision.source_bssid)
         completed_at = datetime.now(timezone.utc)
         current_world = self.store.world_epoch() == guard[1]
         with self._error_lock:
@@ -1435,6 +1436,7 @@ class LiveConductor:
                             decision.target_bssid,
                             timeout_seconds=policy.config.steer_timeout_seconds,
                             poll_seconds=0.2 if self.interactive else 1,
+                            source_bssid=decision.source_bssid,
                         )
                         if verified.success:
                             self.verification_successes += 1
