@@ -408,6 +408,30 @@
 
   // Orbit camera: spherical coords around a target. World y is up; plan x -> x, plan y -> -z.
   const orbit = { target: new THREE.Vector3(10, 0, -7), r: 30, theta: -0.9, phi: 0.95 };
+  let autoFitCamera = true, fittedRoomRadius = 30;
+  function roomCameraRadius(size, aspect, fieldOfView, theta, phi) {
+    const vertical = Math.tan(fieldOfView * Math.PI / 360) / 1.08;
+    const horizontal = vertical * Math.max(0.1, aspect);
+    const markerHeight = 3.5 * Math.max(1, Math.min(2, Math.max(size.width, size.height) / 20));
+    let radius = 6;
+    for (const offsetX of [-size.width / 2, size.width / 2]) {
+      for (const offsetZ of [-size.height / 2, size.height / 2]) {
+        for (const offsetY of [0, markerHeight]) {
+          const right = offsetX * Math.cos(theta) - offsetZ * Math.sin(theta);
+          const up = -offsetX * Math.cos(phi) * Math.sin(theta) + offsetY * Math.sin(phi) - offsetZ * Math.cos(phi) * Math.cos(theta);
+          const depth = offsetX * Math.sin(phi) * Math.sin(theta) + offsetY * Math.cos(phi) + offsetZ * Math.sin(phi) * Math.cos(theta);
+          radius = Math.max(radius, depth + Math.abs(right) / horizontal, depth + Math.abs(up) / vertical);
+        }
+      }
+    }
+    return radius;
+  }
+  function fitWorldCamera() {
+    if (!world || !autoFitCamera) return;
+    fittedRoomRadius = roomCameraRadius(interactionModel.roomSize(world), camera.aspect, camera.fov, orbit.theta, orbit.phi);
+    orbit.r = fittedRoomRadius;
+    placeCamera();
+  }
   function placeCamera() {
     const { target, r, theta, phi } = orbit;
     camera.position.set(
@@ -415,6 +439,8 @@
       target.y + r * Math.cos(phi),
       target.z + r * Math.sin(phi) * Math.cos(theta));
     camera.lookAt(target);
+    camera.far = Math.max(500, r * 4);
+    camera.updateProjectionMatrix();
     sceneRenderDirty = true;
   }
   (function bindOrbit() {
@@ -475,6 +501,7 @@
         return;
       }
       if (!drag) return;
+      autoFitCamera = false;
       const dx = e.clientX - drag.x, dy = e.clientY - drag.y;
       if (Math.abs(dx) + Math.abs(dy) > 3) drag.moved = true;
       if (drag.pan) {
@@ -512,7 +539,7 @@
       main.classList.remove('dragging');
       update();
     });
-    el.addEventListener('wheel', (e) => { e.preventDefault(); orbit.r = Math.min(90, Math.max(6, orbit.r * (1 + e.deltaY * 0.0012))); placeCamera(); }, { passive: false });
+    el.addEventListener('wheel', (e) => { e.preventDefault(); autoFitCamera = false; orbit.r = Math.min(Math.max(90, fittedRoomRadius * 3), Math.max(6, orbit.r * (1 + e.deltaY * 0.0012))); placeCamera(); }, { passive: false });
     el.addEventListener('contextmenu', (e) => {
       e.preventDefault();
       const role = pickedRole(e);
@@ -528,6 +555,7 @@
     const w = main.clientWidth, h = main.clientHeight;
     renderer.setSize(w, h, false);
     camera.aspect = w / h; camera.updateProjectionMatrix();
+    fitWorldCamera();
     sceneRenderDirty = true;
   }
   window.addEventListener('resize', resize);
@@ -1167,7 +1195,7 @@
 
     scene.add(root);
     world3d = { root, nodes, pickables, walls, links, actual, target, backhaul, backhaulOccluded, simulatedBackhaul, simulatedBackhaulOccluded, trails, preview, movePath, destination, W, H };
-    orbit.target.set(W / 2, 0, -H / 2); orbit.r = Math.max(W, H) * 1.5; placeCamera();
+    orbit.target.set(W / 2, 0, -H / 2); autoFitCamera = true; fitWorldCamera();
   }
 
   // ---- per-frame update ----------------------------------------------------
@@ -1938,7 +1966,8 @@
       const shape = mesh.available ? (multihop ? 'multihop' : 'star') : 'waiting';
       $('#labMetrics').innerHTML =
         '<span>Mesh devices</span><b>' + esc(api.mesh_devices) + ' / 5</b>' +
-        '<span>Clients</span><b>' + esc(api.clients) + ' / 20</b>' +
+        '<span>Online clients</span><b>' + esc(api.clients) + ' / ' + esc(h.expected_online_clients ?? (world && world.counts && world.counts.stations)) + '</b>' +
+        '<span>Client capacity</span><b>' + esc(h.pool_clients ?? '—') + '</b>' +
         '<span>Private / IoT</span><b>' + esc(cohorts.private) + ' / ' + esc(cohorts.iot) + '</b>' +
         '<span>Actual topology</span><b>' + esc(shape) + ' · ' + esc(backhaulCount) + ' backhaul links</b>' +
         (mesh.backhaul_control ? '<span>Lab backhaul</span><b title="' + esc(mesh.backhaul_control.reason) + '">' +
