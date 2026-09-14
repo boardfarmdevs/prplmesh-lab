@@ -97,6 +97,13 @@ def playback_pause_points(document: dict[str, Any]) -> list[int]:
     return pauses
 
 
+def backhaul_rf_policy(document: dict[str, Any]) -> str:
+    policy = document.get("backhaul_rf", "fixed")
+    if policy not in ("fixed", "geometry"):
+        raise ScenarioError("backhaul_rf must be fixed or geometry")
+    return policy
+
+
 def _validate_mobility(mobility: dict[str, Any]) -> None:
     if mobility.get("schema") != "wmdcfg.mobility.v1":
         raise ScenarioError("mobility schema must be wmdcfg.mobility.v1")
@@ -107,6 +114,7 @@ def _validate_mobility(mobility: dict[str, Any]) -> None:
     if duration % tick:
         raise ScenarioError("mobility duration_ms must be an exact multiple of tick_ms")
     playback_pause_points(mobility)
+    backhaul_rf_policy(mobility)
     if not isinstance(mobility.get("name"), str) or not mobility["name"]:
         raise ScenarioError("mobility requires a non-empty name")
     roles: set[str] = set()
@@ -245,7 +253,7 @@ def compile_world(layout: dict[str, Any], mobility: dict[str, Any]) -> dict[str,
     pauses = playback_pause_points(mobility)
     if pauses:
         result["pause_at_ms"] = list(pauses)
-    for key in ("band_steering", "band_steering_expectations"):
+    for key in ("band_steering", "band_steering_expectations", "backhaul_rf"):
         if key in mobility:
             result[key] = copy.deepcopy(mobility[key])
     result["golden_sha256"] = _hash(result)
@@ -265,6 +273,7 @@ def verify_world_plan(plan: dict[str, Any]) -> None:
     if claimed != _hash(unsigned):
         raise ScenarioError("world plan golden_sha256 does not match its contents")
     playback_pause_points(plan)
+    backhaul_rf_policy(plan)
 
 
 def _role_lines(plan: dict[str, Any]) -> list[str]:
@@ -306,6 +315,8 @@ def export_wmd(plan: dict[str, Any], band: str) -> str:
         "",
     ]
     previous: dict[tuple[str, str, str | None], int] = {}
+    if backhaul_rf_policy(plan) == "geometry":
+        lines.insert(1, "# geometry backhaul requires the interactive room engine; this DSL export contains fronthaul only")
     for generation in plan["generations"]:
         current = {
             (item["source_role"], item["destination_role"], selected_band): int(

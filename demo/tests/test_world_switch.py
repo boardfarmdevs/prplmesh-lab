@@ -106,7 +106,7 @@ class WorldSwitchTests(unittest.TestCase):
         )
 
     def test_catalog_and_multiple_worlds_use_fixed_pool_and_restore(self):
-        self.assertEqual(len(self.worlds.catalog()["worlds"]), 17)
+        self.assertEqual(len(self.worlds.catalog()["worlds"]), 20)
         bindings = copy.deepcopy(self.plan)
         backhaul = dict(self.session._protected_backhaul)
         self.assertEqual(len(backhaul), 60)
@@ -297,6 +297,124 @@ class WorldSwitchTests(unittest.TestCase):
         self.engine.position("extender_1", position=[10, 6], final=True,
                              token=self.token, expected_revision=0, command_id="modeled-move")
         self.assertNotEqual(initial, self.engine.snapshot()["backhaul_links"])
+
+    def test_room_backhaul_policy_switches_without_losing_the_fixed_baseline(self):
+        protected = dict(self.session._protected_backhaul)
+        for room in ("backhaul-branch-formation", "backhaul-parent-handover", "backhaul-isolation-recovery"):
+            result = self.apply(room)
+            snapshot = self.engine.snapshot()
+            self.assertEqual(snapshot["backhaul_policy"], "modeled")
+            self.assertEqual(snapshot["backhaul_authority"], "native")
+            self.assertTrue(result["backhaul_rf_verified"])
+            self.assertFalse(self.session.adaptive_backhaul)
+            self.assertEqual(self.session._protected_backhaul, protected)
+            self.assertTrue(any(self.client.values[key] != value for key, value in protected.items()))
+            with self.assertRaises(InteractionError):
+                self.engine.backhaul_action(lambda: self.fail("external parent action ran"),
+                                            expected_epoch=snapshot["environment_epoch"])
+            for ordinary in ("home-a-stationary", "default"):
+                restored = self.apply(ordinary)
+                self.assertEqual(restored["backhaul_policy"], "fixed-startup-mesh")
+                self.assertTrue(all(self.client.values[key] == value for key, value in protected.items()))
+
+    def test_geometry_readiness_precedes_rf_and_fixed_rooms_do_not_touch_radios(self):
+        baseline = dict(self.client.values)
+        readiness = mock.Mock(side_effect=lambda: self.assertEqual(self.client.values, baseline))
+        self.session.prepare_backhaul = readiness
+        self.apply("backhaul-branch-formation")
+        readiness.assert_called_once()
+        self.apply("default")
+        readiness.assert_called_once()
+        self.assertEqual(self.client.values, baseline)
+
+    def test_failed_geometry_readiness_leaves_room_and_rf_unchanged(self):
+        baseline = dict(self.client.values)
+        before = self.engine.snapshot()
+        self.session.prepare_backhaul = mock.Mock(side_effect=RuntimeError("relay AP did not start"))
+        with self.assertRaisesRegex(InteractionError, "Cannot apply geometry backhaul"):
+            self.apply("backhaul-branch-formation")
+        after = self.engine.snapshot()
+        self.assertEqual(after["selected_world"], before["selected_world"])
+        self.assertEqual(after["revision"], before["revision"])
+        self.assertEqual(after["playback"], before["playback"])
+        self.assertEqual(self.client.values, baseline)
+
+    def test_geometry_rooms_commit_playback_rf_and_return_without_hiding_isolation(self):
+        self.session._playback_thread = mock.Mock()
+        for room in ("backhaul-branch-formation", "backhaul-parent-handover", "backhaul-isolation-recovery"):
+            self.apply(room)
+            initial = self.engine.snapshot()["backhaul_links"]
+            for endpoint in (12000, 24000):
+                self.engine.playback_control("play", token=self.token,
+                    expected_revision=self.engine.snapshot()["revision"], command_id=f"{room}-play-{endpoint}")
+                for step in range(15):
+                    self.engine._call("_playback_tick")
+                    if self.engine.snapshot()["playback"]["status"] != "playing":
+                        break
+                snapshot = self.engine.snapshot()
+                self.assertEqual(snapshot["playback"]["time_ms"], endpoint)
+                self.assertEqual(snapshot["backhaul_authority"], "native")
+                if endpoint == 12000:
+                    self.assertNotEqual(snapshot["backhaul_links"], initial)
+                    if room == "backhaul-isolation-recovery":
+                        isolated = [link for link in snapshot["backhaul_links"]
+                                    if "extender_4" in (link["source_role"], link["destination_role"])]
+                        self.assertEqual({link["snr_db"] for link in isolated}, {-20})
+                        self.assertTrue(snapshot["roles"]["extender_4"]["present"])
+                else:
+                    self.assertEqual(snapshot["backhaul_links"], initial)
+            self.apply("default")
+
+    def test_geometry_drag_and_fronthaul_presence_are_separate(self):
+        self.apply("backhaul-parent-handover")
+        initial = self.engine.snapshot()["backhaul_links"]
+        self.engine.position("extender_3", position=[58, 28], final=True, token=self.token,
+            expected_revision=self.engine.snapshot()["revision"], command_id="geometry-drag")
+        moved = self.engine.snapshot()["backhaul_links"]
+        self.assertNotEqual(initial, moved)
+        self.engine.presence("extender_3", present=False, token=self.token,
+            expected_revision=self.engine.snapshot()["revision"], command_id="geometry-fronthaul-off")
+        self.assertEqual(self.engine.snapshot()["backhaul_links"], moved)
+        self.apply("default")
+
+    def test_invalid_backhaul_policy_is_rejected_before_rf_changes(self):
+        before = copy.deepcopy(self.client.values)
+        for policy in (None, True, 1, [], {}, "adaptive", "Geometry"):
+            world = signed({**self.world, "backhaul_rf": policy})
+            with self.assertRaises(InteractionError):
+                self.apply(world)
+            self.assertEqual(self.client.values, before)
+            self.assertEqual(self.engine.snapshot()["backhaul_policy"], "fixed-startup-mesh")
+
+    def test_failed_geometry_to_fixed_switch_rolls_back_rf_and_policy(self):
+        self.apply("backhaul-isolation-recovery")
+        before = copy.deepcopy(self.client.values)
+        original = self.client.get_frequency_link
+        failed = False
+        def readback(*args):
+            nonlocal failed
+            generation, value, overridden = original(*args)
+            if not failed:
+                failed = True
+                return generation, value + 1, overridden
+            return generation, value, overridden
+        self.client.get_frequency_link = readback
+        with self.assertRaises(ActuatorError):
+            self.apply("default")
+        self.assertEqual(self.engine.snapshot()["backhaul_policy"], "modeled")
+        self.assertEqual(self.client.values, before)
+        self.assertFalse(self.engine.snapshot()["fault"])
+        self.apply("default")
+
+    def test_recorded_geometry_world_retains_its_backhaul_intent(self):
+        self.apply("backhaul-parent-handover")
+        revision = self.engine.snapshot()["revision"]
+        self.engine.start_recording(token=self.token, expected_revision=revision, command_id="geometry-record")
+        self.engine.stop_recording(token=self.token, expected_revision=revision, command_id="geometry-record-stop")
+        recorded = self.engine.recorded_world()
+        self.assertEqual(recorded["backhaul_rf"], "geometry")
+        self.assertEqual(self.worlds.select(recorded)[0]["backhaul_rf"], "geometry")
+        self.apply("default")
 
     def test_partial_disconnect_failure_rolls_back_all_applied_isolation(self):
         before = copy.deepcopy(self.client.values)

@@ -12,7 +12,7 @@ from typing import Any, Callable
 from wmdcfg.actuator import ActuatorError, ControlClient
 from wmdcfg.geometry import directed_link, quantize_position
 from wmdcfg.runner import FREQUENCY_CAPABILITIES
-from wmdcfg.world import _hash, compile_world, playback_pause_points
+from wmdcfg.world import _hash, backhaul_rf_policy, compile_world, playback_pause_points
 
 from .events import EventStore
 from .client_wifi import parallel_disconnections, parallel_reconnections
@@ -56,8 +56,10 @@ class InteractiveMediumSession:
         adaptive_backhaul: bool = False,
         model_backhaul: bool = False,
         band_profiles: Any = None,
+        prepare_backhaul: Callable[[], Any] | None = None,
     ) -> None:
         self.store = store
+        backhaul_rf_policy(world)
         self.world = world
         self.layout = layout
         self.plan = plan
@@ -72,6 +74,7 @@ class InteractiveMediumSession:
         self.disconnect_client = disconnect_client
         self.reconnect_client = reconnect_client
         self.band_profiles = band_profiles
+        self.prepare_backhaul = prepare_backhaul
         self._selected_roles = set(world["roles"])
         self._selected_world = world["name"]
         self._lock = threading.RLock()
@@ -190,6 +193,8 @@ class InteractiveMediumSession:
         with self._lock:
             if self._client is not None:
                 raise InteractionError(409, "already_started", "interactive session is already started")
+            if self.backhaul_policy() != "fixed-startup-mesh":
+                self._prepare_backhaul_radios()
             client = self.client_factory(self.socket_path)
             recovery_prepared = False
             try:
@@ -374,6 +379,8 @@ class InteractiveMediumSession:
                 "movable_roles": sorted(set(self._movable_roles) & self._selected_roles),
                 "world_switch_enabled": self.worlds is not None,
                 "backhaul_policy": self.backhaul_policy(),
+                "backhaul_rf": "fixed" if self.backhaul_policy() == "fixed-startup-mesh" else "geometry",
+                "backhaul_authority": "external-rdk" if self.adaptive_backhaul else "native",
                 "backhaul_links": self.backhaul_links(),
                 "selected_world": self._selected_world,
                 "band_steering": self.band_profiles.snapshot() if self.band_profiles else {},
@@ -537,6 +544,17 @@ class InteractiveMediumSession:
                 by_key[(item["source"], item["destination"], item["frequency_mhz"])] = item
         return list(by_key.values())
 
+    def _prepare_backhaul_radios(self):
+        if self.prepare_backhaul is None:
+            return
+        try:
+            readiness = self.prepare_backhaul()
+        except Exception as error:
+            raise InteractionError(503, "backhaul_radios_unavailable",
+                                   f"Cannot apply geometry backhaul: {error}") from error
+        self.store.emit("backhaul.radios.prepared", self._playback_time_ms, readiness,
+                        producer="interaction")
+
     def apply_world(
         self, selection: Any, *, token: str, expected_revision: Any
     ) -> dict[str, Any]:
@@ -551,6 +569,8 @@ class InteractiveMediumSession:
                 raise InteractionError(409, "band_profiles_unavailable", "client band settings are not configured")
             if self._recording is not None:
                 raise InteractionError(409, "recording_active", "stop and download the recording before changing worlds")
+            if backhaul_rf_policy(world) == "geometry" or self.model_backhaul or self.adaptive_backhaul:
+                self._prepare_backhaul_radios()
             self._pause_playback("world_changed")
             previous = (self.world, self.layout, self._roles, self._nodes,
                         self._selected_roles, self._selected_world, self._initial_roles)
@@ -653,6 +673,7 @@ class InteractiveMediumSession:
             runtime["interaction"]["initial_frame_only"] = True
             runtime["interaction"]["backhaul_policy"] = self.backhaul_policy()
             payload = {"revision": self._revision, "world": runtime,
+                       "backhaul_policy": self.backhaul_policy(), "backhaul_rf_verified": True,
                        "apply_timing": apply_timing,
                        "roles": copy.deepcopy(roles), "environment_epoch": self._environment_epoch,
                        "pool_clients": len(self._allowed_roles),
@@ -1104,6 +1125,8 @@ class InteractiveMediumSession:
         recording_layout = copy.deepcopy(self.layout)
         recording_layout["nodes"] = [node for node in recording_layout["nodes"] if node["role"] in self._selected_roles]
         mobility["nodes"] = [node for node in mobility["nodes"] if node["role"] in self._selected_roles]
+        if "backhaul_rf" in self.world or self.backhaul_policy() != "fixed-startup-mesh":
+            mobility["backhaul_rf"] = "fixed" if self.backhaul_policy() == "fixed-startup-mesh" else "geometry"
         world = compile_world(recording_layout, mobility)
         world["rf_nodes"] = {
             role: {key: copy.deepcopy(value) for key, value in self._nodes[role].items()
@@ -1609,7 +1632,7 @@ class InteractiveMediumSession:
             )
         for item in updates:
             protected = self._protected_backhaul.get((item["source"], item["destination"], item["frequency_mhz"]))
-            if protected is not None:
+            if protected is not None and self.backhaul_policy() == "fixed-startup-mesh":
                 item["value"], item["override"] = protected
         return updates, summary
 
@@ -1680,7 +1703,8 @@ class InteractiveMediumSession:
 
     def backhaul_policy(self) -> str:
         return "adaptive-rdk" if self.adaptive_backhaul else (
-            "fixed-startup-mesh" if self.worlds is not None and not self.model_backhaul else "modeled")
+            "fixed-startup-mesh" if self.worlds is not None and not self.model_backhaul
+            and self.world.get("backhaul_rf", "fixed") == "fixed" else "modeled")
 
     def backhaul_links(self) -> list[dict[str, Any]]:
         """Expose verified applied RF, not a fresh controller SNR measurement."""

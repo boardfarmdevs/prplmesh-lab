@@ -66,7 +66,7 @@ class ClientCapacityTests(unittest.TestCase):
 
     def test_default_twenty_to_fifty_and_back_uses_one_captured_pool(self):
         worlds = BoundWorlds(self.world, self.layout, ROOT, roles=self.roles)
-        self.assertEqual(len(worlds.catalog()["worlds"]), 18)
+        self.assertEqual(len(worlds.catalog()["worlds"]), 21)
         bindings = {}
         for ordinal, (role, kind) in enumerate(sorted(self.roles.items()), 1):
             bindings[role] = {"role_type": kind, "radio_tx_mac": f"02:00:00:{ordinal:02x}:00:00"}

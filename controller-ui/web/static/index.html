@@ -27,7 +27,8 @@
     <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
     <meta http-equiv="Pragma" content="no-cache">
     <meta http-equiv="Expires" content="0">
-    <link rel="stylesheet" href="static/style.css?v=topology-fullscreen-1">
+    <link rel="stylesheet" href="static/style.css?v=topology-divider-1">
+    <link rel="stylesheet" href="static/pane-divider.css?v=1">
     <link href="static/vendor/fontawesome/css/all.min.css" rel="stylesheet">
     <link href="static/vendor/animate-4.1.1.min.css" rel="stylesheet">
     <!-- Added Chart.js library -->
@@ -91,7 +92,7 @@
 
         <div class="app-body">
             <!-- Sidebar Navigation -->
-            <aside class="sidebar">
+            <aside class="sidebar" id="topologySidebar">
                 <nav class="sidebar-nav">
                     <div class="nav-section">
                         <h3>Overview</h3>
@@ -186,6 +187,7 @@
                 </div>
             </aside>
 
+            <div id="topologyPanelDivider" class="pane-divider" role="separator" aria-orientation="vertical" aria-label="Resize navigation panel" aria-controls="topologySidebar" tabindex="0" title="Drag to resize panels. Arrow keys adjust; double-click resets."></div>
             <!-- Main Content Area -->
             <main class="main-content">
                 <!-- Dashboard Tab -->
@@ -358,8 +360,8 @@
                 <!-- Network Topology Tab -->
                 <section id="topology" class="tab-content active">
                     <div class="page-header">
-                        <h1><i class="fas fa-sitemap"></i> Network Topology</h1>
-                        <div class="page-actions">
+                        <h1 style="flex: 1; min-width: 0; max-width: 100%; margin-right: 16px;"><i class="fas fa-sitemap"></i><span style="white-space: nowrap;">Network Topology</span><span id="topologyRoomName" style="min-width: 0; font-size: 16px; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">Room: Waiting for room</span></h1>
+                        <div class="page-actions" style="flex-shrink: 0;">
                             <div class="topology-export">
                                 <button class="btn btn-secondary" id="export-topology"
                                         type="button" aria-haspopup="menu" aria-expanded="false">
@@ -382,6 +384,7 @@
                             <button class="btn btn-primary" id="optimize-topology" title="Fit to available space without moving devices or clients">
                                 <i class="fas fa-magic"></i> Optimize Layout
                             </button>
+                            <label class="room-layout-toggle" title="Continuously follow committed positions using the room's default camera orientation. Diagram dragging switches to manual; it never moves radios."><input type="checkbox" id="follow-room-layout" checked> Follow room layout</label>
                             <button class="btn btn-secondary" type="button" id="topologyFullscreen" aria-pressed="false">Full screen</button>
                         </div>
                     </div>
@@ -2029,7 +2032,16 @@
     <script src="static/signal-meter.js?v=signal-meter-1"></script>
     <script src="static/fullscreen-control.js?v=fullscreen-1"></script>
     <script src="static/topology-fullscreen.js?v=fullscreen-1"></script>
-    <script src="static/script.js?v=topology-spacing-0906-1"></script>
+    <script src="static/room-projection.js?v=1"></script>
+    <script src="static/pane-divider.js?v=1"></script>
+    <script>
+        PaneDivider.attach({container: document.querySelector('.app-body'), handle: document.getElementById('topologyPanelDivider'),
+            property: '--sidebar-width', storageKey: 'easymesh.topology-panel-width', initial: 280, minimum: 140, breakpoint: 768});
+    </script>
+    <script src="static/room-topology.js?v=4"></script>
+    <script src="static/room-name.js?v=1"></script>
+    <script src="static/steering-cues.js?v=1"></script>
+    <script src="static/script.js?v=room-follow-divider-0913-1"></script>
     <script src="static/wireless-settings.js"></script>
     <script src="static/map.js"></script>
 </body>

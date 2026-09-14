@@ -867,6 +867,7 @@ class LiveConductor:
                 payload = mesh_health(expected_devices, expected_clients)
                 payload["pool_clients"] = int(health["expected_clients"])
                 payload["expected_online_clients"] = expected_clients
+                payload["expected_mesh_devices"] = expected_devices
                 payload["healthy"] = (
                     payload.get("api_active") == expected_clients
                     and payload.get("topology_nodes") == expected_devices

@@ -26,6 +26,10 @@
 
 const signalMeter = typeof module !== 'undefined' && module.exports
   ? require('./signal-meter.js') : window.EasyMeshSignalMeter;
+const roomTopology = typeof module !== 'undefined' && module.exports
+  ? require('./room-topology.js') : window.RoomTopology;
+const steeringCues = typeof module !== 'undefined' && module.exports
+  ? require('./steering-cues.js') : window.SteeringCues;
 
 class EasyMeshController {
   constructor() {
@@ -89,6 +93,7 @@ class EasyMeshController {
    */
   async init() {
     console.log('🚀 Initializing EasyMesh R6 Pro Controller');
+    this.roomLayout = new roomTopology.Follower(this);
 
     try {
       // Setup event handlers
@@ -2666,7 +2671,7 @@ async handleWebSocketMessage(data) {
     this.showNotification('Separating overlapping groups and fitting the topology…', 'info');
     const paint = simulation.on('tick');
     simulation.stop();
-    this.separateTopologyNodes(nodes);
+    if (!this.roomLayout?.prepare(nodes)) this.tightenTopologyNodes(nodes);
     if (typeof paint === 'function') paint();
     this.layoutTopologyLabels();
 
@@ -2960,7 +2965,7 @@ async handleWebSocketMessage(data) {
   topologySignature(value) {
     return JSON.stringify(value || {}, (key, item) =>
       ['x', 'y', 'vx', 'vy', 'fx', 'fy', 'index', 'fixed',
-        'signal', 'rcpi', 'rssi', 'signalObservedAt'].includes(key)
+        'signal', 'rcpi', 'rssi', 'signalObservedAt', 'steeringActions'].includes(key)
         ? undefined : item
     );
   }
@@ -3115,6 +3120,7 @@ async handleWebSocketMessage(data) {
         associations.set(mac, {
           ownerId: String(node?.id || ''),
           ownerName: String(node?.name || node?.id || ''),
+          bssid: this.normalizeMac(sta?.bssid),
           ssid: String(sta?.ssid || '')
         });
       }
@@ -3146,8 +3152,13 @@ async handleWebSocketMessage(data) {
     const now = Date.now();
     for (const [mac, after] of next) {
       const before = previous.get(mac);
-      if (!before || before.ownerId === after.ownerId) continue;
+      if (!before || before.ownerId === after.ownerId && before.bssid === after.bssid) continue;
+      const origin = renderedPositions.get(mac);
+      const sourcePosition = this.nodePositionCache?.get(before.ownerId);
       this.staMoveEffects.set(mac, {
+        staMAC: mac, fromBSSID: before.bssid, toBSSID: after.bssid,
+        sourceOffsetX: origin && sourcePosition ? origin.x - sourcePosition.x : 0,
+        sourceOffsetY: origin && sourcePosition ? origin.y - sourcePosition.y : 0,
         fromOwnerId: before.ownerId,
         fromOwnerName: before.ownerName,
         toOwnerId: after.ownerId,
@@ -3172,7 +3183,7 @@ async handleWebSocketMessage(data) {
     const effect = this.staMoveEffects.get(this.normalizeMac(sta?.staMAC));
     if (!effect || effect.toOwnerId !== String(nodeId || '')) return null;
     const ageMs = Math.max(0, Date.now() - effect.changedAt);
-    if (ageMs > 6000 || effect.rendered) return null;
+    if (ageMs >= 6000) return null;
     effect.rendered = true;
     return { ...effect, ageMs, remainingMs: Math.max(1, 6000 - ageMs) };
   }
@@ -3323,6 +3334,18 @@ async handleWebSocketMessage(data) {
    * A running controller must always be present, so an empty snapshot after a
    * valid one is a transient provider miss rather than a real topology.
    */
+  topologySteeringActions(response = this.topology) {
+    return [...(response?.steeringActions || []),
+      ...(this.roomLayout?.fresh(false) ? this.roomLayout.snapshot.steering_actions || [] : [])].slice(-200);
+  }
+
+  refreshRoomSteeringCues(response = this.topology) {
+    const actions = this.topologySteeringActions(response);
+    this.topologyView?.group?.selectAll?.('.sta-roam-cue').each(function() {
+      steeringCues.refresh(d3.select(this), actions);
+    });
+  }
+
   applyTopologyRefresh(response) {
     const currentHasNodes = Array.isArray(this.topology?.nodes) && this.topology.nodes.length > 0;
     const responseHasNodes = Array.isArray(response?.nodes) && response.nodes.length > 0;
@@ -3340,6 +3363,7 @@ async handleWebSocketMessage(data) {
       // Refresh even when the wire values are identical: local age advances
       // between polls and can move a rendered link from fresh to stale.
       this.refreshTopologyBackhaulSignalVisuals();
+      this.refreshRoomSteeringCues(response);
       return false;
     }
 
@@ -3548,7 +3572,7 @@ async handleWebSocketMessage(data) {
       node.fx = node.x;
       node.fy = node.y;
     });
-    this.separateTopologyNodes(renderTopology.nodes);
+    if (!this.roomLayout?.prepare(renderTopology.nodes)) this.tightenTopologyNodes(renderTopology.nodes);
 
     // Create simulation
     const simulation = d3.forceSimulation(renderTopology.nodes)
@@ -3765,44 +3789,9 @@ async handleWebSocketMessage(data) {
           }
 
           if (moveEffect) {
-            const pulse = staElement.append('circle')
-              .attr('class', 'sta-steer-pulse')
-              .attr('cx', to.x).attr('cy', to.y)
-              .attr('r', data.iconSize / 2 + 7)
-              .attr('fill', 'none')
-              .attr('stroke', '#7c3aed')
-              .attr('stroke-width', 4)
-              .style('pointer-events', 'none');
-            pulse.append('animate')
-              .attr('attributeName', 'r')
-              .attr('values', `${data.iconSize / 2 + 7};${data.iconSize / 2 + 20}`)
-              .attr('begin', '0s').attr('dur', '0.9s').attr('repeatCount', '4');
-            pulse.append('animate')
-              .attr('attributeName', 'opacity')
-              .attr('values', '1;0').attr('begin', '0s')
-              .attr('dur', '0.9s').attr('repeatCount', '4');
-
-            const sourceNode = renderTopology.nodes.find(nodeItem =>
-              String(nodeItem.id) === moveEffect.fromOwnerId);
-            if (sourceNode) {
-              const trail = steeringEffectGroup.append('path')
-                .datum({ sourceNode, targetNode: d, staData: data })
-                .attr('class', 'sta-steering-trail')
-                .attr('fill', 'none')
-                .attr('stroke', '#7c3aed')
-                .attr('stroke-width', 4)
-                .attr('stroke-dasharray', '9 7')
-                .attr('marker-end', 'url(#sta-steering-arrowhead)')
-                .attr('opacity', Math.max(0.15, 1 - moveEffect.ageMs / 6000))
-                .style('pointer-events', 'none');
-              trail.append('animate')
-                .attr('attributeName', 'opacity')
-                .attr('from', Math.max(0.15, 1 - moveEffect.ageMs / 6000))
-                .attr('to', 0)
-                .attr('dur', `${moveEffect.remainingMs}ms`)
-                .attr('fill', 'freeze');
-
-            }
+            const sourceNode = renderTopology.nodes.find(nodeItem => String(nodeItem.id) === moveEffect.fromOwnerId);
+            steeringCues.draw(steeringEffectGroup, moveEffect, sourceNode, d, data,
+              moveEffect.clientName || staIdentity, self.topologySteeringActions(), self.zoomTransformCache?.k || 1);
           }
 
           staElement.append('image')
@@ -4025,16 +4014,9 @@ async handleWebSocketMessage(data) {
       staGroup.selectAll('.sta-node')
        .attr('transform', d => `translate(${d.nodeRef.fx ?? d.nodeRef.x}, ${d.nodeRef.fy ?? d.nodeRef.y})`);
 
-      steeringEffectGroup.selectAll('.sta-steering-trail')
-        .attr('d', effect => {
-          const sourceX = effect.sourceNode.fx ?? effect.sourceNode.x;
-          const sourceY = effect.sourceNode.fy ?? effect.sourceNode.y;
-          const targetX = (effect.targetNode.fx ?? effect.targetNode.x) + effect.staData.to.x;
-          const targetY = (effect.targetNode.fy ?? effect.targetNode.y) + effect.staData.to.y;
-          const midX = (sourceX + targetX) / 2;
-          const midY = (sourceY + targetY) / 2 - 35;
-          return `M${sourceX},${sourceY} Q${midX},${midY} ${targetX},${targetY}`;
-        });
+      steeringEffectGroup.selectAll('.sta-roam-cue').each(function() {
+        steeringCues.position(d3.select(this));
+      });
 
       steeringEffectGroup.selectAll('.sta-steering-intent-path')
         .attr('d', effect => {
@@ -4053,6 +4035,7 @@ async handleWebSocketMessage(data) {
     this.fitTopologyToView();
 
     function dragstarted(event, d) {
+      if (self.roomLayout?.enabled) self.roomLayout.setEnabled(false);
       self.beginTopologyInteraction();
     }
 
@@ -4162,6 +4145,37 @@ async handleWebSocketMessage(data) {
       extent,
       Math.hypot(item.offset.x, item.offset.y) + item.radius
     ), 80);
+  }
+
+  topologyNodeFootprint(node) {
+    const geometry = this.topologyHaulGeometry(node?.haulTypes, node?.STAList);
+    const shapes = [{x: 0, y: 0, radius: 80}, ...geometry.map(item => ({
+      x: item.offset.x, y: item.offset.y, radius: item.radius + 28
+    }))];
+    for (const station of node?.STAList || []) {
+      const saved = this.staPositionCache.get(this.normalizeMac(station?.staMAC));
+      if (!saved || saved.ownerId !== String(node.id) || !Number.isFinite(saved.x) || !Number.isFinite(saved.y)) continue;
+      const cohort = geometry.find(item => item.ssid === String(station.ssid || ''));
+      if (!cohort || Math.hypot(saved.x - cohort.offset.x, saved.y - cohort.offset.y) + 64 > cohort.radius + 28) {
+        shapes.push({x: saved.x, y: saved.y, radius: 64});
+      }
+    }
+    return shapes;
+  }
+
+  tightenTopologyNodes(nodes) {
+    if (!nodes.length) return;
+    this.nodePositionCache = this.nodePositionCache || new Map();
+    const coincident = nodes.some((node, index) => nodes.slice(index + 1).some(peer => Math.hypot(node.x - peer.x, node.y - peer.y) < 0.1));
+    if (coincident) this.separateTopologyNodes(nodes);
+    const anchor = nodes.find(node => /^agent-1$/i.test(node.name || '')) || nodes[0];
+    const packed = roomTopology.compact(nodes, node => this.topologyNodeFootprint(node), anchor.id);
+    for (const node of nodes) {
+      const point = packed.get(String(node.id));
+      node.x = node.fx = point.x;
+      node.y = node.fy = point.y;
+      this.nodePositionCache.set(String(node.id), point);
+    }
   }
 
   topologySSIDLabel(geometry) {
@@ -4444,6 +4458,7 @@ async handleWebSocketMessage(data) {
     if (navLink) navLink.classList.add('active');
 
     this.currentTab = tabName;
+    this.roomLayout?.refresh();
 
     // Load tab-specific data
     this.loadTabData(tabName);
@@ -5010,6 +5025,7 @@ async handleWebSocketMessage(data) {
   }
 
   cleanup() {
+    this.roomLayout?.close();
     // Clear intervals
     Object.values(this.refreshIntervals).forEach(interval => clearInterval(interval));
 

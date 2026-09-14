@@ -6,7 +6,7 @@ const path = require('path');
 const {chromium} = require('playwright-core');
 const source = fs.readFileSync(path.resolve(__dirname, '../wmediumd/configurator/worlds/viewer/index.html'), 'utf8');
 const styles = source.match(/<style>[\s\S]*?<\/style>/)[0];
-const sidebar = source.match(/<aside>[\s\S]*?<\/aside>/)[0];
+const sidebar = source.match(/<aside\b[^>]*>[\s\S]*?<\/aside>/)[0];
 const functions = ['esc', 'phaseClass', 'optimizerBadgeClasses', 'optimizerReason', 'renderOptimizerStatus',
   'renderLivePanels', 'renderRecentEvents'].map(name => source.match(new RegExp('  function ' + name + '\\([\\s\\S]*?\\n  \\}'))[0]).join('\n');
 const keyboard = source.match(/  document\.addEventListener\('keydown', \(event\) =>[^\n]+/)[0];
@@ -22,7 +22,7 @@ async function main() {
     for (const viewport of [{width: 1440, height: 1080}, {width: 600, height: 900}, {width: 1440, height: 650}]) {
       await page.setViewportSize(viewport);
       await page.setContent('<!doctype html><html><head>' + styles + '</head><body class="live-presentation">' +
-        sidebar + '<main></main><dialog id="viewerManual"></dialog></body></html>');
+        sidebar + '<div id="roomPanelDivider"></div><main></main><dialog id="viewerManual"></dialog></body></html>');
       await page.addScriptTag({content: `
         var optimizerState = null, networkState = null, healthState = {healthy: true}, profilingState = null;
         var liveMode = true, replayMode = false, liveClock = {serverMs: Date.now(), receivedMs: performance.now()};

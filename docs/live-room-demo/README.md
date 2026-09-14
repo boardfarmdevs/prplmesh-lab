@@ -30,6 +30,12 @@ Disabling an extender's **fronthaul** does not disable its backhaul.
 
 ## Read the views correctly
 
+World controls come first; Browse rooms explains RF, policy and evidence.
+Both views have room titles, resizable panels and fullscreen. Topology follows
+the default room-camera orientation, not manual orbit. **CONVERGED** requires
+fresh policy, roster and health evidence. prpl health counts five physical
+devices; the separate Controller icon is not another device.
+
 | Indication | Meaning |
 | --- | --- |
 | Room position and strongest simulated link | World/RF prediction, not native association |
@@ -41,10 +47,8 @@ Disabling an extender's **fronthaul** does not disable its backhaul.
 | Fronthaul disabled | Client-facing AP unavailable; mesh uplink may still work |
 | Network topology | Controller-reported ownership; verify independently for tests |
 
-The same signal scale is used in both views. A client can have the best
-available AP without green/maximal SNR. Walls, distance, band eligibility,
-SSID, policy margins and station behavior still matter. RDK and prpl radios
-have different inventory mappings; compare identities, not just drawing labels.
+Both views share the signal scale. The best eligible AP need not have maximum
+SNR. Compare native identities, not discovery-order labels.
 
 ## Optimizer activity
 
@@ -61,21 +65,20 @@ candidate set cannot be obtained. The room remains interactive. Preserve the
 error/age/retry information rather than treating grey as zero, borrowing stale
 candidates or forcing clients onto the dashed link.
 
-A star can be correct in profiling: startup backhaul is protected. Moving
-extenders does not by itself request native backhaul optimization. The
+A star can be correct in ordinary rooms: startup backhaul is protected. The
+three `backhaul-*` rooms explicitly apply geometry to mesh RF and leave parent
+selection to native prplMesh. Outages are visible; no RDK parent actuator is
+ported. Returning to an ordinary room restores the protected baseline. The
 [coordination reference](../../reference/rooms/architecture.md) separates demonstration
 assistance, client profiling and explicitly modeled-backhaul experiments.
 
 ## Safe use and troubleshooting
 
-Use one operator lease and one RF writer. Do not run a second scenario, manual
-RF-assisted steer or conductor against the same medium. A paused room may
-still collect/steer; stop its service before a standalone native experiment.
+Use one lease and RF writer. Paused rooms still collect/steer; stop the service
+before running standalone native experiments.
 
-If a load or recovery fails, keep the fault and journal. Do not delete the
-ownership record, invent topology entries or restart every native service.
-Check service health, current world/epoch, actual station link and candidate
-freshness in that order. Remote access is covered in
+After failures, retain the fault/journal and check health, world/epoch, native
+links and candidate freshness before restarting. Remote access is covered in
 [transport and access](../../reference/rooms/access.md).
 
 For a correctness claim, use [room acceptance](../../reference/testing/room-acceptance.md).

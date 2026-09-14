@@ -80,9 +80,19 @@ type Snapshot struct {
 }
 
 type Topology struct {
-	Nodes         []TopologyNode `json:"nodes"`
-	Edges         []TopologyEdge `json:"edges"`
-	SteeringEvent *SteeringEvent `json:"steeringEvent,omitempty"`
+	Nodes           []TopologyNode   `json:"nodes"`
+	Edges           []TopologyEdge   `json:"edges"`
+	SteeringEvent   *SteeringEvent   `json:"steeringEvent,omitempty"`
+	SteeringActions []SteeringAction `json:"steeringActions,omitempty"`
+}
+
+type SteeringAction struct {
+	Station     string    `json:"sta_mac"`
+	Source      string    `json:"source_bssid"`
+	Target      string    `json:"target_bssid"`
+	Method      string    `json:"method"`
+	RequestedAt time.Time `json:"requested_at"`
+	Evidence    string    `json:"evidence"`
 }
 
 // SteeringEvent is an operator intent hint for the topology renderer. The

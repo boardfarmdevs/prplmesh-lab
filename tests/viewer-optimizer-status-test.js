@@ -89,6 +89,12 @@ context.optimizerState.evaluated_at = '2026-09-07T02:59:55Z';
 context.healthState.healthy = false;
 context.renderOptimizerStatus();
 assert.match(elements['#optimizerStatus'].innerHTML, /Waiting for lab health recovery/);
+context.healthState.topology_nodes = 4;
+context.healthState.expected_topology_nodes = 6;
+context.renderOptimizerStatus();
+assert.match(elements['#optimizerStatus'].innerHTML, /Only 4 \/ 6 mesh nodes/);
+assert.match(elements['#optimizerStatus'].innerHTML, /Missing extenders may have lost backhaul/);
+assert.doesNotMatch(elements['#optimizerStatus'].innerHTML, /Converged:/);
 context.healthState.healthy = true;
 for (const field of ['roster_complete', 'measurement_complete', 'converged']) {
   context.optimizerState.fleet = {converged: true, [field]: false};

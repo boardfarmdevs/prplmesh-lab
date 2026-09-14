@@ -385,7 +385,7 @@ body {
 
 /* Sidebar Styles */
 .sidebar {
-    width: 280px;
+    width: var(--sidebar-width, 280px);
     background: var(--bg-card);
     border-right: 1px solid var(--border-light);
     height: 100%;
@@ -492,6 +492,7 @@ body {
 /* Main Content Area */
 .main-content {
     flex: 1;
+    min-width: 0;
     height: auto;
     min-height: 0;
     overflow-y: auto;
@@ -955,6 +956,12 @@ body {
 
 #topologyFullscreenStatus:empty { display: none; }
 #topologyFullscreenStatus { flex-shrink: 0; padding: 4px; color: #b91c1c; }
+
+.main-content:has(> #topology.active) { padding: 6px; }
+#topology > .page-header { margin-bottom: 6px; padding-bottom: 6px; gap: 8px; flex-wrap: wrap; }
+#topology > .page-header h1 { flex-basis: 300px !important; }
+#topology .page-actions { flex-wrap: wrap; max-width: 100%; }
+#topology .room-layout-toggle { white-space: nowrap; }
 
 .topology-container {
     display: flex;
@@ -2190,6 +2197,7 @@ body {
 }
 
 @media (max-width: 768px) {
+    #topologyPanelDivider { display: none; }
     .radio-tabs {
         flex-direction: column;
     }

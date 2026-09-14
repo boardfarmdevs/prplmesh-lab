@@ -296,6 +296,8 @@ class RoomDemoServer:
                 elif parsed.path == "/api/demo/current":
                     current = store.current()
                     self._json(current, revision=current["world_revision"])
+                elif parsed.path == "/api/demo/mesh-layout":
+                    self._json({**store.mesh_layout(), "live": viewer_mode != "replay"})
                 elif parsed.path == "/api/demo/rf-load" and interactions is not None and viewer_mode != "replay":
                     self._json(load_status())
                 elif parsed.path == "/api/demo/world":

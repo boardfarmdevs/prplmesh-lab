@@ -1,5 +1,34 @@
 # prplMesh lab acceptance tests
 
+Room/topology UI regression checks (no live RF changes):
+
+```sh
+node tests/webui-room-follow-test.js controller-ui/web/static/script.js
+node tests/viewer-room-guide-test.js
+node tests/viewer-room-convergence-test.js
+node tests/webui-room-follow-browser-test.js controller-ui/web/static
+node tests/viewer-room-guide-browser-test.js
+node tests/viewer-room-convergence-browser-test.js
+node tests/pane-divider-browser-test.js
+PYTHONPATH=demo:wmediumd/configurator:optimizer:demo/tests python3 -m unittest test_room_layout test_server test_world_switch
+(cd controller-ui && go test -race ./...)
+```
+
+Browser tests require Playwright Core and Chromium; set `NODE_PATH` and
+`CHROMIUM_PATH` for existing installations. They check room titles, orientation,
+compact packing, accessible dividers, stale-data handling, no UI-induced RF
+writes, native-only BTM evidence, finite roam highlights and five-device prpl
+convergence semantics. Golden geometry coverage is not live-room qualification.
+
+September 14 parity check: the deployed prpl room reports 20/20 converged clients
+and 5/5 native mesh devices; its topology has the six expected logical icons.
+All four extender bearings match the actual default room camera. Pane resizing
+retains the SVG and follow mode; fullscreen preserves the title and readiness
+card. The read-only live check records no browser errors or lab writes, and the
+105-container roster is unchanged. Evidence on rev150:
+`/home/rev/work/release-0913/evidence/prpl-ui-parity-20260914/`.
+The UI update is newer than the released 0913 thin tar.
+
 Documentation-only check (no lab access): `python3 tests/test_documentation.py`.
 This checks local files/anchors, navigation, guide sizes and packaged manual inputs.
 

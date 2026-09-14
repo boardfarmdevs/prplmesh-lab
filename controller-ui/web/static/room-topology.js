@@ -1,0 +1,266 @@
+(function (root, factory) {
+  'use strict';
+  const api = factory(typeof module === 'object' && module.exports ? require('./room-projection.js') : root.RoomProjection);
+  if (typeof module === 'object' && module.exports) module.exports = api;
+  else root.RoomTopology = api;
+})(typeof globalThis !== 'undefined' ? globalThis : this, function (roomProjection) {
+  'use strict';
+  const identity = value => String(value || '').toLowerCase();
+  const validPosition = value => Array.isArray(value) && value.length === 2 &&
+    value.every(coordinate => Number.isFinite(coordinate) && Math.abs(coordinate) <= 100000);
+
+  function compact(nodes, footprintFor, anchorId) {
+    const anchor = nodes.find(node => String(node.id) === String(anchorId)) || nodes[0];
+    const result = new Map();
+    if (!anchor) return result;
+    const footprints = new Map(nodes.map(node => [String(node.id), footprintFor(node)]));
+    let scale = 0;
+    for (const [index, left] of nodes.entries()) {
+      for (const right of nodes.slice(index + 1)) {
+        const deltaX = right.x - left.x, deltaY = right.y - left.y;
+        const squaredDistance = deltaX * deltaX + deltaY * deltaY;
+        if (squaredDistance < 0.01) { scale = 1; continue; }
+        for (const leftShape of footprints.get(String(left.id))) {
+          for (const rightShape of footprints.get(String(right.id))) {
+            const offsetX = rightShape.x - leftShape.x, offsetY = rightShape.y - leftShape.y;
+            const minimum = leftShape.radius + rightShape.radius + 12;
+            const dot = deltaX * offsetX + deltaY * offsetY;
+            const discriminant = dot * dot - squaredDistance * (offsetX * offsetX + offsetY * offsetY - minimum * minimum);
+            if (discriminant < 0) continue;
+            scale = Math.max(scale, (-dot + Math.sqrt(discriminant)) / squaredDistance);
+          }
+        }
+      }
+    }
+    scale = Math.max(0.001, scale);
+    if (Math.abs(scale - 1) < 1e-9) scale = 1;
+    for (const node of nodes) result.set(String(node.id), scale === 1 ? {x: node.x, y: node.y} : {
+      x: anchor.x + (node.x - anchor.x) * scale,
+      y: anchor.y + (node.y - anchor.y) * scale
+    });
+    return result;
+  }
+
+  function positions(nodes, snapshot, extentFor, projection, footprintFor) {
+    const byId = new Map();
+    for (const entry of snapshot.nodes || []) {
+      if (!entry.device_id || !validPosition(entry.position)) continue;
+      const key = identity(entry.device_id);
+      if (byId.has(key)) return new Map();
+      byId.set(key, entry);
+    }
+    const controller = nodes.find(node => /^controller$/i.test(node.name || ''));
+    const mesh = nodes.filter(node => node !== controller && byId.has(identity(node.id)))
+      .map(node => ({id: String(node.id), source: byId.get(identity(node.id)),
+        radius: Math.max(350, extentFor(node)), node})).sort((left, right) => left.id.localeCompare(right.id));
+    if (!mesh.length) return new Map();
+    const gateway = mesh.find(node => node.source.role === 'gateway') || mesh[0];
+    const distances = mesh.flatMap((node, index) => mesh.slice(index + 1).map(peer => {
+      const delta = roomProjection.floor(node.source.position, peer.source.position);
+      return Math.hypot(delta.x, delta.y);
+    }))
+      .filter(distance => distance > 0.01).sort((left, right) => left - right);
+    const typical = distances[Math.floor(distances.length / 2)] || 4;
+    const scale = (2 * Math.max(...mesh.map(node => node.radius)) + 48) /
+      Math.max(distances[0] || 4, typical / 3, 0.5);
+    const frame = projection || {scale, origin: gateway.source.position.slice()};
+    for (const node of mesh) {
+      const point = roomProjection.floor(node.source.position, frame.origin);
+      node.x = point.x * frame.scale;
+      node.y = point.y * frame.scale;
+    }
+    for (let pass = 0; pass < 80; pass += 1) {
+      let moved = false;
+      for (const [index, left] of mesh.entries()) {
+        for (const right of mesh.slice(index + 1)) {
+          const deltaX = right.x - left.x, deltaY = right.y - left.y;
+          const distance = Math.hypot(deltaX, deltaY);
+          const minimum = left.radius + right.radius + 24;
+          if (distance >= minimum - 0.01) continue;
+          const directionX = distance > 0.01 ? deltaX / distance : 1;
+          const directionY = distance > 0.01 ? deltaY / distance : 0;
+          const correction = minimum - distance + 0.02;
+          const share = left === gateway ? 0 : right === gateway ? 1 : 0.5;
+          left.x -= directionX * correction * share;
+          left.y -= directionY * correction * share;
+          right.x += directionX * correction * (1 - share);
+          right.y += directionY * correction * (1 - share);
+          moved = true;
+        }
+      }
+      if (!moved) break;
+    }
+    if (footprintFor) {
+      const packed = compact(mesh, entry => footprintFor(entry.node), gateway.id);
+      for (const node of mesh) Object.assign(node, packed.get(node.id));
+    }
+    const result = new Map(mesh.map(node => [node.id, {x: node.x, y: node.y}]));
+    result.projection = frame;
+    if (controller && gateway.source.role === 'gateway') {
+      const radius = Math.max(80, extentFor(controller));
+      let placement;
+      for (let ring = 0; ring < 8 && !placement; ring += 1) {
+        const distance = (footprintFor ? 80 : gateway.radius) + radius + 24 + ring * radius;
+        for (let step = 0; step < 16; step += 1) {
+          const angle = -Math.PI / 2 + step * Math.PI / 8;
+          const candidate = {x: gateway.x + Math.cos(angle) * distance, y: gateway.y + Math.sin(angle) * distance};
+          const clear = mesh.every(node => footprintFor
+            ? footprintFor(node.node).every(shape => Math.hypot(node.x + shape.x - candidate.x, node.y + shape.y - candidate.y) >= shape.radius + radius + 12)
+            : Math.hypot(node.x - candidate.x, node.y - candidate.y) >= node.radius + radius + 24);
+          if (clear) {
+            placement = candidate;
+            break;
+          }
+        }
+      }
+      if (placement) result.set(String(controller.id), placement);
+    }
+    let outsideX = Math.max(...mesh.map(node => node.x + node.radius)) + 450;
+    for (const node of nodes) {
+      if (result.has(String(node.id))) continue;
+      const radius = Math.max(350, extentFor(node));
+      result.set(String(node.id), {x: outsideX + radius, y: 0});
+      outsideX += 2 * radius + 32;
+    }
+    return result;
+  }
+
+  class Follower {
+    constructor(controller) {
+      this.controller = controller;
+      this.enabled = true;
+      this.snapshot = null;
+      this.received = 0;
+      this.available = false;
+      this.nextRequest = 0;
+      this.applied = '';
+      try { this.enabled = localStorage.getItem('easymesh.follow-room') !== 'false'; } catch (_) {}
+      this.toggle = document.getElementById('follow-room-layout');
+      this.name = document.getElementById('topologyRoomName');
+      if (this.toggle) {
+        this.toggle.checked = this.enabled;
+        this.toggle.addEventListener('change', () => this.setEnabled(this.toggle.checked));
+      }
+      this.timer = setInterval(() => this.refresh(), 250);
+      this.visibility = () => {
+        if (document.hidden) this.request?.abort();
+        else { this.nextRequest = 0; this.refresh(); }
+      };
+      document.addEventListener('visibilitychange', this.visibility);
+      this.message(this.enabled ? 'Waiting for room coordinates' : 'Manual layout');
+    }
+
+    message(text) {
+      if (this.toggle && this.toggle.title !== text) this.toggle.title = text;
+    }
+
+    roomName(current) {
+      if (!this.name) return;
+      const text = 'Room: ' + RoomName.format(this.snapshot?.world) +
+        (!current && this.snapshot ? ' (last observed)' : '');
+      if (this.name.textContent !== text) this.name.textContent = text;
+      this.name.title = this.snapshot?.world || '';
+    }
+
+    setEnabled(enabled) {
+      this.enabled = !!enabled;
+      if (this.toggle) this.toggle.checked = this.enabled;
+      try { localStorage.setItem('easymesh.follow-room', String(this.enabled)); } catch (_) {}
+      this.request?.abort();
+      this.applied = '';
+      this.nextRequest = this.enabled ? 0 : performance.now() + 1750;
+      this.message(this.enabled ? 'Waiting for room coordinates' : 'Manual layout · positions retained');
+      if (this.enabled) this.refresh();
+    }
+
+    fresh(requireFollowing = true) {
+      if (requireFollowing && !this.enabled || !this.available || !this.snapshot) return false;
+      const elapsed = performance.now() - this.received;
+      const age = Date.parse(this.snapshot.observed_at) - Date.parse(this.snapshot.network_observed_at);
+      return elapsed < (this.enabled ? 2000 : 3500) && Number.isFinite(age) && age >= 0 && age + elapsed < 20000;
+    }
+
+    async refresh() {
+      if (document.hidden || this.controller.currentTab !== 'topology') return;
+      if (!this.fresh(false)) { this.message('Room unavailable · positions retained'); this.roomName(false); }
+      if (this.request || performance.now() < this.nextRequest) return;
+      const request = new AbortController();
+      this.request = request;
+      const deadline = setTimeout(() => request.abort(), 1500);
+      try {
+        const response = await fetch(this.controller.apiBase + '/room-layout', {signal: request.signal, cache: 'no-store'});
+        if (!response.ok) throw new Error('Room unavailable');
+        const snapshot = await response.json();
+        if (request.signal.aborted) return;
+        if (snapshot.schema !== 'easymesh.room-layout.v1' || snapshot.live !== true ||
+            snapshot.state !== 'running' || !Array.isArray(snapshot.nodes) || !snapshot.nodes.length ||
+            snapshot.nodes.length > 32 || typeof snapshot.run_id !== 'string' || !snapshot.run_id ||
+            snapshot.nodes.some(entry => typeof entry.device_id !== 'string' || !entry.device_id ||
+              typeof entry.role !== 'string' || !validPosition(entry.position)) ||
+            new Set(snapshot.nodes.map(entry => identity(entry.device_id))).size !== snapshot.nodes.length ||
+            !Number.isSafeInteger(snapshot.sequence) || snapshot.sequence < 0 ||
+            !Number.isSafeInteger(snapshot.world_epoch) || snapshot.world_epoch < 0) throw new Error('Room not live');
+        if (this.snapshot?.run_id === snapshot.run_id && (snapshot.world_epoch < this.snapshot.world_epoch ||
+            snapshot.sequence < this.snapshot.sequence)) throw new Error('Old room snapshot');
+        this.snapshot = snapshot;
+        this.received = performance.now();
+        this.available = true;
+        if (!this.fresh(false)) throw new Error('Stale room mapping');
+        this.apply();
+        this.roomName(true);
+        this.controller.refreshRoomSteeringCues?.();
+        this.message(this.enabled ? 'Following room positions · default room camera orientation' : 'Manual layout · positions retained');
+        if (!this.enabled) this.nextRequest = performance.now() + 1750;
+      } catch (error) {
+        this.available = false;
+        this.nextRequest = performance.now() + 1750;
+        this.message('Room unavailable · positions retained');
+        this.roomName(false);
+      } finally {
+        clearTimeout(deadline);
+        if (this.request === request) this.request = null;
+      }
+    }
+
+    prepare(nodes) {
+      if (!this.fresh()) return false;
+      const world = JSON.stringify([this.snapshot.run_id, this.snapshot.world_epoch]);
+      if (world !== this.projectionWorld) { this.projection = null; this.projectionWorld = world; }
+      const layout = positions(nodes, this.snapshot, node => this.controller.topologyNodeExtent(node), this.projection,
+        node => this.controller.topologyNodeFootprint(node));
+      if (!layout.size) return false;
+      this.projection = layout.projection;
+      for (const node of nodes) {
+        const position = layout.get(String(node.id));
+        if (!position) continue;
+        node.x = node.fx = position.x;
+        node.y = node.fy = position.y;
+        node.vx = node.vy = 0;
+        this.controller.nodePositionCache.set(String(node.id), position);
+      }
+      return true;
+    }
+
+    apply() {
+      const controller = this.controller;
+      const nodes = controller.topologySimulation?.nodes();
+      if (!this.fresh() || !nodes?.length || controller.topologyInteractionDepth > 0 || controller.topologyLayoutInProgress) return;
+      const signature = JSON.stringify([this.snapshot.run_id, this.snapshot.world_epoch,
+        this.snapshot.nodes, nodes.map(node => [node.id, controller.topologyNodeFootprint(node)])]);
+      if (this.applied === signature) return;
+      if (!this.prepare(nodes)) return;
+      this.applied = signature;
+      controller.topologySimulation.stop();
+      controller.topologySimulation.on('tick')?.();
+      controller.layoutTopologyLabels();
+      controller.fitTopologyToView();
+    }
+
+    close() {
+      clearInterval(this.timer);
+      this.request?.abort();
+      document.removeEventListener('visibilitychange', this.visibility);
+    }
+  }
+  return {positions, compact, Follower};
+});

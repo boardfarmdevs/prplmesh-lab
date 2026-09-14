@@ -147,6 +147,7 @@ class BoundWorlds:
             try:
                 world, _ = self.select(name)
                 entries.append({"id": name, "name": world["name"],
+                                "backhaul_rf": world.get("backhaul_rf", "fixed"),
                                 "clients": sum(kind == "station" for kind in world["roles"].values())})
             except InteractionError:
                 continue

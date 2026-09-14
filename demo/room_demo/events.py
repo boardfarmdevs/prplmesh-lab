@@ -50,6 +50,8 @@ class EventStore:
             raise ValueError("history bounds must be positive")
         self._journal = BoundedJournal(event_path, **(journal_options or {})) if persist and asynchronous else None
         self._condition = threading.Condition()
+        self._steering_requests: dict[str, dict[str, Any]] = {}
+        self._steering_actions: list[dict[str, Any]] = []
         self._started_monotonic = time.monotonic()
         first = world.get("generations", [{}])[0]
         base_positions = first.get("positions", {})
@@ -137,6 +139,8 @@ class EventStore:
                 self._state["environment_epoch"], int(payload["environment_epoch"])
             )
         if kind == "room.world.committed":
+            self._steering_requests.clear()
+            self._steering_actions.clear()
             self._state["world_epoch"] += 1
             self.world = copy.deepcopy(payload["world"])
             self._state.update({"scenario": self.world["name"],
@@ -220,6 +224,28 @@ class EventStore:
             })
         elif kind in {"optimizer.evaluation", "optimizer.measurement.unavailable"}:
             self._state["optimizer"] = copy.deepcopy(payload)
+        elif kind == "optimizer.action":
+            decision = payload.get("decision") or {}
+            action_id = payload.get("action_id")
+            if not action_id or payload.get("world_epoch") != self._state["world_epoch"]:
+                return
+            if payload.get("phase") == "requested":
+                if len(self._steering_requests) >= 100:
+                    self._steering_requests.pop(next(iter(self._steering_requests)))
+                self._steering_requests[action_id] = {
+                    "sta_mac": decision.get("sta_mac"), "source_bssid": decision.get("source_bssid"),
+                    "target_bssid": decision.get("target_bssid"), "requested_at": event["recorded_at"],
+                    "method": "btm-request", "evidence": "native-acceptance",
+                }
+            elif payload.get("phase") == "submitted":
+                action = self._steering_requests.pop(action_id, None)
+                if (action and (payload.get("result") or {}).get("success") is True
+                        and decision.get("action") == "steer"
+                        and all(action[key] and action[key] == decision.get(key)
+                                for key in ("sta_mac", "source_bssid", "target_bssid"))
+                        and action["source_bssid"] != action["target_bssid"]):
+                    self._steering_actions.append(action)
+                    self._steering_actions = self._steering_actions[-100:]
         elif kind == "optimizer.verification" and payload.get("policy_state"):
             optimizer = self._state["optimizer"]
             optimizer["last_verification"] = copy.deepcopy(payload)
@@ -390,6 +416,29 @@ class EventStore:
     def current(self) -> dict[str, Any]:
         with self._condition:
             return copy.deepcopy(self._state)
+
+    def mesh_layout(self) -> dict[str, Any]:
+        with self._condition:
+            state = self._state
+            nodes = []
+            for device in state["network"].get("mesh", {}).get("nodes", []):
+                role = device.get("role")
+                position = state["roles"].get(role, {})
+                if position.get("kind") != "fronthaul_ap":
+                    continue
+                nodes.append({"device_id": device.get("device_id"), "role": role,
+                              "position": copy.deepcopy(position.get("authoritative_position"))})
+            return {"schema": "easymesh.room-layout.v1", "run_id": self.run_id,
+                    "world_epoch": state["world_epoch"], "sequence": state["sequence"],
+                    "world": state["scenario"], "state": state["run_state"],
+                    "observed_at": dt.datetime.now(dt.timezone.utc).isoformat(),
+                    "network_observed_at": state["network"].get("observed_at"),
+                    "nodes": nodes, "steering_actions": self._recent_steering_actions()}
+
+    def _recent_steering_actions(self) -> list[dict[str, Any]]:
+        now = dt.datetime.now(dt.timezone.utc)
+        return [dict(action) for action in self._steering_actions
+                if 0 <= (now - dt.datetime.fromisoformat(action["requested_at"])).total_seconds() < 30]
 
     def environment_epoch(self) -> int:
         with self._condition:
