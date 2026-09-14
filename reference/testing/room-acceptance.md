@@ -11,10 +11,10 @@ or intrinsic stack-speed ranking. A targeted `--world` run is not full coverage.
 1. Reserve the lab. Save initial room/service configuration, native/container/
    medium identities and source revisions. No other operator lease or RF writer
    may be active. Do not alter native policy, metrics intervals or VM resources.
-2. Copy the **deployed guest's** `gen/wmediumd/configurator/worlds/golden/*.world.json`
+2. Copy the **deployed guest's** `wmediumd/configurator/worlds/golden/*.world.json`
    to the observer evidence directory. Match hashes to the loaded world.
-3. Copy `gen/tests/room-feature-guest-audit.py` and
-   `gen/tests/room-feature-rf-audit.py` into the guest's `/tmp/`, keeping names.
+3. Copy `tests/room-feature-guest-audit.py` and
+   `tests/room-feature-rf-audit.py` into the guest's `/tmp/`, keeping names.
 4. Use an installed Playwright/Chromium and preferably a separate observer.
    If colocated, restrict only owned browser GPU threads with `--observer-cpus`,
    using valid CPU IDs. The harness owns an SSH host sampler, requires two
@@ -82,18 +82,18 @@ qualified verdict. Older reports retain their original strongest-AP criterion.
 From this repository on an observer able to SSH to the physical host:
 
 ```sh
-node gen/tests/test-room-feature-acceptance.js
-node --check gen/tests/room-feature-acceptance.js
+node tests/test-room-feature-acceptance.js
+node --check tests/room-feature-acceptance.js
 export PLAYWRIGHT_MODULE=/absolute/path/to/node_modules/playwright-core
 export CHROMIUM_PATH=/absolute/path/to/chromium/chrome
-node gen/tests/room-feature-acceptance.js --yes-act --flavor rdk \
-  --host rev140 --vm rdkeasymesh-20-0908 \
-  --room-url http://192.168.2.140:48891/ \
-  --topology-url http://192.168.2.140:48889/ \
+node tests/room-feature-acceptance.js --yes-act --flavor prpl \
+  --host rev150 --vm prplmesh-0913 \
+  --room-url http://192.168.2.150:18891/ \
+  --topology-url http://192.168.2.150:8091/ \
   --worlds /absolute/path/to/deployed-goldens \
   --output /absolute/path/to/new-results --native-audits 1 \
   --initial-timeout 60 --checkpoint-timeout 45 --final-timeout 90
-node gen/tests/room-feature-report.js /absolute/path/to/new-results \
+node tests/room-feature-report.js /absolute/path/to/new-results \
   /absolute/path/to/deployed-goldens > audited-summary.json
 ```
 
@@ -116,7 +116,7 @@ Always remove the named temporary service override, daemon-reload, restore the
 original room and verify the default roster, paused time zero, no held lease,
 no fault and the original action cap. Stop only owned browsers/host samplers.
 For a separate opt-in crash-recovery test, use
-`gen/tests/room-recovery-smoke.py --help`; it deliberately kills only the room
+`tests/room-recovery-smoke.py --help`; it deliberately kills only the room
 process and must be scheduled, not silently included in a normal room pass.
 
 ## Opt-in load-policy qualification
@@ -152,11 +152,41 @@ Receiver queue draining is not calibrated physical capacity.
 
 ## Current qualification
 
-The current catalog includes three dedicated band-steering rooms in addition
-to the fourteen original scenarios. See [band-steering qualification](../optimizer/band-steering.md#results)
-for the current seventeen-room results, native receive-channel requirements,
-verified band transitions and preparation limitations. The table below is the
-earlier RF baseline, not coverage of the three added rooms.
+The 0913 catalog contains eighteen rooms: fourteen original scenarios, three
+dedicated band-steering rooms and `fifty-client-counter-roam`. It uses a fixed
+100-client pool, not separately sized VMs. Follow [current deployment status](../../docs/current-state.md)
+for release acceptance; earlier smaller-pool passes do not qualify 0913.
+See [band-steering qualification](../optimizer/band-steering.md#results) for the
+previous seventeen-room results and native receive-channel requirements.
+The table below is the earlier RF baseline, not coverage of the added rooms.
+
+### 0913 fixed-pool acceptance
+
+On rev150, native source `5194e15` with room/provider source `f63647d` passes
+the 100-client topology, tri-band/two-SSID BTM and all-client traffic baseline.
+The bounded catalog run finished 14 September 2026 at 01:58 UTC: **18/18 PASS**
+with unchanged 60/45/90-second limits and five-second stable holds. All settled
+boundaries check the full pool's physical links against native and rendered
+ownership; native process identities remain unchanged throughout the run.
+
+There are **192 verified actions, zero failed/unmatched verifications, zero
+unavailable collections and zero event gaps**. Eleven superseded collections
+are explicit cancellations. Request-to-verification p50/p95/max is
+**0.959 / 1.219 / 2.013 s**. Native ubus operation p50/p95/max is
+**20.423 / 67.434 / 215.250 ms**; whole-second native timestamps still require
+a freshness wait. These are deployment measurements, not zero-latency claims.
+
+The new 50-client room first converges at **21.645 s** and passes the initial
+stable gate at **33.027 s**; its final gate passes at **9.444 s**. A separate
+50 -> 10 -> 20 transition run also passes. Default twenty-client restoration
+passes, paused at time zero. This does not substitute for thin-import acceptance.
+
+Evidence is on rev150 under
+`/home/rev/work/release-0913/evidence/prpl-registration-catalog/`, including
+`audited-summary.json` and per-room JSON, screenshots, physical audits and SSE.
+Host sampling is complete: CPU p95 39.57%, peak sensor 85.5°C, minimum available
+RAM 1.715 GiB; throttle counters were unavailable. Keep this host context with
+performance comparisons. This is one feature pass, not a soak qualification.
 
 ### Pre-band RF baseline
 

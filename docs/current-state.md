@@ -25,9 +25,9 @@ Outer VM autostart is disabled; starting the VM starts its lab and room.
 
 0913 is being qualified from the new canonical checkout. It uses one
 100-client-capacity appliance, a default room with 20 online, and the new
-`fifty-client-counter-roam` room with 50 online. Native builds have completed;
-room ownership/convergence failures still block release packaging. There is
-no accepted 0913 thin tar yet. The addresses below now target the qualification
+`fifty-client-counter-roam` room with 50 online. Native builds and all eighteen
+room tests pass; sanitized export and fresh thin-import acceptance remain.
+There is no accepted 0913 thin tar yet. The addresses below target the qualification
 VM and may be unavailable while it rebuilds or restarts.
 
 | View | rev150 prplMesh |
@@ -64,7 +64,11 @@ The deployed laboratory HAL now preserves candidate socket identity across
 interruptions; the topology adapter reads coherent client membership. The
 pinned ubus dependency includes upstream reentrant-dispatch fixes. Cold
 candidate registration is bounded to four concurrent calls for uncached targets.
-Warm rounds reuse successful registrations. Internal
+Warm rounds reuse successful registrations. The 0913 native controller defers
+collection until a registration cohort is complete, rather than querying the
+growing registry after every addition. Privileged local ubus calls use a
+generation-checked controller namespace instead of per-query LXD exec sessions.
+Internal
 startup payloads include these repairs, unlike the unchanged
 0909 release downloads. Current room, RF and native-to-browser qualifications
 live in [room acceptance](../reference/testing/room-acceptance.md), not duplicated

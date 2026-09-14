@@ -36,13 +36,13 @@ while [ "$#" -gt 0 ]; do
     esac
 done
 
-PROFILE_SELECTABLE=${LAB_PROFILE_SELECTABLE:-false}
+FIRST_BOOT_PROVISIONING=${LAB_FIRST_BOOT_PROVISIONING:-${LAB_FIRST_BOOT_PROVISION:-${LAB_PROFILE_SELECTABLE:-false}}}
 RELEASE_ID=${LAB_RELEASE_ID:-0913}
 case "$RELEASE_ID" in
     [0-9][0-9][0-9][0-9]) ;;
     *) echo "invalid LAB_RELEASE_ID: $RELEASE_ID" >&2; exit 2 ;;
 esac
-if [ "$PROFILE_SELECTABLE" = true ]; then
+if [ "$FIRST_BOOT_PROVISIONING" = true ]; then
     SELECTED_CLIENTS=100
     SELECTED_PROFILE=unified
     SELECTED_RADIOS=120
@@ -210,7 +210,7 @@ if [ "$runtime_guest_ip" != "$guest_ip" ]; then
     lxc config device set "$NAME" eth0 ipv4.address "$guest_ip"
 fi
 
-if [ "$PROFILE_SELECTABLE" = true ]; then
+if [ "$FIRST_BOOT_PROVISIONING" = true ]; then
     nested_ready=false
     for unused in $(seq 1 "$NESTED_READY_ATTEMPTS"); do
         if lxc exec "$NAME" -- lxc query /1.0 >/dev/null 2>&1; then
@@ -243,7 +243,7 @@ if [ "$MONITORING" = true ]; then
     bash "$SCRIPT_DIR/observability/enable.sh" "$NAME" "$HOST_IP"
 fi
 
-if [ "$PROFILE_SELECTABLE" = true ]; then
+if [ "$FIRST_BOOT_PROVISIONING" = true ]; then
     lxc exec "$NAME" -- systemctl reset-failed prplmesh-lab.service
     lxc exec "$NAME" -- systemctl --no-block start prplmesh-lab.service
     lxc exec "$NAME" -- systemctl --no-block start prplmesh-room-demo.service

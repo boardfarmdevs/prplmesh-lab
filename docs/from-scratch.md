@@ -35,7 +35,11 @@ lxc info >/dev/null 2>&1 || lxd init --auto
 `build-hwsim.sh` requests the installed Ubuntu kernel's source version. If the
 archive has superseded it, the script accepts only the same Linux 7.0 source
 generation, records its package identity and hashes, and builds against the
-installed kernel headers. Module and live RF tests still gate qualification.
+installed kernel headers. The companion cfg80211 namespace-ownership repair
+requires the exact installed kernel source version; its builder uses a
+checksummed pinned source fallback if the archive has superseded that version.
+Reboot after installing the modules rather than unloading radios used by a lab.
+Module and live RF tests still gate qualification.
 Enable `deb-src` in the Ubuntu deb822 source file by changing its `Types:` line
 from `Types: deb` to `Types: deb deb-src`, then refresh the index:
 
@@ -75,7 +79,7 @@ The command performs these reproducible stages:
 4. emits and verifies the three ignored archives in `artifacts/`;
 5. creates the sanitized `prpl-runtime-local` LXD image;
 6. builds pinned multichannel wmediumd and the Linux 7.0 hwsim module; and
-7. creates the stable 40-radio, five-mesh-node, 20-client inventory.
+7. creates the stable 120-radio, five-mesh-container, 100-client inventory.
 
 The script does not start the mesh. Build and provisioning are intentionally
 separate from the repeatable runtime lifecycle.
@@ -83,14 +87,14 @@ separate from the repeatable runtime lifecycle.
 ## 3. Start and accept the lab
 
 ```sh
-sudo PRPL_AGENT_COUNT=4 PRPL_CLIENT_COUNT=20 PRPL_TOPOLOGY=chain \
+sudo PRPL_AGENT_COUNT=4 PRPL_CLIENT_COUNT=100 PRPL_TOPOLOGY=star \
   scripts/radio-lab.sh start
-sudo PRPL_AGENT_COUNT=4 PRPL_CLIENT_COUNT=20 PRPL_TOPOLOGY=chain \
+sudo PRPL_AGENT_COUNT=4 PRPL_CLIENT_COUNT=100 PRPL_TOPOLOGY=star \
   scripts/radio-lab.sh clients
 
 sudo scripts/topology-adapter.sh start
 sudo scripts/wmediumd-console.sh start
-sudo PRPL_AGENT_COUNT=4 PRPL_CLIENT_COUNT=20 PRPL_TOPOLOGY=chain \
+sudo PRPL_AGENT_COUNT=4 PRPL_CLIENT_COUNT=100 PRPL_TOPOLOGY=star \
   tests/run-acceptance.sh
 ```
 
@@ -108,6 +112,11 @@ Open `http://HOST-IP:8091/` for the Controller UI and
 `http://HOST-IP:8090/` for the wmediumd Console. The raw NBAPI topology
 adapter remains loopback-only at `http://127.0.0.1:8092/api/topology`.
 
+These commands validate the full native pool before a room owns its RF state.
+Install the [runtime services](../deploy/bare-metal/README.md) for normal use:
+the room service selects 20 online by default and disconnects/isolates the other
+80 without deleting containers. Stop the room before standalone native tests.
+
 ## 4. Stop, restart and rebuild
 
 Everyday lifecycle does not rebuild artifacts or reassign radios:
@@ -115,9 +124,9 @@ Everyday lifecycle does not rebuild artifacts or reassign radios:
 ```sh
 sudo scripts/radio-lab.sh status
 sudo scripts/radio-lab.sh stop
-sudo PRPL_AGENT_COUNT=4 PRPL_CLIENT_COUNT=20 PRPL_TOPOLOGY=chain \
+sudo PRPL_AGENT_COUNT=4 PRPL_CLIENT_COUNT=100 PRPL_TOPOLOGY=star \
   scripts/radio-lab.sh start
-sudo PRPL_AGENT_COUNT=4 PRPL_CLIENT_COUNT=20 PRPL_TOPOLOGY=chain \
+sudo PRPL_AGENT_COUNT=4 PRPL_CLIENT_COUNT=100 PRPL_TOPOLOGY=star \
   scripts/radio-lab.sh clients
 ```
 

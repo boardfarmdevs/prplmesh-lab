@@ -81,7 +81,7 @@ SH
 chmod 0755 "$work/bin/lxc"
 
 install -m 0755 "$ROOT/deploy/lxd-vm/import.sh" "$work/release/import.sh"
-printf 'LAB_PROFILE_SELECTABLE=true\nLAB_SUPPORTED_PROFILES=100\n' \
+printf 'LAB_PROFILE_SELECTABLE=false\nLAB_FIRST_BOOT_PROVISIONING=true\nLAB_CLIENT_CAPACITY=100\nLAB_DEFAULT_ROOM_CLIENTS=20\n' \
     > "$work/release/release.env"
 : > "$work/release/appliance.tar.zst"
 
