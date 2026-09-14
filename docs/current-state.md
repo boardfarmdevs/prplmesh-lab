@@ -88,6 +88,11 @@ Thin-import evidence is in `/home/rev/releases/0913/evidence/`.
   timeouts remain failures, not stale successful observations.
 - UI symmetry/directional RF, atomic clock/pose and recovery fixes are implemented;
   preserve their regression coverage rather than repeating completed fix plans.
+- Candidate caches and in-flight results are bound to committed RF changes per
+  client. Moving a client invalidates its comparisons; moving an AP invalidates
+  all affected comparisons. Action submission checks the same RF identity.
+  This repair is being qualified for deployment and is not in the unchanged
+  accepted `aacc9f3` thin tar described above.
 - Inner/outer Grafana measures container and VM guest resources, not physical
   host cooling or subsecond steering performance.
 - RDK/prpl timings on different hosts are deployment results, not an intrinsic

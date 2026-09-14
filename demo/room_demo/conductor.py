@@ -441,6 +441,16 @@ class LiveConductor:
             moved_mac is None or client.sta_mac == moved_mac or client.sta_mac in moved_clients
         ) else None
 
+    def _candidate_epoch(self, station, room):
+        epochs = room.get("candidate_epochs")
+        if epochs is None:
+            return (room.get("environment_epoch"), None)
+        return (epochs["global"], epochs["roles"].get(self._role_by_mac.get(station), 0))
+
+    def _candidate_changes(self, stations, before, after):
+        return {station for station in stations
+                if self._candidate_epoch(station, before) != self._candidate_epoch(station, after)}
+
     def _observation_key(self, room, *, include_generation=True):
         if self.profiling:
             return (room.get("selected_world"), self.store.world_epoch(),
@@ -953,6 +963,7 @@ class LiveConductor:
             provider = StreamingCandidateProvider(provider, maximum_clients=8,
                                                 maximum_age_seconds=min(30, policy.config.reject_stale_metrics_after_seconds),
                                                 identity=lambda: self._observation_key(room_before),
+                                                client_identity=lambda station: self._candidate_epoch(station, room_before),
                                                 updated=self._candidate_updated.set,
                                                 telemetry=lambda value: self.store.emit(
                                                     "optimizer.collection", self._time(), value, producer="optimizer"))
@@ -1094,6 +1105,11 @@ class LiveConductor:
                             item.sta_mac in offline_macs for item in snapshot.clients)),
                         clients=online_clients,
                         candidates=tuple(item for item in snapshot.candidates if item.sta_mac in online_macs))
+                    if self.profiling:
+                        changed_candidates = self._candidate_changes(online_macs, room_before, room_after)
+                        snapshot = replace(snapshot, candidates=tuple(
+                            replace(item, rcpi=None, metric_observed_at=None)
+                            if item.sta_mac in changed_candidates else item for item in snapshot.candidates))
                     policy.config = replace(
                         policy_config, expected_clients=int(room_after["expected_online_clients"])
                     )
@@ -1348,6 +1364,15 @@ class LiveConductor:
                                     producer="optimizer",
                                 )
                                 break
+                            if self.profiling and self._candidate_changes({decision.sta_mac}, room_after, current_room):
+                                state = state.replace(_deferred_state(prior, evaluation).for_sta(decision.sta_mac))
+                                self.store.emit(
+                                    "optimizer.batch.aborted", self._time(),
+                                    {"reason": "candidate_rf_changed", "completed_actions": batch_index - 1,
+                                     "planned_actions": len(action_batch), "subject_role": self._role_by_mac[decision.sta_mac]},
+                                    producer="optimizer",
+                                )
+                                continue
                         state = state.replace(
                             evaluation.state.for_sta(decision.sta_mac)
                         )

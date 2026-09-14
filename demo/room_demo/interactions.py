@@ -84,6 +84,8 @@ class InteractiveMediumSession:
         self._backhaul_epoch = 0
         self._last_backhaul_change_monotonic: float | None = None
         self._measurement_epoch = 0
+        self._candidate_global_epoch = 0
+        self._candidate_role_epochs: dict[str, int] = {}
         self._last_rf_apply_monotonic: float | None = None
         self._last_rf_applied_at: str | None = None
         self._last_rf_role: str | None = None
@@ -346,6 +348,8 @@ class InteractiveMediumSession:
                 "revision": self._revision,
                 "environment_epoch": self._environment_epoch,
                 "measurement_epoch": self._measurement_epoch,
+                "candidate_epochs": {"global": self._candidate_global_epoch,
+                                     "roles": dict(self._candidate_role_epochs)},
                 "backhaul_epoch": self._backhaul_epoch,
                 "backhaul_stable_for_seconds": (
                     None if self._last_backhaul_change_monotonic is None else
@@ -1903,7 +1907,7 @@ class InteractiveMediumSession:
                 raise action_error
             return result
 
-    def _mark_rf_committed(self, role: str | None = None) -> None:
+    def _mark_rf_committed(self, role: str | None = None, *, roles=None) -> None:
         self._environment_epoch += 1
         if role is None:
             self._recent_rf_roles.clear()
@@ -1912,10 +1916,16 @@ class InteractiveMediumSession:
         if role is None or self.world["roles"].get(role) == "fronthaul_ap":
             self._backhaul_epoch += 1
             self._last_backhaul_change_monotonic = time.monotonic()
-        self._mark_measurements_stale(role)
+        self._mark_measurements_stale(role, roles=roles)
 
-    def _mark_measurements_stale(self, role: str | None = None) -> None:
+    def _mark_measurements_stale(self, role: str | None = None, *, roles=None) -> None:
         self._measurement_epoch += 1
+        affected = set(roles) if roles is not None else {role}
+        if None in affected or any(self.world["roles"].get(item) == "fronthaul_ap" for item in affected):
+            self._candidate_global_epoch += 1
+        else:
+            for item in affected:
+                self._candidate_role_epochs[item] = self._candidate_role_epochs.get(item, 0) + 1
         self._last_rf_apply_monotonic = time.monotonic()
         self._last_rf_applied_at = dt.datetime.now(dt.timezone.utc).isoformat()
         self._last_rf_role = role
@@ -1980,7 +1990,7 @@ class InteractiveMediumSession:
                     and role in self._allowed_roles and self._roles[role]["present"]
                 ))
                 representative = min(roles, key=lambda role: (self.world["roles"].get(role) != "fronthaul_ap", role))
-                self._mark_rf_committed(representative)
+                self._mark_rf_committed(representative, roles=roles)
                 self._recent_rf_roles.update({role: time.monotonic() for role in roles})
             else:
                 applied = []

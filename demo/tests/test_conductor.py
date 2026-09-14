@@ -22,6 +22,17 @@ from room_demo.events import EventStore
 
 
 class ConductorProjectionTests(unittest.TestCase):
+    def test_profile_candidate_epochs_invalidate_only_affected_clients(self):
+        conductor, _store = self._conductor()
+        conductor._role_by_mac = {"first": "sta_01", "second": "sta_02"}
+        before = {"candidate_epochs": {"global": 1, "roles": {"sta_01": 0}}}
+        after = {"candidate_epochs": {"global": 1, "roles": {"sta_01": 1}}}
+        self.assertEqual(conductor._candidate_changes({"first", "second"}, before, after), {"first"})
+        after["candidate_epochs"]["global"] = 2
+        self.assertEqual(conductor._candidate_changes({"first", "second"}, before, after), {"first", "second"})
+        self.assertEqual(conductor._candidate_changes({"first"}, {"environment_epoch": 1},
+                                                      {"environment_epoch": 2}), {"first"})
+
     def test_unavailable_topology_keeps_observation_workers_alive_without_publishing_old_data(self):
         for worker, method in (("network", "observe_topology"), ("network-metrics", "metrics_for")):
             with self.subTest(worker=worker):
