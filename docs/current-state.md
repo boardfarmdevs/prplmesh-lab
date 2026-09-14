@@ -93,6 +93,11 @@ Thin-import evidence is in `/home/rev/releases/0913/evidence/`.
   all affected comparisons. Action submission checks the same RF identity.
   This repair is being qualified for deployment and is not in the unchanged
   accepted `aacc9f3` thin tar described above.
+- Native candidate-registration reuse is also scoped to each station's channel
+  and operating class. The controller has one current query-channel context per
+  station; returning to an earlier band must register it again rather than reuse
+  historical per-radio registrations. Warm, unchanged registrations still reuse
+  the bounded parallel collector. This repair is also pending qualification.
 - Inner/outer Grafana measures container and VM guest resources, not physical
   host cooling or subsecond steering performance.
 - RDK/prpl timings on different hosts are deployment results, not an intrinsic

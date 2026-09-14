@@ -72,6 +72,44 @@ def test_registration_failure_keeps_only_successes_and_retries_missing(monkeypat
     assert provider.registered == successes == set(targets)
 
 
+def test_registration_rebinds_station_when_returning_to_previous_band(monkeypatch):
+    provider = PrplMeshCandidateProvider(allow_simulated=True)
+    native = {}
+    calls = []
+
+    def call(radio, method, request):
+        native[request["un_station_mac"]] = (request["channel"], request["operating_class"])
+        calls.append((radio, request["un_station_mac"]))
+        return {"retval": ""}
+
+    monkeypatch.setattr(provider, "_call", call)
+    metadata = {"radio-24": {"channel": 6, "opclass": 81, "device_id": "agent"},
+                "radio-5": {"channel": 36, "opclass": 115, "device_id": "agent"}}
+    provider._register_targets({("radio-24", "unchanged"): []}, metadata)
+    for radio in ("radio-24", "radio-5", "radio-24"):
+        provider._register_targets({(radio, "moving"): []}, metadata)
+        assert native["moving"] == (metadata[radio]["channel"], metadata[radio]["opclass"])
+    provider._register_targets({("radio-24", "moving"): [], ("radio-24", "unchanged"): []}, metadata)
+    assert calls == [("radio-24", "unchanged"), ("radio-24", "moving"),
+                     ("radio-5", "moving"), ("radio-24", "moving")]
+
+
+@pytest.mark.parametrize("changed", [{"channel": 44}, {"opclass": 128}])
+def test_registration_tracks_channel_and_operating_class(monkeypatch, changed):
+    provider = PrplMeshCandidateProvider(allow_simulated=True)
+    calls = []
+    monkeypatch.setattr(provider, "_call", lambda *args: calls.append(args) or {"retval": ""})
+    targets = {("radio", "station"): []}
+    metadata = {"radio": {"channel": 36, "opclass": 115, "device_id": "agent"}}
+    provider._register_targets(targets, metadata)
+    metadata["radio"].update(changed)
+    provider._register_targets(targets, metadata)
+    provider._register_targets(targets, metadata)
+    assert len(calls) == 2
+    assert calls[-1][2]["channel"] == metadata["radio"]["channel"]
+    assert calls[-1][2]["operating_class"] == metadata["radio"]["opclass"]
+
+
 def test_registration_supersession_does_not_call_native_api(monkeypatch):
     provider = PrplMeshCandidateProvider(allow_simulated=True, generation_guard=lambda: False)
     monkeypatch.setattr("optimizer.prplmesh.subprocess.run", lambda *args, **kwargs: pytest.fail("native call after supersession"))

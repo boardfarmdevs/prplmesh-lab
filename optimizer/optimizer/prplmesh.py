@@ -288,6 +288,7 @@ class PrplMeshCandidateProvider:
         self.result_ready = result_ready
         self.batch_radio_reads = batch_radio_reads
         self.registered: set[tuple[str, str]] = set()
+        self.registration_channels: dict[str, frozenset[tuple[int, int]]] = {}
         self.object_cache: dict[tuple[str, str], str] = {}
         self.defer_registration_query = False
         self.last_raw: list[dict[str, Any]] = []
@@ -406,6 +407,14 @@ class PrplMeshCandidateProvider:
         })
 
     def _register_targets(self, targets, radio_metadata):
+        channels = {}
+        for radio, sta_mac in targets:
+            meta = radio_metadata[radio]
+            channels.setdefault(sta_mac, set()).add((int(meta["channel"]), int(meta["opclass"])))
+        changed = {station for station, values in channels.items()
+                   if self.registration_channels.get(station) != frozenset(values)}
+        self.registered = {key for key in self.registered if key[1] not in changed}
+        self.registration_channels.update({station: frozenset(values) for station, values in channels.items()})
         pending = sorted(set(targets) - self.registered)
         if not pending:
             return
