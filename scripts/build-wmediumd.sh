@@ -36,6 +36,7 @@ PATCHES=(
     0026-wmediumd-fill-spatial-reservation-gaps.patch
     0027-wmediumd-preserve-earliest-scheduler-deadline.patch
     0028-wmediumd-native-receive-contexts.patch
+    0029-wmediumd-bound-control-io-and-event-loop-fairness.patch
 )
 
 case "${1:-}" in

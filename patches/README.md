@@ -43,6 +43,12 @@ frequency-qualified overrides, metrics and observer sockets. The build script
 and patch directory are authoritative; the list above describes the initial
 radio-correctness subset, not the complete current manifest.
 
+The event-loop coordination patch initializes listener priorities, fairly
+rotates continuously readable peers within each priority, and rejects stalled
+control/observer readers without blocking radio processing. Higher-priority
+timers retain precedence. `wmediumd -T` covers priority order, callback removal,
+listener initialization and backpressure; it does not alter RF airtime/retries.
+
 ## prplMesh native-platform correction
 
 `prplmesh/0018-controller-reconcile-conflicting-station-reports.patch` requests
