@@ -9,8 +9,7 @@ health monitor. Use [operations](operations.md) to check runtime health.
 | --- | --- |
 | Canonical branch | `codex/0913-clean` |
 | Canonical checkout | `rev150:/home/rev/git/prplmesh-lab-0913-clean` |
-| Qualification VM | `rev150:prplmesh-0913` (not yet release-accepted) |
-| Last accepted VM | `rev150:prplmesh-20-0908`, stopped for rollback |
+| Deployed VM | `rev150:prplmesh-0913`, accepted from the exact 0913 thin tar |
 | Guest checkout | `/opt/prplmesh-lab` |
 | Native prplMesh | 6.0.0, `2e153c7e00cbcab6b8ee35082f494a364e23f018` |
 | Radio host | Ubuntu 24.04 / Linux 7, userspace wmediumd |
@@ -23,24 +22,28 @@ Outer VM autostart is disabled; starting the VM starts its lab and room.
 
 ## Browser addresses
 
-0913 is being qualified from the new canonical checkout. It uses one
+0913 is deployed from the new canonical checkout. It uses one
 100-client-capacity appliance, a default room with 20 online, and the new
 `fifty-client-counter-roam` room with 50 online. Native builds and all eighteen
-room tests pass; sanitized export and fresh thin-import acceptance remain.
-There is no accepted 0913 thin tar yet. The addresses below target the qualification
-VM and may be unavailable while it rebuilds or restarts.
+room tests pass. The exact sanitized thin tar also passed fresh 105-container
+provisioning, native two-SSID/tri-band BTM, traffic from all 100 clients, 50- and
+10-client room playback, and default-20 restoration. The addresses below target
+that imported VM. Inner/outer monitoring and post-install default-room readiness
+also pass; the obsolete 0908 lab VM and its outer-metrics certificate are removed.
 
 | View | rev150 prplMesh |
 | --- | --- |
 | Live room | <http://192.168.2.150:18891/> |
 | Network topology | <http://192.168.2.150:8091/> |
 | wmediumd console | <http://192.168.2.150:8090/> |
-| Inner LXD UI | Planned: <https://192.168.2.150:18892/ui/> |
-| Grafana: inner containers and outer VM | Planned: <https://192.168.2.150:18893/> |
+| Inner LXD UI | <https://192.168.2.150:18892/ui/> |
+| Grafana: inner containers and outer VM | <https://192.168.2.150:18893/> |
 
-Monitoring is not installed on 0913 yet. Install it after sanitized export so
-enrollment keys and passwords cannot enter release images. The old VM remains
-stopped for rollback.
+Monitoring is installed after accepted sanitized export so enrollment keys
+and passwords cannot enter release images. Prometheus scrapes all 105 nested
+containers and the outer `prplmesh-0913` VM; both provisioned Grafana dashboards
+are available. Follow [monitoring](../reference/observability/monitoring.md) for
+browser enrollment and credentials.
 
 The native NBAPI normalization adapter stays on guest loopback port 8092.
 The normal room URL needs no `?mode=`. LXD proxy devices survive reboots;
@@ -51,14 +54,14 @@ Management access requires a trusted LAN/VPN; monitoring requires login.
 
 [Release information](release-notes.md) explains where historical records belong.
 
-Both hosts mirror `/home/rev/releases/0909/prplmesh-0909-thin.tar` with adjacent
-checksums, bundle metadata and acceptance evidence. **0909 is the latest
-packaged download; 0908 is the stopped rollback VM.** A newer thin tar
-is not proof of live redeployment or a native rebuild.
-
-The 0909 thin import passed bounded native, BTM and twenty-client traffic
-checks. RDK's Windows/VirtualBox box is a separate product; there is no prpl
-VirtualBox deployment in this release.
+The accepted download is
+`rev150:/home/rev/releases/0913/prplmesh-0913-thin.tar`, with its adjacent
+`.sha256`, `prpl-0913-acceptance.json` and checksummed acceptance evidence.
+The tar's source is `aacc9f3`; it is imported and tested without repacking.
+Its embedded `status: candidate` records creation-time status; the adjacent
+acceptance record identifies and accepts the exact immutable outer-tar hash.
+RDK's Windows/VirtualBox box is a separate product; there is no prpl VirtualBox
+deployment in this release. Older downloads remain historical artifacts.
 
 The deployed laboratory HAL now preserves candidate socket identity across
 interruptions; the topology adapter reads coherent client membership. The
@@ -68,12 +71,10 @@ Warm rounds reuse successful registrations. The 0913 native controller defers
 collection until a registration cohort is complete, rather than querying the
 growing registry after every addition. Privileged local ubus calls use a
 generation-checked controller namespace instead of per-query LXD exec sessions.
-Internal
-startup payloads include these repairs, unlike the unchanged
-0909 release downloads. Current room, RF and native-to-browser qualifications
+The 0913 thin's startup payloads include these repairs. Current room, RF and native-to-browser qualifications
 live in [room acceptance](../reference/testing/room-acceptance.md), not duplicated
 release reports. A finite pass is not a zero-latency or soak guarantee.
-Thin-import evidence remains in `/home/rev/releases/0909/evidence/`.
+Thin-import evidence is in `/home/rev/releases/0913/evidence/`.
 
 ## Boundaries and open issues
 

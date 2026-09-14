@@ -162,6 +162,18 @@ The table below is the earlier RF baseline, not coverage of the added rooms.
 
 ### 0913 fixed-pool acceptance
 
+The exact `prplmesh-0913-thin.tar` (source `aacc9f3`) also passed fresh-import
+acceptance on rev150, finishing 14 September 2026 at 03:59 UTC. First boot
+starts with zero nested instances and provisions 105, then passes native
+100-client topology, two-SSID/tri-band BTM and traffic from every client.
+The imported VM's 50-client room passes initial convergence in **17.233 s**
+(first convergence **11.855 s**), its midpoint and final gates; the 10-client
+room and default-20 restoration also pass. Physical/native/rendered audits,
+native identity preservation, zero event gaps and host sampling all pass.
+The immutable archive hash and bounded scope are recorded in
+`/home/rev/releases/0913/prpl-0913-acceptance.json`; monitoring is installed
+separately after export. This is not soak or zero-latency qualification.
+
 On rev150, native source `5194e15` with room/provider source `f63647d` passes
 the 100-client topology, tri-band/two-SSID BTM and all-client traffic baseline.
 The bounded catalog run finished 14 September 2026 at 01:58 UTC: **18/18 PASS**
