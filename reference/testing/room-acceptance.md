@@ -162,52 +162,46 @@ The table below is the earlier RF baseline, not coverage of the added rooms.
 
 ### 0913 fixed-pool acceptance
 
-The exact `prplmesh-0913-thin.tar` (source `aacc9f3`) also passed fresh-import
-acceptance on rev150, finishing 14 September 2026 at 03:59 UTC. First boot
-starts with zero nested instances and provisions 105, then passes native
-100-client topology, two-SSID/tri-band BTM and traffic from every client.
-The imported VM's 50-client room passes initial convergence in **17.233 s**
-(first convergence **11.855 s**), its midpoint and final gates; the 10-client
-room and default-20 restoration also pass. Physical/native/rendered audits,
-native identity preservation, zero event gaps and host sampling all pass.
-The immutable archive hash and bounded scope are recorded in
-`/home/rev/releases/0913/prpl-0913-acceptance.json`; monitoring is installed
-separately after export. This is not soak or zero-latency qualification.
+The refreshed `prplmesh-0913-thin.tar` (source `9a2dd2d`, SHA-256 prefix
+`c294a503`) passes exact-tar fresh-import acceptance on rev150 on 14 September
+2026. First boot starts with zero nested instances and provisions 105, then
+passes the 100-client tri-band topology, representative private-5-GHz and
+IoT-6-GHz native BTM, and traffic from every client. This baseline is not an
+exhaustive all-client/all-band steering matrix.
 
-On rev150, native source `5194e15` with room/provider source `f63647d` passes
-the 100-client topology, tri-band/two-SSID BTM and all-client traffic baseline.
-The bounded catalog run finished 14 September 2026 at 01:58 UTC: **18/18 PASS**
-with unchanged 60/45/90-second limits and five-second stable holds. All settled
-boundaries check the full pool's physical links against native and rendered
-ownership; native process identities remain unchanged throughout the run.
+The imported VM passes all three bounded room checks: fifty-client counter-roam,
+5-to-6-GHz band upgrade and stationary ten-client room. The fifty-client room
+passes initially in **11.900 s** and finally in **12.363 s**. All **42/42 actions**
+verify, with no native response timeouts or unavailable candidate collections.
+Physical/native/rendered ownership, native identity preservation, event
+continuity and host sampling pass. Default twenty-client restoration passes
+in **25.736 s**, paused and unleased.
 
-There are **192 verified actions, zero failed/unmatched verifications, zero
-unavailable collections and zero event gaps**. Eleven superseded collections
-are explicit cancellations. Request-to-verification p50/p95/max is
-**0.959 / 1.219 / 2.013 s**. Native ubus operation p50/p95/max is
-**20.423 / 67.434 / 215.250 ms**; whole-second native timestamps still require
-a freshness wait. These are deployment measurements, not zero-latency claims.
+The corresponding pre-export source catalog passes **18/18 rooms** at the
+unchanged 60/45/90-second limits and five-second stable holds. It records
+145 submissions, 144 verified successes and one failed traffic verification;
+the affected room nevertheless converges. An unchanged focused two-room
+follow-up passes 30/30 actions. See
+[RF-cache qualification and failure attribution](performance.md#0913-rf-cache-qualification)
+for the cache/registration repairs, timing outlier and retained failure. Do not
+replace a failed sample with the later successful rerun.
 
-The new 50-client room first converges at **21.645 s** and passes the initial
-stable gate at **33.027 s**; its final gate passes at **9.444 s**. A separate
-50 -> 10 -> 20 transition run also passes. Default twenty-client restoration
-passes, paused at time zero. This does not substitute for thin-import acceptance.
+Inner/outer monitoring is installed after sanitized export. Both authenticated
+Grafana dashboards and all 105 nested-container metrics pass; all twenty active
+clients pass traffic again after installation. An initial outer-dashboard
+probe returned 404 before asynchronous provisioning completed; the later
+readiness check passes without reinstalling or restarting services.
 
-Evidence is on rev150 under
-`/home/rev/work/release-0913/evidence/prpl-registration-catalog/`, including
-`audited-summary.json` and per-room JSON, screenshots, physical audits and SSE.
-Host sampling is complete: CPU p95 39.57%, peak sensor 85.5°C, minimum available
-RAM 1.715 GiB; throttle counters were unavailable. Keep this host context with
-performance comparisons. This is one feature pass, not a soak qualification.
-
-The separate packaging crossover waits for its destination-hold RF generation
-to be committed and read back before starting the native optimizer sample
-window. A fixed thirty-sample window started at scenario launch can finish
-before the forty-second crossover when collection becomes faster. The retained
-failed run ended its samples at 02:18:39.826 UTC, just before the final RF update
-at 02:18:40.016. It is a test synchronization failure, not a passing export.
-The corrected gate retains the expected native recommendation and full RF
-restoration assertions; it does not alter the policy, RF levels or room timing.
+Exact archive identity, bounded scope and checksummed evidence are recorded in
+`/home/rev/releases/0913/prpl-0913-acceptance.json` and
+`evidence/prpl-0913-final/`, mirrored on rev140 and rev150. The previous
+`aacc9f3` archive and its original records remain under `previous/prpl-aacc9f3/`.
+Raw source-catalog evidence remains on rev150 under
+`/home/rev/work/release-0913/evidence/prpl-channel-registration-qualification/`;
+the exact import is under `prpl-final-refresh-retry/`. The preceding import's
+host-ENOSPC failure is retained separately, not counted as a native steering
+failure. These are feature checks, not a soak qualification or a statistical
+performance guarantee.
 
 ### Pre-band RF baseline
 
