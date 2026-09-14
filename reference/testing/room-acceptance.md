@@ -188,6 +188,15 @@ Host sampling is complete: CPU p95 39.57%, peak sensor 85.5°C, minimum availabl
 RAM 1.715 GiB; throttle counters were unavailable. Keep this host context with
 performance comparisons. This is one feature pass, not a soak qualification.
 
+The separate packaging crossover waits for its destination-hold RF generation
+to be committed and read back before starting the native optimizer sample
+window. A fixed thirty-sample window started at scenario launch can finish
+before the forty-second crossover when collection becomes faster. The retained
+failed run ended its samples at 02:18:39.826 UTC, just before the final RF update
+at 02:18:40.016. It is a test synchronization failure, not a passing export.
+The corrected gate retains the expected native recommendation and full RF
+restoration assertions; it does not alter the policy, RF levels or room timing.
+
 ### Pre-band RF baseline
 
 September 13, 2026 UTC, `codex/0908-clean`: the pre-band independent catalogs pass
