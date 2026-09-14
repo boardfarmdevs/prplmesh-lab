@@ -28,6 +28,12 @@ deadlines are unchanged. Transactions record the transport and elapsed time.
 Non-root hosts retain `lxc exec`. Namespace failures never silently fall back;
 restart observation after a controller restart to discard its registration cache.
 
+On compatible native builds, `_describe` advertises the optional boolean
+`AddUnassociatedStation.defer_query`. Collection registers a cohort without
+issuing redundant fleet-wide queries for every addition, then uses the existing
+explicit `UpdateUnassociatedStationsStats` and waits for fresh native reports.
+Older controllers retain their original behavior; no unsupported option is sent.
+
 ## Opt-in Native Load Policy
 
 The default remains signal-only. Use `configs/load-aware-policy.yaml` instead

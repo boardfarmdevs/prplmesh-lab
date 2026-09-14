@@ -51,6 +51,14 @@ listener initialization and backpressure; it does not alter RF airtime/retries.
 
 ## prplMesh native-platform correction
 
+`prplmesh/0020-controller-defer-registration-collection.patch` adds an optional
+NBAPI `defer_query` argument. The default still queries immediately; opt-in
+registration updates the same native database without repeatedly querying the
+entire growing station list. One explicit stats update follows a registration
+cohort. The observer discovers this capability before use and still requires
+fresh native timestamps. A compiled 400-registration regression and unpatched
+negative control cover batching, validation and legacy behavior.
+
 `prplmesh/0018-controller-reconcile-conflicting-station-reports.patch` requests
 one native Topology Response per conflicting associated-link report. A missed
 association notification otherwise leaves the old owner in the controller
