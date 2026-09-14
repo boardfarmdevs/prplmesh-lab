@@ -20,6 +20,14 @@ The optimizer never reads a `.wmd` plan, wmediumd control state, intended
 target, or scenario phase. In hwsim, candidate observations are marked as
 simulated-radio measurements and require `--allow-simulated-candidates`.
 
+Root-in-VM candidate collection runs the same native `ubus` calls through
+descriptor-pinned controller mount/root namespaces. LXD discovers the controller
+once, not once per registration/query. Four registration workers remain bounded;
+only discovery is locked. Native publication timestamps, freshness and RPC
+deadlines are unchanged. Transactions record the transport and elapsed time.
+Non-root hosts retain `lxc exec`. Namespace failures never silently fall back;
+restart observation after a controller restart to discard its registration cache.
+
 ## Opt-in Native Load Policy
 
 The default remains signal-only. Use `configs/load-aware-policy.yaml` instead

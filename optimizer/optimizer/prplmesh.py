@@ -11,6 +11,7 @@ from typing import Any, Callable, Iterable
 from urllib.request import urlopen
 
 from .candidates import CandidateMetricsError, CandidateMetricsUnavailable, CandidateSnapshotSuperseded
+from .lxd_ubus import ControllerNamespaceChanged, LxdUbusTransport
 from .model import (
     CandidateObservation,
     ClientObservation,
@@ -277,6 +278,7 @@ class PrplMeshCandidateProvider:
         batch_radio_reads: bool = True,
     ) -> None:
         self.controller = controller
+        self.transport = LxdUbusTransport(controller)
         self.allow_simulated = allow_simulated
         self.timeout_seconds = timeout_seconds
         self.client_selector = client_selector
@@ -297,21 +299,13 @@ class PrplMeshCandidateProvider:
         if self.generation_guard is not None and not self.generation_guard():
             raise CandidateSnapshotSuperseded("prplMesh candidate generation was superseded")
         started = time.monotonic()
-        transaction = {"operation": "nbapi", "object": obj, "method": method,
+        transaction = {"operation": "nbapi", "object": obj, "method": method, "transport": self.transport.name,
                        "requested_at": format_time(datetime.now(timezone.utc))}
         self.last_raw.append(transaction)
         try:
-            completed = subprocess.run(
-                [
-                    "lxc", "exec", self.controller, "--", "ubus", "-t", "5", "call",
-                    obj, method, json.dumps(payload, separators=(",", ":")),
-                ],
-                check=True,
-                text=True,
-                capture_output=True,
-                timeout=12,
-            )
-        except (subprocess.CalledProcessError, subprocess.TimeoutExpired) as error:
+            completed = self.transport(obj, method, payload)
+        except (subprocess.CalledProcessError, subprocess.TimeoutExpired, OSError,
+                ControllerNamespaceChanged) as error:
             transaction["error"] = str(error)
             raise CandidateMetricsUnavailable(
                 f"prplMesh NBAPI call failed: {obj} {method}"
