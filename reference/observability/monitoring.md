@@ -49,3 +49,38 @@ Restrict management reachability to a trusted LAN/VPN. Use per-browser LXD
 identities and Grafana Viewer accounts for observers; no shared default password,
 anonymous API or copied private certificate. Never package installed monitoring
 secrets/data. Disable outer trust before credential renewal or removal.
+
+## Thermally constrained physical hosts
+
+The optional `easymesh-host-cooling.service` selects Intel P-state non-turbo
+operation on a physical host. It does not adjust fans, disable thermal
+protection, stop `thermald`, or change VM autostart. It is a reversible
+performance profile, **not a cooling repair**; keep it out of the guest VM.
+
+From the repository root on the affected host:
+
+```sh
+sudo install -m 0644 deploy/lxd-vm/observability/easymesh-host-cooling.service /etc/systemd/system/
+sudo systemctl daemon-reload
+sudo systemctl enable --now easymesh-host-cooling
+cat /sys/devices/system/cpu/intel_pstate/no_turbo
+```
+
+The value must be `1`. Stop/disable the service to restore the saved value;
+a subsequent external change to `0` is left alone:
+
+```sh
+sudo systemctl disable --now easymesh-host-cooling
+```
+
+On rev140, the before sample reached 100°C with 2,772 ms additional reported
+package throttle time in 40 s. A 150 s non-turbo load sample peaked at 65°C
+with **zero additional throttle time**. Turbo is now disabled on rev140,
+not rev150. Peak performance is reduced; compare only runs with the same
+power profile. A trial RAPL cap was overwritten by the thermal governor and
+was not retained. Check airflow, vents and fan operation physically before
+claiming the hardware issue fixed. No usable fan-RPM sensor was exposed.
+
+`tests/room-feature-host-monitor.py` records the active turbo setting, readable
+RAPL limits, temperatures and throttle deltas. Run it on the physical host;
+the outer-VM Grafana dashboard does not measure those host sensors.

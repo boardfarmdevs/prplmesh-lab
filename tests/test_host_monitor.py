@@ -49,6 +49,8 @@ def test_owned_sampler_produces_multiple_samples_and_exits_on_stdin_close():
             sample = json.loads(process.stdout.readline())
             assert sample["available_memory_kib"] > 0
             assert sample["per_cpu_busy_percent"]
+            assert "intel_pstate_no_turbo" in sample
+            assert isinstance(sample["rapl_power_limits_uw"], dict)
             assert (sample["cpu_busy_percent"] is None) == (index == 0)
         process.stdin.close()
         assert process.wait(timeout=3) == 0

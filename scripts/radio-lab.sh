@@ -340,6 +340,11 @@ start_userspace_medium()
         1) command+=(-F) ;;
         *) echo "WMEDIUMD_VISIBILITY_CONTENTION must be 0 or 1" >&2; return 1 ;;
     esac
+    case "${WMEDIUMD_PRIORITY_QUEUES:-0}" in
+        0) ;;
+        1) command+=(-Q) ;;
+        *) echo "WMEDIUMD_PRIORITY_QUEUES must be 0 or 1" >&2; return 1 ;;
+    esac
     if [ -n "$WMEDIUMD_CPU_AFFINITY" ]; then
         taskset -c "$WMEDIUMD_CPU_AFFINITY" "${command[@]}" \
             > "$WMEDIUMD_LOG" 2>&1 9>&- &
@@ -630,6 +635,20 @@ parent_backhaul_bssid()
     printf '02:00:00:00:%02x:02\n' "$parent_radio"
 }
 
+configure_control_priority()
+{
+    case "${WMEDIUMD_PRIORITY_QUEUES:-0}" in
+        0) return ;;
+        1) ;;
+        *) echo "WMEDIUMD_PRIORITY_QUEUES must be 0 or 1" >&2; return 1 ;;
+    esac
+    [ "$MEDIUM_BACKEND" = userspace ] || {
+        echo "priority admission requires the userspace medium" >&2
+        return 1
+    }
+    python3 "$ROOT/wmediumd/configurator/wmdcfg/control_priority.py" --stack prplmesh --enable "$@"
+}
+
 start_agent()
 {
     local ordinal=$1 name parent_bssid
@@ -638,6 +657,7 @@ start_agent()
     parent_bssid=$(parent_backhaul_bssid "$ordinal")
     start_container "$name"
     echo "$name: $TOPOLOGY backhaul -> $parent_bssid"
+    configure_control_priority --node "$name"
     lxc exec "$name" -- \
         /mnt/project/scripts/container/setup-nl80211-node.sh \
         agent "$ordinal" wireless "$parent_bssid"
@@ -733,6 +753,7 @@ case "$ACTION" in
             done
         fi
         start_container "$CONTROLLER"
+        configure_control_priority --node "$CONTROLLER"
         if [ "$START_MODE" = overlap ]; then
             for pid in "${mesh_launch_pids[@]}"; do
                 wait "$pid" || mesh_launch_failed=1
@@ -768,6 +789,7 @@ case "$ACTION" in
     restart-medium)
         stop_medium
         start_medium
+        configure_control_priority
         if [ "$MEDIUM_BACKEND" = userspace ]; then
             pid=$(cat "$WMEDIUMD_PIDFILE")
             affinity=$(taskset -pc "$pid" 2>/dev/null | sed 's/.*: //' || true)

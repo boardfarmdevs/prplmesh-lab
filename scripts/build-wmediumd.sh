@@ -37,6 +37,8 @@ PATCHES=(
     0027-wmediumd-preserve-earliest-scheduler-deadline.patch
     0028-wmediumd-native-receive-contexts.patch
     0029-wmediumd-bound-control-io-and-event-loop-fairness.patch
+    0030-wmediumd-admit-transmitter-frequency-queue-heads.patch
+    0031-wmediumd-bounded-access-category-admission.patch
 )
 
 case "${1:-}" in

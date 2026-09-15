@@ -6,6 +6,20 @@ Run every advertised room sequentially within each lab; independent RDK and
 prpl runs may overlap across hosts. This is bounded feature testing, not a soak
 or intrinsic stack-speed ranking. A targeted `--world` run is not full coverage.
 
+## Current RF hardening checks
+
+The September 15 [RF qualification](../radio/virtual-rf-assessment.md#september-15-reliability-and-priority-qualification)
+supersedes the cooling/native-load blockers below. RDK and prpl complete the
+different-channel UDP/BTM and fresh-settling controls with the identified
+priority profile. The targeted follow-up selects `traffic-low-high-off`,
+`traffic-quieter-ap`, `received-same-band-roam`, `band-upgrade-24-5` and
+`large-room-extender-evacuation`; inspect initial/play/final convergence,
+independent native ownership/traffic, unchanged process identities and restoration.
+This is five of 25 advertised rooms, not full-catalog coverage. Evidence:
+`/home/rev/work/rf-reliability-0913/evidence/` on rev150.
+Physical cooling inspection remains outstanding; the software mitigation does
+not establish hardware repair or intrinsic cross-stack performance.
+
 ## Preparation
 
 1. Reserve the lab. Save initial room/service configuration, native/container/

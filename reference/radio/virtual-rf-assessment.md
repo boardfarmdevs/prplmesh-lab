@@ -202,6 +202,7 @@ does not imply autonomous optimization.
 | Backhaul RCPI / hop count | Native parent/link records | Native parent/link records | Signal plus conservative hop guard; no measured backhaul-capacity estimate |
 | Noise / dBm | Fixed model reference; provider omits unsupported noise | HAL placeholders are not qualified observations | Unavailable; do not infer independently measured noise from SNR |
 | ESP / service capacity | Structures do not establish calibrated values | nl80211 ESP setter remains unqualified/no-op | Not an enabled policy input |
+| Access-category admission | Opt-in priority queues and bridge classification | Same common opt-in | Bounded priority, not calibrated EDCA/ESP; actual activation is reported |
 | Neighbor BSSID/channel/load | Native scan substrate | Native scan substrate | Per-path reception/presence qualification; not a managed steering target by discovery alone |
 | Native channel/power action | Platform-specific control path | Platform-specific control path | General room orchestration/feedback not qualified; no silent retune or RF-power double application |
 
@@ -1169,74 +1170,91 @@ Run `pytest` for `demo/tests`, `optimizer/tests` and
 `PYTHONPATH=demo:optimizer:wmediumd/configurator` from the shared root.
 Run `node tests/viewer-rf-inspector-test.js` for inspector contracts.
 
-#### September 15 short results
+#### September 15 reliability and priority qualification
 
-Both full demo/optimizer/configurator suites pass: RDK 755 and prpl 687 tests,
-plus 272 combined subtests. The ten initially skipped isolated-daemon checks
-pass separately against copies of the deployed medium binaries. Readiness
-tests, Golden World regeneration, documentation checks, seven targeted JS
-suites and guide/convergence/inspector browser checks also pass. Harness fixes
-cover optional band expectations, actual traffic accounting, the 25-room
-catalog and unlimited steering with safety guards, replacing the obsolete
-100-request readiness assertion.
+The earlier eleven-room baseline remains in
+`/home/rev/work/rf-next-0913/evidence-20260915/`. Current hardening evidence is
+`/home/rev/work/rf-reliability-0913/evidence/` on rev150. Keep failed attempts;
+the targeted follow-up is not a new full-catalog or soak qualification.
 
-All rows pass initial, movement/checkpoint and final room/topology checks.
-Independent native BSSID/band/traffic and pool-presence audits pass; native
-process identities stay unchanged, with no recorded event gaps.
-Values are seconds from opening each initial/final observation gate to its
-first policy-converged sample, excluding world application and the subsequent
-five-second stability check. They are **not RF-event-to-roam latency**.
+**Reporting repairs**
 
-| Room | RDK initial / final | prpl initial / final |
+- **prpl 5 GHz:** BWL consumed stale netlink sequences after receive failures.
+  Patch 0021 increases the socket buffer from 8 to 256 KiB, bounds send/receive
+  waits to one second, rejects failed transactions and reconnects before the
+  next request. Sequence checking stays enabled; no synthetic load replaces a
+  missing report. The native fault test covers sequence mismatch, buffer loss,
+  interrupted dumps, timeout, send/kernel errors and 100 consecutive successful
+  transactions. Run `bash tests/prpl-netlink-recovery.sh SOURCE BUILD` in the
+  prepared builder. Deployment replaces installed `libbwl`, restarts its native
+  users and re-enumerates existing associations; this is maintenance, not a
+  steady-state reconnect loop. The subsequent same-channel control reports
+  **30/30 BSSes**, including controller/Ext-1 5 GHz, and passes.
+- **RDK channel reports:** patch 0188 admits authoritative operating-channel
+  updates while an onboarded radio temporarily handles candidate measurements.
+  The positive test restores channel 6 in **5.49 s**, with unchanged agent PID
+  and untouched 5/6 GHz channels.
+- **rev140:** the reversible non-turbo profile avoids observed throttling.
+  See [physical-host cooling](../observability/monitoring.md#thermally-constrained-physical-hosts).
+  Physical airflow/fan inspection remains necessary; reduced clock ceilings
+  must be disclosed in performance comparisons.
+
+**Next single RF feature: bounded access-category admission**
+
+Opt-in `wmediumd -Q` / `WMEDIUMD_PRIORITY_QUEUES=1` retains one active frame
+per transmitter/frequency and FIFO within each actual 802.11 access category.
+At most eight higher-priority bypasses precede the oldest waiting frame.
+Default FIFO, frequency isolation, RF loss, retries and airtime accounting
+remain available. This is **not calibrated EDCA/TXOP, collision, demand or
+physical-capacity modeling**.
+
+RDK's Rust AL-SAP sender (patch 0008) and alternative raw C++ sender mark
+network-control traffic. Socket priority alone was insufficient: [Linux veth forwarding](https://github.com/torvalds/linux/blob/master/include/linux/netdevice.h)
+cleared it, and later wireless hops reclassified untagged Ethernet.
+The opt-in platform helper `wmdcfg.control_priority` therefore installs one
+owned nftables bridge-forward rule per mesh namespace: IEEE 1905 EtherType
+0x893a → explicit UP7. It neither drops nor shapes traffic, bypasses the radio,
+nor changes other firewall tables. Kernel traces and monitor captures verify
+UP7 on **both wireless hops**. The medium remains protocol-agnostic.
+
+Install `nftables` in the lab VM and deploy the rebuilt components first.
+From the shared root (`gen/` for RDK; repository root for prpl):
+
+```sh
+sudo install -d /etc/systemd/system/LAB.service.d
+sudo install -m 0644 wmediumd/priority-queues.conf \
+  /etc/systemd/system/LAB.service.d/30-priority-queues.conf
+sudo systemctl daemon-reload
+```
+
+Replace `LAB` with `easymesh-lab` or `prplmesh-lab`. During maintenance,
+stop the room service, then run RDK's `wmediumd/wmediumd-up.sh up` or prpl's
+`scripts/radio-lab.sh restart-medium` with `WMEDIUMD_PRIORITY_QUEUES=1`;
+restart the room afterward. Normal lab startup reapplies classification;
+after a direct container restart, re-run the helper with `--enable`.
+The live RF manifest advertises admission only when enabled.
+
+Rollback: stop the room, run `sudo python3 wmediumd/configurator/wmdcfg/control_priority.py
+--stack STACK --disable` (`rdk` or `prplmesh`), remove that drop-in, reload
+systemd, restart the medium with the variable set to `0`, then restart the room.
+
+**Measured short controls**
+
+| Different-channel UDP/BTM | RDK | prpl |
 | --- | --- | --- |
-| traffic-low-high-off | 12.20 / 0.01 | 0.03 / 0.01 |
-| traffic-quieter-ap | 5.27 / 0.01 | 3.07 / 0.01 |
-| received-same-band-roam | 14.72 / 6.85 | 0.92 / 0.85 |
-| received-discovery-recovery | 18.24 / 9.92 | 1.82 / 0.85 |
-| home-a-stationary | 28.20 / 0.01 | 5.11 / 0.02 |
-| home-a-one-client-handover | 8.15 / 7.14 | 7.13 / 4.07 |
-| band-upgrade-24-5 | 22.79 / 11.51 | 7.18 / 2.74 |
-| band-upgrade-5-6 | 15.15 / 11.82 | 4.56 / 4.44 |
-| band-ap-counter-roam | 22.96 / 0.57 | 2.92 / 0.90 |
-| large-room-extender-evacuation | 13.36 / 20.73 | 9.20 / 7.97 |
-| fifty-client-counter-roam | 23.91 / 19.76 | 12.11 / 10.58 |
+| Result | PASS | PASS |
+| Verified BTM / fresh settling | 0.98 / 22.39 s | 0.57 / 20.05 s |
+| Receiver goodput, two flows | 7.47 / 7.18 Mbit/s | 11.99 / 10.91 Mbit/s |
 
-Both received rooms verify gateway → Ext-1 → gateway on 5 GHz.
-Discovery loss first selects Ext-2 at 12 s, then Ext-1 after recovery at 24 s.
-Low/high traffic records actual replies and finishes off; requested 200 packets/s
-is not guaranteed delivered rate or overload. Live pause, source-offline,
-lease-release and world-change checks cancel/reap every owned ping on both
-stacks; command-to-off observations span 0.035–1.101 s, including API work.
-Lease expiry, launch races, fault and shutdown remain additionally unit-tested,
-not separately claimed as live fault-injection results.
+Verification starts after submission, not at client movement.
 
-Evidence: `/home/rev/work/rf-next-0913/evidence-20260915/` on rev150 contains
-JUnit, per-room samples/events/native audits/screenshots, inspector captures,
-traffic lifecycle results and capability manifests. Guest rollback archives:
-`/var/tmp/rf-next-backup-20260915/`. Preserve a new evidence directory on rerun;
-capability flags and old PASS results are never substitutes for fresh evidence.
+RDK's delayed ACK previously took **9.58 s**; two post-steer ACKs captured
+under the corrected load took **3.93–12.38 ms**, and candidate responses
+**3.88–4.56 ms**. These small samples are not percentile guarantees.
+Neither freshness deadlines nor policy thresholds changed. Both drivers verify
+native channel/client restoration. All five load/play/topology rooms and native
+audits pass on both labs, without native restarts during these runs. Records:
+`rdk-rooms-verified/` and `prpl-rooms-verified/`; both default rooms are restored.
 
-**Extra load-policy qualification is not all green:**
-
-| Control | RDK | prpl |
-| --- | --- | --- |
-| Same-channel traffic room, native-load profile | PASS; native load 10–72/255, no load-driven steer | Safe no-steer, but convergence FAIL: missing native 5 GHz reports |
-| Prepared different-channel UDP/BTM | FAIL after verified BTM (2.24 s): fresh candidate HTTP 504 prevented full settling | PASS: one verified BTM (0.90 s), 20.11 s settling, receiver goodput 11.99/10.91 Mbit/s |
-
-Prpl broker evidence contains 26/30 fronthaul BSS reports: controller and
-Ext-1 5 GHz are absent despite working kernel surveys. BWL logs
-`NLE_SEQ_MISMATCH`/`NLE_NOMEM`; transaction recovery needs a separate native
-fix, not invented load. RDK also missed the channel-restoration report;
-reapplying the original radio-only subdocument restored native channel 6.
-Both default rooms finish paused, unleased, fresh and converged with 20 active/
-100 provisioned clients; native services were not restarted to hide failures.
-
-Driver repairs add tool preflight, early traffic-exit detection, WLAN source
-binding, topology-aware source selection, fresh checks after room restart and
-owned supplicant-event evidence rather than a removable temporary log.
-Failed attempts remain recorded. No policy guard or timeout was relaxed.
-
-Host samples reached 100°C and +226,284 ms reported package throttle time on
-rev140; rev150 reached 85.5°C without available throttle counters. These are
-feature results, **not an intrinsic cross-stack performance ranking**. Cooling
-and both native reporting failures are follow-up work. No release packaging.
+Keep this opt-in profile identified in every result. Next: qualify controlled
+offered load versus receiver goodput before adding new utilization-based policy.
