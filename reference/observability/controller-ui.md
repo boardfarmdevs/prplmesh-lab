@@ -57,9 +57,15 @@ publishes a short-lived intent event to the UI before sending BTM:
 1. the current client receives an orange pulse and a `NEXT` badge for three
    seconds;
 2. the badge changes to `MOVING` while BTM and convergence are in progress;
-3. a purple client marker follows the path to the new AP; and
-4. the authoritative NBAPI ownership redraw places and pulses the client at
-   its new position.
+3. authoritative NBAPI ownership immediately places the client at its new AP;
+4. a six-second history trail and pulse identify the client and source → target.
+
+Purple identifies an accepted BTM request, pink an explicitly reported non-BTM
+action, and grey an unknown method; request evidence does not prove causation.
+Concurrent trails prefer separate routes. Clearance masks protect existing
+icons and text, and labels avoid entities and one another, including pending
+intent badges. The visual changes do not delay association rendering or extend
+the six-second history window.
 
 The hint is visualization metadata only. Physical association and NBAPI
 convergence remain the acceptance criteria. If port 8091 is unavailable,

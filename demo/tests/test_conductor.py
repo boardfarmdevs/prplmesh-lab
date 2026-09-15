@@ -58,6 +58,7 @@ class ConductorProjectionTests(unittest.TestCase):
 
     def test_full_verification_queue_never_marks_unsent_clients_pending(self):
         conductor, store = self._conductor()
+        conductor.action_attempts = 100
         conductor.interactive = True
         conductor.profiling = True
         conductor.mode = "act"
@@ -119,6 +120,8 @@ class ConductorProjectionTests(unittest.TestCase):
             conductor._optimizer_worker()
         self.assertEqual(conductor.errors, [])
         self.assertEqual(waits, [5, 5, 6])
+        self.assertEqual(conductor.action_attempts, 106)
+        self.assertIsNone(store.current()["optimizer"]["maximum_actions"])
         queued_state = evaluate.call_args_list[2].args[1]
         for client in clients[5:]:
             pending = queued_state.for_sta(client.sta_mac)

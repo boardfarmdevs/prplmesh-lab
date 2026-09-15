@@ -180,6 +180,9 @@ class RoomEngine:
     def world_catalog(self) -> dict[str, Any]:
         return self._call("world_catalog")
 
+    def resume_steering(self, *, command_id: str, **kwargs: Any) -> dict[str, Any]:
+        return self._mutation("optimizer.resume", command_id, "resume_steering", **kwargs)
+
     def select_traffic_probe(self, role: str, *, command_id: str, **kwargs: Any) -> dict[str, Any]:
         return self._mutation("traffic.probe.select", command_id, "select_traffic_probe", role, **kwargs)
 

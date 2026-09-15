@@ -41,6 +41,54 @@
     return result;
   }
 
+  function pack(nodes, footprintFor, anchorId) {
+    const result = compact(nodes, footprintFor, anchorId);
+    const mesh = nodes.map(node => ({id: String(node.id), ...result.get(String(node.id)),
+      shapes: footprintFor(node)}));
+    const anchor = mesh.find(node => node.id === String(anchorId)) || mesh[0];
+    if (!anchor) return result;
+    const ordered = mesh.filter(node => node !== anchor).sort((left, right) =>
+      Math.hypot(left.x - anchor.x, left.y - anchor.y) - Math.hypot(right.x - anchor.x, right.y - anchor.y) ||
+      left.id.localeCompare(right.id));
+    for (let pass = 0; pass < 24; pass++) {
+      let moved = false;
+      for (const node of ordered) {
+        const delta = {x: anchor.x - node.x, y: anchor.y - node.y};
+        const distanceSquared = delta.x * delta.x + delta.y * delta.y;
+        if (distanceSquared < 0.01) continue;
+        let fraction = 1;
+        for (const peer of mesh) {
+          if (node === peer) continue;
+          for (const axis of ['x', 'y']) {
+            if ((node[axis] - peer[axis]) * delta[axis] < 0) {
+              fraction = Math.min(fraction, (peer[axis] - node[axis]) / delta[axis]);
+            }
+          }
+          for (const shape of node.shapes) {
+            for (const other of peer.shapes) {
+              const relativeX = node.x + shape.x - peer.x - other.x;
+              const relativeY = node.y + shape.y - peer.y - other.y;
+              const minimum = shape.radius + other.radius + 12;
+              const dot = relativeX * delta.x + relativeY * delta.y;
+              const clearance = Math.max(0, relativeX * relativeX + relativeY * relativeY - minimum * minimum);
+              const discriminant = dot * dot - distanceSquared * clearance;
+              if (dot < 0 && discriminant >= 0) {
+                fraction = Math.min(fraction, Math.max(0, (-dot - Math.sqrt(discriminant)) / distanceSquared));
+              }
+            }
+          }
+        }
+        if (fraction * Math.sqrt(distanceSquared) < 0.01) continue;
+        node.x += delta.x * fraction * 0.999;
+        node.y += delta.y * fraction * 0.999;
+        moved = true;
+      }
+      if (!moved) break;
+    }
+    for (const node of mesh) result.set(node.id, {x: node.x, y: node.y});
+    return result;
+  }
+
   function positions(nodes, snapshot, extentFor, projection, footprintFor) {
     const byId = new Map();
     for (const entry of snapshot.nodes || []) {
@@ -91,7 +139,7 @@
       if (!moved) break;
     }
     if (footprintFor) {
-      const packed = compact(mesh, entry => footprintFor(entry.node), gateway.id);
+      const packed = pack(mesh, entry => footprintFor(entry.node), gateway.id);
       for (const node of mesh) Object.assign(node, packed.get(node.id));
     }
     const result = new Map(mesh.map(node => [node.id, {x: node.x, y: node.y}]));
@@ -262,5 +310,5 @@
       document.removeEventListener('visibilitychange', this.visibility);
     }
   }
-  return {positions, compact, Follower};
+  return {positions, compact, pack, Follower};
 });

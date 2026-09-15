@@ -223,7 +223,10 @@ class EventStore:
                 "contamination": copy.deepcopy(payload),
             })
         elif kind in {"optimizer.evaluation", "optimizer.measurement.unavailable"}:
+            safety = self._state["optimizer"].get("steering_safety")
             self._state["optimizer"] = copy.deepcopy(payload)
+            if safety and safety.get("revision", -1) > (payload.get("steering_safety") or {}).get("revision", -1):
+                self._state["optimizer"]["steering_safety"] = safety
         elif kind == "optimizer.action":
             decision = payload.get("decision") or {}
             action_id = payload.get("action_id")
@@ -276,6 +279,13 @@ class EventStore:
                 self._state["traffic_probe"] = copy.deepcopy(probe)
         elif kind == "health.sample":
             self._state["health"] = copy.deepcopy(payload)
+        if kind in {"optimizer.safety", "optimizer.action"}:
+            optimizer = self._state["optimizer"]
+            safety = payload.get("steering_safety")
+            if safety and safety.get("revision", -1) >= (optimizer.get("steering_safety") or {}).get("revision", -1):
+                optimizer["steering_safety"] = copy.deepcopy(safety)
+            if payload.get("actions_used") is not None:
+                optimizer["actions_used"] = payload["actions_used"]
         if kind in {"traffic.probe.selected", "network.snapshot"} and self._state["traffic_probe"]:
             network = self._state["network"]
             network["traffic_probe"] = copy.deepcopy(self._state["traffic_probe"])

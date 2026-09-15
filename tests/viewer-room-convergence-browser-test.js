@@ -38,7 +38,12 @@ async function run() {
         const stableMutations = mutations;
         observer.disconnect();
         const boxes = [];
-        for (const changes of [{}, {moving: true}, {connection: 'disconnected'}, {fault: true}, {loading: true}, {mode: 'preview'}, {}]) {
+        for (const changes of [{}, {moving: true}, {connection: 'disconnected'}, {fault: true}, {loading: true}, {mode: 'preview'},
+          {health: {...baseline.health, healthy: false, api_active: 11, model_associated: 15, expected_model_associated: 14},
+            network: {...baseline.network, health: {...baseline.network.health, clients: 11}},
+            optimizer: {...baseline.optimizer, automatic_actuation: true, maximum_actions: 100, actions_used: 100}},
+          {optimizer: {...baseline.optimizer, fleet: {...baseline.optimizer.fleet, converged: false},
+            automatic_actuation: true, maximum_actions: 100, actions_used: 100}}, {}]) {
           draw({...baseline, ...changes});
           const bounds = card.getBoundingClientRect();
           boxes.push({x: bounds.x, y: bounds.y, width: bounds.width, height: bounds.height,

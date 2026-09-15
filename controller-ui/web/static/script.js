@@ -4028,6 +4028,7 @@ async handleWebSocketMessage(data) {
           const midY = (sourceY + targetY) / 2 - 30;
           return `M${sourceX},${sourceY} Q${midX},${midY} ${targetX},${targetY}`;
         });
+      steeringCues.layout(steeringEffectGroup);
     });
 
     simulation.on('tick')();
@@ -4070,6 +4071,7 @@ async handleWebSocketMessage(data) {
         y: event.y - nodeY
       };
       updateSTAVisual(d3.select(this), d);
+      simulation.on('tick')();
     }
 
     function staDragEnded(_event, d) {
@@ -4287,6 +4289,7 @@ async handleWebSocketMessage(data) {
       label.setAttribute('y', placement.y + baseline - nodeY);
       obstacles.push(placement);
     }
+    steeringCues.layout(this.topologyView.group.select('.steering-effects'));
   }
 
   /**

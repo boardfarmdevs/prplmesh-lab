@@ -6,7 +6,7 @@ const source = path.resolve(process.argv[2]);
 global.document = {addEventListener() {}, getElementById() { return null; }};
 global.window = {addEventListener() {}};
 const Controller = require(source);
-const {positions} = require(path.join(path.dirname(source), 'room-topology.js'));
+const {positions, pack} = require(path.join(path.dirname(source), 'room-topology.js'));
 const cues = require(path.join(path.dirname(source), 'steering-cues.js'));
 const roomProjection = require('../wmediumd/configurator/worlds/viewer/room-projection.js');
 const roomName = require('../wmediumd/configurator/worlds/viewer/room-name.js');
@@ -92,8 +92,8 @@ assert.ok(compactRatio < 0.85, 'room groups retain excessive safety-circle spaci
 let nearestGap = Infinity;
 for (const [index, node] of populated.entries()) {
   const point = packedLayout.get(node.id), previous = homeLayout.get(node.id);
-  assert.ok(Math.abs(point.x - previous.x * compactRatio) < 0.001, 'compaction changed orientation');
-  assert.ok(Math.abs(point.y - previous.y * compactRatio) < 0.001);
+  assert.ok(Math.abs(point.x * previous.y - point.y * previous.x) < 0.001, 'compaction changed bearing');
+  assert.ok(point.x * previous.x + point.y * previous.y >= 0, 'compaction reversed bearing');
   for (const peer of populated.slice(index + 1)) {
     const other = packedLayout.get(peer.id);
     for (const shape of controller.topologyNodeFootprint(node)) {
@@ -106,6 +106,25 @@ for (const [index, node] of populated.entries()) {
   }
 }
 assert.ok(nearestGap < 12.01, 'packing leaves unnecessary space between the limiting groups');
+const spread = [{id: 'gateway', x: 0, y: 0}, {id: 'near', x: 480, y: 0},
+  {id: 'far', x: 1800, y: 900}, {id: 'left', x: -1500, y: -900}];
+const footprint = () => [{x: 0, y: 0, radius: 80}];
+const spreadLayout = pack(spread, footprint, 'gateway');
+assert.ok(spreadLayout.get('far').x < 500, 'one close pair leaves the distant extender unnecessarily far away');
+for (const [index, node] of spread.entries()) {
+  const point = spreadLayout.get(node.id);
+  assert.ok(Math.abs(point.x * node.y - point.y * node.x) < 0.001, 'radial packing changed bearing');
+  for (const peer of spread.slice(index + 1)) {
+    const other = spreadLayout.get(peer.id);
+    assert.ok(Math.hypot(point.x - other.x, point.y - other.y) >= 172 - 0.001, 'radial packing overlaps nodes');
+    for (const axis of ['x', 'y']) {
+      assert.ok((point[axis] - other[axis]) * (node[axis] - peer[axis]) >= -0.001, 'packing flipped relative ordering');
+    }
+  }
+}
+const repacked = pack(spread.map(node => ({...node, ...spreadLayout.get(node.id)})), footprint, 'gateway');
+for (const node of spread) assert.ok(Math.hypot(repacked.get(node.id).x - spreadLayout.get(node.id).x,
+  repacked.get(node.id).y - spreadLayout.get(node.id).y) < 0.02, 'packing drifts on repeat');
 const manualNodes = populated.map(node => ({...node, ...homeLayout.get(node.id)}));
 controller.tightenTopologyNodes(manualNodes);
 const tightened = manualNodes.map(node => ({x: node.x, y: node.y}));

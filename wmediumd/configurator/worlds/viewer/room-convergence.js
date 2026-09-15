@@ -13,14 +13,60 @@
     return Number.isFinite(age) && age >= 0 && age <= maximumAge;
   };
 
+  function healthDetail(health = {}) {
+    const issues = [];
+    const clients = number(health.api_active), expected = number(health.expected_online_clients);
+    if (clients !== null && expected !== null && clients !== expected) {
+      const difference = clients - expected;
+      issues.push(clients + '/' + expected + ' clients associated (' +
+        Math.abs(difference) + (difference > 0 ? ' extra).' : ' missing).'));
+    }
+    for (const [field, expectedField, label] of [
+      ['complete_nodes', 'expected_topology_nodes', 'Complete mesh nodes'],
+      ['model_devices', 'expected_model_devices', 'Model devices'],
+      ['model_radios', 'expected_model_radios', 'Model radios'],
+      ['model_bsses', 'expected_model_bsses', 'Model BSSes'],
+      ['model_associated', 'expected_model_associated', 'Model associations'],
+    ]) {
+      if (number(health[field]) !== null && number(health[expectedField]) !== null &&
+          health[field] !== health[expectedField]) {
+        issues.push(label + ': ' + health[field] + '/' + health[expectedField] + '.');
+      }
+    }
+    return issues.join(' ') || 'The latest health check is degraded; inspect Whole lab.';
+  }
+
+  function budgetDetail(status = {}) {
+    return status.automatic_actuation && number(status.maximum_actions) !== null &&
+      number(status.actions_used) !== null && status.actions_used >= status.maximum_actions
+      ? 'Steering limit reached: ' + status.actions_used + '/' + status.maximum_actions +
+        ' requests used. Measurements continue.' : '';
+  }
+
+  function protectionDetail(status = {}) {
+    const safety = status.steering_safety || {}, paused = safety.paused_clients || [];
+    if (paused.length) return paused.length + ' client' + (paused.length === 1 ? '' : 's') +
+      ' paused after failures or oscillation. Others continue. Use Resume steering.';
+    if (safety.rate_retry_seconds > 0) return safety.requests_in_window + '/' +
+      safety.request_limit + ' requests in ' + safety.window_seconds + ' s. Retries are automatic.';
+    return '';
+  }
+
+  function withSafety(previous, next) {
+    const before = previous && previous.steering_safety, after = next && next.steering_safety;
+    return before && (!after || before.revision > after.revision)
+      ? {...next, steering_safety: before} : next;
+  }
+
   function describe(input) {
     const status = input.optimizer || {}, fleet = status.fleet || {};
     const health = input.health || {}, network = input.network || {};
     const expected = number(status.expected_online_clients) ?? number(health.expected_online_clients);
     const expectedNodes = number(health.expected_topology_nodes);
     const expectedDevices = number(health.expected_mesh_devices) ?? (expectedNodes === null ? null : expectedNodes - 1);
-    const summary = count(fleet.clients_checked) + '/' + count(expected) + ' clients checked · ' +
-      count(health.topology_nodes) + '/' + count(expectedNodes) + ' mesh nodes';
+    const summary = count(fleet.clients_checked) + '/' + count(expected) + ' checked · ' +
+      count(network.health?.clients ?? health.api_active) + '/' + count(expected) + ' online · ' +
+      count(health.topology_nodes) + '/' + count(expectedNodes) + ' mesh';
     const result = (state, title, detail) => ({state, title, summary, detail});
     if (input.mode === 'preview') return result('unknown', 'PREVIEW ONLY', 'No live lab measurements; simulated links do not prove convergence.');
     if (input.mode === 'replay') return result('unknown', 'RECORDED REPLAY', 'Inspect the recorded optimizer result; this is not current lab readiness.');
@@ -33,7 +79,12 @@
       number(health.topology_nodes) !== null && health.topology_nodes !== expectedNodes ||
       number(network.health?.mesh_devices) !== null && network.health.mesh_devices !== expectedDevices);
     if (meshMissing) return result('blocked', 'MESH INCOMPLETE', 'An extender may have lost backhaul. Client convergence is not confirmed.');
-    if (health.healthy === false) return result('blocked', 'LAB NOT READY', 'Associations or mesh health are incomplete; inspect Whole lab.');
+    if (health.healthy === false) return result('blocked', 'LAB NOT READY',
+      healthDetail(health) + (budgetDetail(status)
+        ? ' Steering limit: ' + status.actions_used + '/' + status.maximum_actions + ' requests used.' : ''));
+    if ((status.steering_safety?.paused_clients || []).length) {
+      return result('blocked', 'CLIENTS PAUSED', protectionDetail(status));
+    }
     if (input.moving) return result('working', 'MOVING', 'Pause at a checkpoint and wait for CONVERGED before comparing results.');
     if (status.progress && status.progress.kind !== 'optimizer.progress' ||
         number(input.environmentEpoch) !== null && status.environment_epoch !== input.environmentEpoch) {
@@ -57,8 +108,11 @@
       return result('ready', 'CONVERGED', !input.canPlay ? 'Client/AP policy satisfied. Monitoring continues.' : input.checkpoint
         ? 'Client/AP policy satisfied. Ready to continue Play.' : 'Client/AP policy satisfied. Ready to Play.');
     }
-    if (status.automatic_actuation && number(status.maximum_actions) !== null && status.actions_used >= status.maximum_actions) {
-      return result('blocked', 'STEERING PAUSED', 'The action budget is exhausted; inspect External optimizer.');
+    if (status.steering_safety?.rate_retry_seconds > 0) {
+      return result('working', 'RATE LIMITED', protectionDetail(status));
+    }
+    if (budgetDetail(status)) {
+      return result('blocked', 'STEERING PAUSED', budgetDetail(status));
     }
     return result('working', 'CONVERGING', number(fleet.clients_outside_policy_margin) > 0
       ? fleet.clients_outside_policy_margin + ' clients still need a policy-compliant connection.'
@@ -80,5 +134,5 @@
     element.title = status.detail + ' Green confirms the configured client/AP policy and reported mesh roster, not optimal backhaul parents or end-to-end traffic on every link.';
   }
 
-  return {describe, render};
+  return {describe, render, healthDetail, budgetDetail, protectionDetail, withSafety};
 });

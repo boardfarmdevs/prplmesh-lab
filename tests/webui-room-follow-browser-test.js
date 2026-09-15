@@ -147,9 +147,9 @@ async function run() {
     roomActions = [{sta_mac: station.staMAC, source_bssid: 'source', target_bssid: 'target', method: 'btm-request', requested_at: now}];
     await page.waitForSelector('.sta-roam-cue[data-method="btm"]');
     assert.equal(await originalCue.evaluate(element => element.isConnected), true, 'method evidence rebuilt the SVG or reset the highlight');
-    assert.match(await page.locator('.sta-roam-origin-label').textContent(), /FROM Extender-4/);
+    assert.match(await page.locator('.sta-roam-origin-label').textContent(), /Ext-4 →/);
     assert.equal(await page.locator('.sta-node').count(), 1, 'history duplicated the actual client');
-    assert.equal(await page.locator('.sta-steer-pulse').getAttribute('stroke'), '#0f766e');
+    assert.equal(await page.locator('.sta-steer-pulse').getAttribute('stroke'), '#7c3aed');
     const currentOwner = await page.locator('.sta-node').evaluate(element => element.__data__.ownerId);
     assert.equal(currentOwner, nodes[3].id, 'animation delayed the actual association');
     if (process.env.ROOM_FOLLOW_SCREENSHOT) await page.screenshot({path: process.env.ROOM_FOLLOW_SCREENSHOT});

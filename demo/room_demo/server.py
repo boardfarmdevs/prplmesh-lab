@@ -55,10 +55,12 @@ class RoomDemoServer:
         interactions: RoomEngine | None = None,
         *,
         replay: bool = False,
+        optimizer_status=None,
     ):
         self.store = store
         self.viewer_root = viewer_root.resolve()
         self.interactions = interactions
+        self.optimizer_status = optimizer_status
         self.viewer_mode = "replay" if replay else "interactive" if interactions is not None else "live"
         handler = self._handler()
         self.httpd = BoundedHTTPServer(address, handler)
@@ -88,6 +90,7 @@ class RoomDemoServer:
         viewer_root = self.viewer_root
         interactions = self.interactions
         viewer_mode = self.viewer_mode
+        optimizer_status = self.optimizer_status
 
         class Handler(BaseHTTPRequestHandler):
             server_version = "EasyMeshRoomDemo/0.1"
@@ -296,6 +299,9 @@ class RoomDemoServer:
                 elif parsed.path == "/api/demo/current":
                     current = store.current()
                     self._json(current, revision=current["world_revision"])
+                elif parsed.path == "/api/demo/optimizer/safety":
+                    self._json(optimizer_status() if optimizer_status is not None and viewer_mode == "interactive"
+                               else {"enabled": False, "resume_supported": False})
                 elif parsed.path == "/api/demo/mesh-layout":
                     self._json({**store.mesh_layout(), "live": viewer_mode != "replay"})
                 elif parsed.path == "/api/demo/rf-load" and interactions is not None and viewer_mode != "replay":
@@ -339,6 +345,14 @@ class RoomDemoServer:
                     self._require_same_origin()
                     body = self._body(4 * 1024 * 1024 if parsed.path == "/api/demo/world/apply" else 64 * 1024)
                     command_id = str(body.get("command_id") or "")
+                    if parsed.path == "/api/demo/optimizer/resume":
+                        if viewer_mode != "interactive":
+                            raise InteractionError(405, "read_only", "Replay cannot resume automatic steering")
+                        self._interaction_json(interactions.resume_steering(
+                            token=str(body.get("token") or ""), command_id=command_id,
+                            expected_revision=self._expected_revision(body),
+                            expected_pause_revision=body.get("expected_pause_revision")))
+                        return
                     if parsed.path == "/api/demo/traffic-probe":
                         self._interaction_json(interactions.select_traffic_probe(
                             str(body.get("role") or ""), token=str(body.get("token") or ""),

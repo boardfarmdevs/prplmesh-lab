@@ -6,14 +6,16 @@ const vm = require('vm');
 const html = fs.readFileSync(path.resolve(__dirname, '../wmediumd/configurator/worlds/viewer/index.html'), 'utf8');
 const elements = {};
 const context = {
+  RoomConvergence: require('../wmediumd/configurator/worlds/viewer/room-convergence.js'),
   optimizerState: {}, networkState: {mesh: {nodes: []}}, healthState: {healthy: true}, selected: 'client',
-  profilingState: null,
+  profilingState: null, actionState: null, verificationState: null,
+  interactiveLiveMode: true, interaction: {apiEnabled: true},
   liveMode: true, liveClock: {serverMs: Date.parse('2026-09-07T03:00:00Z'), receivedMs: 0},
-  performance: {now: () => 0}, displayRole: role => role,
+  performance: {now: () => 0}, displayRole: role => role, targetRole: () => null,
   $: selector => elements[selector] || (elements[selector] = {}),
 };
 vm.createContext(context);
-for (const name of ['esc', 'phaseClass', 'optimizerBadgeClasses', 'optimizerReason', 'renderOptimizerStatus']) {
+for (const name of ['esc', 'phaseClass', 'renderSteeringResume', 'optimizerBadgeClasses', 'optimizerReason', 'renderOptimizerStatus']) {
   vm.runInContext(html.match(new RegExp('  function ' + name + '\\([\\s\\S]*?\\n  \\}'))[0], context);
 }
 context.optimizerState = {fleet: {converged: true}, evaluated_at: '2026-09-07T02:59:55Z'};
@@ -96,6 +98,17 @@ assert.match(elements['#optimizerStatus'].innerHTML, /Only 4 \/ 6 mesh nodes/);
 assert.match(elements['#optimizerStatus'].innerHTML, /Missing extenders may have lost backhaul/);
 assert.doesNotMatch(elements['#optimizerStatus'].innerHTML, /Converged:/);
 context.healthState.healthy = true;
+context.optimizerState = {evaluated_at: '2026-09-07T02:59:55Z', fleet: {converged: false},
+  automatic_actuation: true, maximum_actions: 100, actions_used: 100};
+context.renderOptimizerStatus();
+assert.match(elements['#optimizerStatus'].innerHTML, /Automatic steering paused: action limit reached/);
+assert.match(elements['#optimizerStatus'].innerHTML, /100\/100 requests used/);
+context.healthState = {healthy: false, api_active: 11, expected_online_clients: 10};
+context.renderOptimizerStatus();
+assert.match(elements['#optimizerStatus'].innerHTML, /11\/10 clients associated \(1 extra\)/);
+assert.match(elements['#optimizerStatus'].innerHTML, /100\/100 requests used/);
+context.healthState = {healthy: true};
+context.optimizerState = {evaluated_at: '2026-09-07T02:59:55Z', fleet: {converged: true}};
 for (const field of ['roster_complete', 'measurement_complete', 'converged']) {
   context.optimizerState.fleet = {converged: true, [field]: false};
   context.renderOptimizerStatus();
@@ -173,6 +186,30 @@ context.optimizerState = {fleet: {roster_complete: false, missing_clients: ['mis
 context.renderOptimizerStatus();
 assert.match(elements['#optimizerStatus'].innerHTML, /Available clients continue/);
 assert.match(elements['#optimizerStatus'].innerHTML, /1 unexpected\/offline clients still reported/);
+context.liveClock = {serverMs: Date.parse('2026-09-07T03:00:00Z'), receivedMs: 0};
+context.optimizerState = {evaluated_at: '2026-09-07T02:59:55Z', automatic_actuation: true,
+  automatic_actuation_ready: true, maximum_actions: null, actions_used: 350,
+  fleet: {converged: true}, steering_safety: {enabled: true, resume_supported: true,
+    revision: 1, paused_clients: [], requests_in_window: 2, request_limit: 300, window_seconds: 60}};
+context.renderLivePanels();
+assert.match(elements['#optimizerMetrics'].innerHTML, /350 · no lifetime cap/);
+assert.equal(context.optimizerBadgeClasses('stable').mode, 'healthy');
+assert.equal(elements['#resumeSteering'].disabled, true);
+context.optimizerState.steering_safety.paused_clients = [{role: 'sta_01'}];
+context.renderLivePanels();
+assert.match(elements['#optimizerStatus'].innerHTML, /Some clients paused/);
+assert.equal(elements['#resumeSteering'].disabled, false);
+assert.equal(context.optimizerBadgeClasses('stable').mode, 'waiting');
+context.interactiveLiveMode = false;
+context.renderSteeringResume();
+assert.equal(elements['#resumeSteering'].disabled, true);
+context.interactiveLiveMode = true;
+context.optimizerState.steering_safety.paused_clients = [];
+context.optimizerState.steering_safety.rate_retry_seconds = 20;
+context.optimizerState.fleet.converged = false;
+context.renderLivePanels();
+assert.match(elements['#optimizerStatus'].innerHTML, /Waiting for the rolling request window/);
+assert.equal(elements['#resumeSteering'].disabled, true);
 context.profilingState = {mode: 'native-observation'};
 context.renderOptimizerStatus();
 assert.match(elements['#optimizerStatus'].innerHTML, /Native observation · no lab steering/);

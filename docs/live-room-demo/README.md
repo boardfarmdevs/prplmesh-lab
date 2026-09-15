@@ -6,24 +6,27 @@
 
 ## Open and control
 
-Open the live room and network topology side by side. The room's built-in
-Help is the detailed control reference; this page describes the operating rules.
-No `?mode=` is required for the normal live URL.
+Room-follow topology packing keeps bearings and relative ordering while bringing
+distant AP groups closer for readability; diagram distances are not RF distances.
+The convergence badge distinguishes checked from online clients and names health
+mismatches. Steering has no default lifetime cap: rolling limits recover
+automatically; repeated failures/oscillation pause affected clients only.
+**Resume steering** clears those pauses without resetting room, counters or
+cooldowns. Measurements continue.
 
-- **Load world** immediately applies its initial geometry, RF and presence to
-  the lab. Wait for completion; there is no separate Apply World step.
-- **Play / Pause** controls scripted movement. You can also drag devices without
-  switching camera/interactive modes. A moving best AP may change continuously.
-- **Ctrl-click any client** selects the traffic probe. Selection does not steer
-  that station or give it a special permanent role. “Private-Laptop” is not a
-  separate appliance capability.
+Open room and topology side by side. Built-in Help details the controls.
+No `?mode=` is required.
+
+- **Load world** applies geometry, RF and presence immediately; wait for completion.
+- **Play / Pause** controls scripted movement. Dragging remains available.
+- **Ctrl-click any client** selects the traffic probe, without steering it.
 - Station names remain visible. Drag the black properties label out of the way.
 - **Full screen** is available in both views; Esc exits. Topology layout fitting
   changes presentation, not radio positions or actual parent selection.
 - Stop/restore a custom run before leaving. Return to the default twenty-client
   world and leave it paused when handing the lab to someone else.
 
-Twenty client containers and six logical mesh roles remain provisioned.
+One hundred client containers and six logical mesh roles remain provisioned.
 Smaller worlds make selected roles unavailable; they do not rebuild the VM.
 Absent clients must disappear from the observed roster after convergence.
 Disabling an extender's **fronthaul** does not disable its backhaul.

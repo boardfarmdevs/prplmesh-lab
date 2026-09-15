@@ -4,15 +4,24 @@ Room/topology UI regression checks (no live RF changes):
 
 ```sh
 node tests/webui-room-follow-test.js controller-ui/web/static/script.js
+node tests/steering-cues-test.js controller-ui/web/static/steering-cues.js
+node tests/steering-cues-browser-test.js controller-ui/web/static/steering-cues.js controller-ui/web/static/vendor/d3-7.9.0.min.js
 node tests/viewer-room-guide-test.js
 node tests/viewer-room-convergence-test.js
 node tests/webui-room-follow-browser-test.js controller-ui/web/static
 node tests/viewer-room-guide-browser-test.js
 node tests/viewer-room-convergence-browser-test.js
+node tests/viewer-steering-resume-browser-test.js
 node tests/pane-divider-browser-test.js
 PYTHONPATH=demo:wmediumd/configurator:optimizer:demo/tests python3 -m unittest test_room_layout test_server test_world_switch
 (cd controller-ui && go test -race ./...)
 ```
+
+Steering protection tests `test_steering_safety.py` and
+`test_steering_control.py` cover 350 requests without lifetime exhaustion,
+rolling limits, concurrent admission, failure/oscillation pauses and idempotent
+Resume without RF/playback changes. The Resume browser test covers the actual
+button, lease/revision fencing, stale-pause rejection and read-only modes.
 
 Browser tests require Playwright Core and Chromium; set `NODE_PATH` and
 `CHROMIUM_PATH` for existing installations. They check room titles, orientation,

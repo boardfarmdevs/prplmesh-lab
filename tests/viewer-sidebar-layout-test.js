@@ -7,7 +7,7 @@ const {chromium} = require('playwright-core');
 const source = fs.readFileSync(path.resolve(__dirname, '../wmediumd/configurator/worlds/viewer/index.html'), 'utf8');
 const styles = source.match(/<style>[\s\S]*?<\/style>/)[0];
 const sidebar = source.match(/<aside\b[^>]*>[\s\S]*?<\/aside>/)[0];
-const functions = ['esc', 'phaseClass', 'optimizerBadgeClasses', 'optimizerReason', 'renderOptimizerStatus',
+const functions = ['esc', 'phaseClass', 'renderSteeringResume', 'optimizerBadgeClasses', 'optimizerReason', 'renderOptimizerStatus',
   'renderLivePanels', 'renderRecentEvents'].map(name => source.match(new RegExp('  function ' + name + '\\([\\s\\S]*?\\n  \\}'))[0]).join('\n');
 const keyboard = source.match(/  document\.addEventListener\('keydown', \(event\) =>[^\n]+/)[0];
 
@@ -23,11 +23,12 @@ async function main() {
       await page.setViewportSize(viewport);
       await page.setContent('<!doctype html><html><head>' + styles + '</head><body class="live-presentation">' +
         sidebar + '<div id="roomPanelDivider"></div><main></main><dialog id="viewerManual"></dialog></body></html>');
+      await page.addScriptTag({path: path.resolve(__dirname, '../wmediumd/configurator/worlds/viewer/room-convergence.js')});
       await page.addScriptTag({content: `
         var optimizerState = null, networkState = null, healthState = {healthy: true}, profilingState = null;
         var liveMode = true, replayMode = false, liveClock = {serverMs: Date.now(), receivedMs: performance.now()};
         var selected = 'sta-01', actionState = null, verificationState = null, storyState = 'Layout regression';
-        var recentEvents = [], playCalls = 0;
+        var recentEvents = [], playCalls = 0, interactiveLiveMode = true, interaction = {apiEnabled: true};
         var $ = selector => document.querySelector(selector);
         var displayRole = role => role, targetRole = () => null, togglePlay = () => { playCalls++; };
         ${functions}
@@ -44,6 +45,11 @@ async function main() {
           candidates: Array.from({length: 4}, (_, index) => ({role: 'ext-' + (index + 1), rcpi: 80 + index})),
           fleet: {clients_checked: 20, clients_evaluated: 20, measurement_complete: true, converged: true}};
         const states = [null, evaluated,
+          {...evaluated, maximum_actions: null, actions_used: 350, steering_safety: {
+            enabled: true, resume_supported: true, request_limit: 300, requests_in_window: 2, window_seconds: 60,
+            paused_clients: [{role: 'sta_01', reason: 'steering_failures_paused'}]}},
+          {...evaluated, steering_safety: {enabled: true, request_limit: 300, requests_in_window: 300,
+            window_seconds: 60, rate_retry_seconds: 20, paused_clients: []}},
           {...evaluated, progress: {kind: 'optimizer.progress', phase: 'candidate_queries',
             completed_queries: 2, total_queries: 5, selected_clients: 4, total_clients: 20}},
           {...evaluated, progress: {kind: 'optimizer.measurement.waiting', reason: 'backhaul_reconciling'}},
@@ -91,14 +97,14 @@ async function main() {
             }
           }
         }
-        optimizerState = states[4];
+        optimizerState = states.find(state => state?.status === 'unavailable');
         renderLivePanels();
         const metrics = document.querySelector('#optimizerMetrics');
         metrics.scrollTop = metrics.scrollHeight;
         await nextFrame();
         const error = {scrollTop: metrics.scrollTop, endVisible: metrics.scrollTop + metrics.clientHeight >= metrics.scrollHeight - 1,
           fullText: metrics.textContent.endsWith('END OF ERROR')};
-        optimizerState = states[5];
+        optimizerState = states.find(state => state?.unavailable_cohort_reason);
         renderLivePanels();
         const status = document.querySelector('#optimizerStatus');
         status.scrollTop = status.scrollHeight;

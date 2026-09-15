@@ -53,6 +53,7 @@ class InteractiveMediumSession:
         disconnect_client: Callable[[str], Any] | None = None,
         reconnect_client: Callable[[str], None] | None = None,
         traffic_probe_role: str | None = None,
+        resume_steering: Callable[[int], dict] | None = None,
         adaptive_backhaul: bool = False,
         model_backhaul: bool = False,
         band_profiles: Any = None,
@@ -68,6 +69,7 @@ class InteractiveMediumSession:
         self.lease_seconds = max(10, min(120, int(lease_seconds)))
         self.minimum_update_interval = max(0.0, float(minimum_update_interval))
         self.recovery = recovery
+        self._resume_steering = resume_steering
         self.worlds = worlds
         self.adaptive_backhaul = adaptive_backhaul
         self.model_backhaul = model_backhaul
@@ -519,6 +521,14 @@ class InteractiveMediumSession:
             result = {"revision": self._revision, "traffic_probe": self._traffic_probe()}
             self.store.emit("traffic.probe.selected", self._world_time(), result, producer="interaction")
             return result
+
+    def resume_steering(self, *, token: str, expected_revision: Any, expected_pause_revision: Any) -> dict:
+        with self._lock:
+            self._validate_mutation("gateway", token, expected_revision, allowed_roles=self._movable_roles)
+            if self._resume_steering is None:
+                raise InteractionError(409, "steering_resume_unavailable", "This session has no automatic steering control")
+            return {"revision": self._revision,
+                    "steering_safety": self._resume_steering(expected_pause_revision)}
 
     def world_catalog(self) -> dict[str, Any]:
         if self.worlds is None:

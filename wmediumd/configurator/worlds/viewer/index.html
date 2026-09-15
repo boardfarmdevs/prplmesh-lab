@@ -166,6 +166,8 @@
     body { grid-template-columns: 1fr; grid-template-rows: auto 1fr; }
     aside { border-right: 0; border-bottom: 1px solid var(--rule); max-height: 45vh; }
   }
+  .optimizer-heading { display: flex; align-items: center; justify-content: space-between; gap: 6px; min-height: 28px; }
+  #resumeSteering { flex: 0 0 auto; min-width: 112px; margin: 0; padding: 5px 7px; font-size: 11px; }
 </style>
 <link rel="stylesheet" href="room-guide.css?v=1">
 <link rel="stylesheet" href="room-convergence.css?v=1">
@@ -198,7 +200,7 @@
     <div class="card" id="storyCard"><h2>Scenario</h2><div id="storyText">Waiting for the conductor…</div></div>
     <div class="card" id="labCard"><h2>Whole lab</h2><div id="labMetrics" class="metric-grid"><span>Status</span><b>waiting</b></div></div>
     <div class="card" id="heroCard"><h2>Traffic probe · cyan ring</h2><div id="heroMetrics">Waiting for controller telemetry…</div><div class="sub">Ctrl-click any client</div></div>
-    <div class="card" id="optimizerCard"><h2>External optimizer</h2><div id="optimizerStatus" class="live-scroll" tabindex="0" role="status" aria-label="Optimizer result" aria-live="polite">Waiting for live status…</div><details id="optimizerActivity"><summary>Background measurement details</summary><div id="optimizerActivityDetails" class="live-scroll" tabindex="0" role="region" aria-label="Background measurement activity">Waiting for measurements…</div></details><div id="optimizerMetrics" class="live-scroll" tabindex="0" role="region" aria-label="Optimizer metrics">No evaluation yet.</div><details id="optimizerClients"><summary>Per-client decisions</summary><div id="optimizerClientRows" class="live-scroll" tabindex="0" role="region" aria-label="Per-client decisions"></div></details></div>
+    <div class="card" id="optimizerCard"><h2 class="optimizer-heading">External optimizer<button id="resumeSteering" type="button" disabled>Resume steering</button></h2><div id="optimizerStatus" class="live-scroll" tabindex="0" role="status" aria-label="Optimizer result" aria-live="polite">Waiting for live status…</div><details id="optimizerActivity"><summary>Background measurement details</summary><div id="optimizerActivityDetails" class="live-scroll" tabindex="0" role="region" aria-label="Background measurement activity">Waiting for measurements…</div></details><div id="optimizerMetrics" class="live-scroll" tabindex="0" role="region" aria-label="Optimizer metrics">No evaluation yet.</div><details id="optimizerClients"><summary>Per-client decisions</summary><div id="optimizerClientRows" class="live-scroll" tabindex="0" role="region" aria-label="Per-client decisions"></div></details></div>
     <div class="card"><h2>Recent events</h2><div id="eventRibbon" class="live-scroll" tabindex="0" role="region" aria-label="Recent events"></div></div>
   </div>
 
@@ -341,7 +343,7 @@
   PaneDivider.attach({container: document.body, handle: document.getElementById('roomPanelDivider'),
     property: '--panel-w', storageKey: 'easymesh.room-panel-width', initial: 380, minimum: 220});
 </script>
-<script src="room-convergence.js?v=1"></script>
+<script src="room-convergence.js?v=3"></script>
 <script src="fullscreen-control.js?v=fullscreen-1"></script>
 <script src="vendor/three.min.js"></script>
 <script src="interaction-model.js"></script>
@@ -1875,6 +1877,41 @@
     const phase = String(value || 'stable').toLowerCase();
     return /failed|error|timeout/.test(phase) ? 'failed' : phase;
   }
+  function renderSteeringResume() {
+    const button = $('#resumeSteering'), safety = optimizerState?.steering_safety || {};
+    const paused = (safety.paused_clients || []).length;
+    button.disabled = !interactiveLiveMode || !interaction.apiEnabled || !!interaction.fault ||
+      !safety.resume_supported || !paused || !!interaction.resumingSteering;
+    button.textContent = interaction.resumingSteering ? 'Resuming…' : 'Resume steering';
+    button.title = paused ? 'Clear client failure/oscillation pauses without resetting the room, cooldowns or rate window.'
+      : 'No clients paused. Rate limits recover automatically; no restart is needed.';
+  }
+  async function resumeSteering() {
+    if (!interactiveLiveMode || !interaction.apiEnabled || interaction.resumingSteering) return;
+    interaction.resumingSteering = true;
+    renderSteeringResume();
+    try {
+      if (!await acquireInteractionLease()) return;
+      const safety = await apiJson('/api/demo/optimizer/safety');
+      const accepted = await sendControl('/api/demo/optimizer/resume', 'POST', {
+        expected_pause_revision: safety.pause_revision,
+      });
+      if (accepted) {
+        optimizerState = RoomConvergence.withSafety(optimizerState, {
+          ...(optimizerState || {}), steering_safety: accepted.steering_safety,
+        });
+        interactionMessage('Steering resumed; room, cooldowns and rate window unchanged.');
+        renderLivePanels();
+        update();
+      }
+    } catch (error) {
+      interactionMessage(error.message, true);
+    } finally {
+      interaction.resumingSteering = false;
+      renderSteeringResume();
+    }
+  }
+  $('#resumeSteering').addEventListener('click', resumeSteering);
   function optimizerBadgeClasses(phase) {
     const status = optimizerState || {}, progress = status.progress;
     const now = liveMode
@@ -1888,12 +1925,18 @@
     return {
       phase: !fresh ? 'unknown' : phase === 'stable' ? (healthy && settled ? 'healthy' : 'waiting') : phaseClass(phase),
       mode: !status.automatic_actuation ? '' : !fresh ? 'unknown' :
-        healthy && status.automatic_actuation_ready && Number(status.actions_used || 0) < Number(status.maximum_actions || 0)
+        healthy && status.automatic_actuation_ready && !RoomConvergence.budgetDetail(status) &&
+          !RoomConvergence.protectionDetail(status)
           ? 'healthy' : 'waiting',
     };
   }
   function optimizerReason(reason) {
     const reasons = {
+      steering_failures_paused: 'Paused: repeated steering failures; use Resume steering',
+      steering_oscillation_paused: 'Paused: repeated AP reversals; use Resume steering',
+      steering_rate_limited: 'Rolling request limit; retries resume automatically',
+      steering_client_cooldown: 'Waiting for per-client request spacing',
+      steering_request_pending: 'Waiting for the submitted move to finish',
       minimum_dwell_not_met: 'Waiting for association dwell time',
       condition_hold_not_met: 'Confirming that the better AP stays better',
       post_steer_cooldown: 'Cooldown after a verified move',
@@ -1926,6 +1969,7 @@
     return reasons[reason] || String(reason || 'Waiting for evaluation').replace(/_/g, ' ');
   }
   function renderOptimizerStatus() {
+    renderSteeringResume();
     if (profilingState && profilingState.mode === 'native-observation') {
       $('#optimizerStatus').innerHTML = '<b>Native observation · no lab steering</b><p>Only the room RF stimulus is applied. No external candidate queries, client steering or backhaul-parent selection.</p>';
       $('#optimizerActivityDetails').textContent = 'External candidate collection is disabled in native observation.';
@@ -1972,12 +2016,22 @@
       detail = healthState.topology_nodes < healthState.expected_topology_nodes
         ? 'Only ' + healthState.topology_nodes + ' / ' + healthState.expected_topology_nodes +
           ' mesh nodes are reported. Missing extenders may have lost backhaul; client steering waits for mesh recovery. Resume Play to reach the return positions, or restore Default.'
-        : 'The latest health check is degraded; convergence is not confirmed.';
+        : RoomConvergence.healthDetail(healthState);
+      if (RoomConvergence.budgetDetail(status)) detail += ' ' + RoomConvergence.budgetDetail(status);
+    } else if ((status.steering_safety?.paused_clients || []).length) {
+      heading = 'Some clients paused by steering protection';
+      detail = RoomConvergence.protectionDetail(status);
     } else if (fleet.converged && freshEvaluation && fleet.roster_complete !== false && fleet.measurement_complete !== false && fleet.band_measurements_complete !== false) {
       heading = 'Converged: all clients checked';
       detail = fleet.policy === 'received-scan-band-preference-v1'
         ? 'Last check: clients meet the AP and band policy, using fresh client-received scans for band comparisons. A preferred band can have a weaker signal. Monitoring continues.'
         : 'Last check: all clients were within ' + (Number(fleet.minimum_gain_rcpi || 1) / 2) + ' dB of their strongest measured AP. Monitoring continues.';
+    } else if (status.steering_safety?.rate_retry_seconds > 0) {
+      heading = 'Waiting for the rolling request window';
+      detail = RoomConvergence.protectionDetail(status);
+    } else if (RoomConvergence.budgetDetail(status)) {
+      heading = 'Automatic steering paused: action limit reached';
+      detail = RoomConvergence.budgetDetail(status);
     } else if (blocked.length) {
       heading = blocked.length + ' clients waiting or blocked';
       const counts = {};
@@ -2072,7 +2126,8 @@
       const scores = (optimizerState.candidates || []).slice().sort((a, b) => (b.rcpi || -1) - (a.rcpi || -1));
       const automatic = !!optimizerState.automatic_actuation;
       const used = Number(optimizerState.actions_used || 0);
-      const limit = Number(optimizerState.maximum_actions || 0);
+      const limit = optimizerState.maximum_actions;
+      const safety = optimizerState.steering_safety || {}, paused = (safety.paused_clients || []).length;
       const fleet = optimizerState.fleet || {};
       const assisted = optimizerState.actuation_path === 'room_serialized_rf_assist_btm';
       const stronger = Number(fleet.clients_with_stronger_ap || 0);
@@ -2096,11 +2151,15 @@
         '<span>Stronger AP available</span><b>' + esc(stronger) + (fleet.measurement_complete ? '' : ' · incomplete check') + '</b>' +
         '<span>Next measured batch</span><b>' + esc(optimizerState.action_batch_size || 0) +
           ' / ' + esc(optimizerState.action_batch_limit || 1) + '</b>' +
-        '<span>Action budget</span><b>' + esc(used) + ' / ' + esc(limit || '—') + '</b>' +
+        '<span>Total requests</span><b>' + esc(used) + (limit == null ? ' · no lifetime cap' : ' / ' + esc(limit)) + '</b>' +
+        (safety.enabled ? '<span>Rolling window</span><b>' + esc(safety.requests_in_window) + ' / ' +
+          esc(safety.request_limit) + ' per ' + esc(safety.window_seconds) + ' s</b>' +
+          '<span>Paused clients</span><b>' + esc(paused) + '</b>' : '') +
         '<span>Actuation path</span><b>' + (assisted
           ? 'serialized RF assist + BTM' : 'BTM request') + '</b>' +
         '<span>Automatic steering</span><b>' + (automatic
-          ? (used >= limit ? 'limit reached' : fleet.converged ? 'fleet converged' :
+          ? (paused ? paused + ' paused; others continue' : safety.rate_retry_seconds > 0 ? 'rate limited · automatic retry' :
+            limit != null && used >= limit ? 'limit reached' : fleet.converged ? 'fleet converged' :
             optimizerState.automatic_actuation_ready ? 'reconciling fleet' : 'waiting')
           : 'recommend only') + '</b>' +
         '<span>Action window</span><b>' + (optimizerState.action_window_kind === 'stable_interactive_environment'
@@ -2816,7 +2875,12 @@
       interaction.revision = Math.max(interaction.revision, Number(event.payload.revision || 0));
     }
     else if (event.kind === 'optimizer.evaluation' ||
-             event.kind === 'optimizer.measurement.unavailable') optimizerState = event.payload;
+             event.kind === 'optimizer.measurement.unavailable') optimizerState = RoomConvergence.withSafety(optimizerState, event.payload);
+    else if (event.kind === 'optimizer.safety') {
+      optimizerState = RoomConvergence.withSafety(optimizerState, {
+        ...(optimizerState || {}), steering_safety: event.payload.steering_safety,
+      });
+    }
     else if (['optimizer.progress', 'optimizer.measurement.waiting', 'optimizer.environment.changed', 'observation.inconsistent_rf_epoch'].includes(event.kind)) {
       optimizerState = {...(optimizerState || {}), progress: {...event.payload, kind: event.kind, recorded_at: event.recorded_at}};
       if (event.kind !== 'optimizer.progress') {
@@ -2844,6 +2908,9 @@
     }
     else if (event.kind === 'optimizer.action') {
       actionState = event.payload;
+      optimizerState = RoomConvergence.withSafety(optimizerState, {
+        ...(optimizerState || {}), steering_safety: event.payload.steering_safety,
+      });
       if (optimizerState && event.payload.actions_used != null) {
         optimizerState.actions_used = event.payload.actions_used;
       }
