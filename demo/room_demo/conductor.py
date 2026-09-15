@@ -31,7 +31,8 @@ from .steering_safety import SteeringSafety
 from .topology import project_topology
 from .client_wifi import read_client_link
 from .interactions import InteractionError
-from optimizer.band_steering import BandSteeringMeasurements, band_fleet_status, band_policy, evaluate_band_clients
+from optimizer.band_steering import (BandSteeringMeasurements, band_fleet_status, band_policy,
+                                     evaluate_band_clients, received_scan_enabled, same_band_received)
 from optimizer.band_scan import SOURCE as BAND_SCAN_SOURCE
 
 
@@ -978,7 +979,7 @@ class LiveConductor:
             if self.interactive and self.room_state and not self.profiling else None,
             client_selector=lambda client, observed_at: (
                 (self.interactive or client.sta_mac == self.hero_mac)
-                and len((room_before or {}).get("band_steering", {}).get(client.sta_mac, {}).get("profile", {}).get("allowed_bands", [])) <= 1
+                and not received_scan_enabled((room_before or {}).get("band_steering", {}).get(client.sta_mac))
                 and (_candidate_measurement_needed(policy, state, client, observed_at)
                      if self.interactive else policy.requires_candidate_measurement(client, observed_at))
             ),
@@ -1200,11 +1201,11 @@ class LiveConductor:
                 if self._load_provider is not None:
                     snapshot = self._load_provider.enrich(snapshot, observer.last_raw)
                 band_profiles = {station: profile for station, profile in (room_after or {}).get("band_steering", {}).items()
-                                 if len(profile["profile"]["allowed_bands"]) > 1}
+                                 if received_scan_enabled(profile)}
                 snapshot = self._band_measurements.enrich(snapshot, band_profiles,
                                                          self.store.world_epoch() if band_profiles else None)
                 band_stations = set(band_profiles) & {client.sta_mac for client in snapshot.clients}
-                evaluation = evaluate_band_clients(policy, snapshot, prior, band_stations)
+                evaluation = evaluate_band_clients(policy, snapshot, prior, band_stations, band_profiles)
                 if not evaluation.decisions:
                     self.store.emit(
                         "optimizer.measurement.waiting", self._time(),
@@ -1224,7 +1225,7 @@ class LiveConductor:
                    {self._mac_by_role[role] for role, value in room_after["roles"].items()
                     if value.get("present") and role in self._mac_by_role} if room_after else None,
                    native_roster_macs)
-                fleet = band_fleet_status(fleet, snapshot, policy, band_stations, self._band_measurements)
+                fleet = band_fleet_status(fleet, snapshot, policy, band_stations, self._band_measurements, band_profiles)
                 ranked_steer_decisions = _ranked_action_batch(
                     steer_decisions, len(steer_decisions)
                 )
@@ -1258,7 +1259,8 @@ class LiveConductor:
                 subject_mac = decision.sta_mac
                 subject_role = self._role_by_mac.get(subject_mac, preferred_role)
                 subject_container = self._container_by_mac[subject_mac]
-                display_config = band_policy(policy.config).config if subject_mac in band_stations else policy.config
+                display_config = (band_policy(policy.config, same_band=same_band_received(band_profiles.get(subject_mac))).config
+                                  if subject_mac in band_stations else policy.config)
                 now = self._time()
                 window_open, window_kind = self._action_window(now, action_window)
                 can_act = (
@@ -1334,6 +1336,14 @@ class LiveConductor:
                         ],
                         "policy_state": asdict(subject_state),
                         "candidates": candidates,
+                        "rf_observations": {
+                            "schema": "easymesh.rf-inspection.v1",
+                            "enabled": policy_config.load_aware_enabled,
+                            "maximum_age_seconds": policy.config.load_maximum_age_seconds,
+                            "bss_loads": [{**asdict(row), "role": self._ap_role_by_bssid.get(row.bssid)}
+                                         for row in snapshot.bss_loads],
+                            "client_activity": [asdict(row) for row in snapshot.client_activity],
+                        },
                         "candidate_transactions": len(provider.last_raw),
                         "candidate_selection": provider.last_selection,
                         "native_roster_clients": native_roster_clients,
@@ -1358,7 +1368,9 @@ class LiveConductor:
                             if self.steering_transaction is not None else
                             "unassisted_native_btm" if self.profiling else "btm_request"
                         ),
-                        "optimization_goal": "safe_band_preference_and_best_eligible_ap" if band_profiles else "best_eligible_same_network_band_ap",
+                        "optimization_goal": ("safe_band_preference_and_best_eligible_ap"
+                                              if any(not same_band_received(profile) for profile in band_profiles.values())
+                                              else "best_eligible_same_network_band_ap"),
                         "band_steering": self._band_measurements.status,
                         "minimum_target_gain_rcpi": policy.config.minimum_target_gain_rcpi,
                         "expected_online_clients": policy.config.expected_clients,

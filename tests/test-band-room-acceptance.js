@@ -38,6 +38,9 @@ const returning = {...world, band_steering_expectations: [...world.band_steering
 assert.equal(bandSteeringSummary(returning, events, [verified('upgrade')]).passed, false);
 assert.equal(bandSteeringSummary(returning, oscillation, ['upgrade', 'fallback', 'repeated'].map(verified)).passed, true);
 const pinned = {...world, band_steering: {...world.band_steering, control: {initial_band: '2.4', allowed_bands: ['2.4']}}};
+const receivedOnly = {band_steering: {client: {initial_band: '5', allowed_bands: ['5'], measurement_mode: 'received_same_band'}}};
+assert.equal(bandSteeringSummary(receivedOnly, [action('same-band', '5', '5')], [verified('same-band')]).passed, true);
+assert.equal(bandSteeringSummary(receivedOnly, [action('same-band', '5', '5')], []).passed, false);
 assert.equal(bandSteeringSummary(pinned, events, [verified('upgrade')]).passed, true);
 assert.equal(bandSteeringSummary(pinned, [...events, action('control', '2.4', '5', 'control')], ['upgrade', 'control'].map(verified)).passed, false);
 assert.equal(bandSteeringSummary(world, [...events, action('foreign', '2.4', '5', 'foreign')], ['upgrade', 'foreign'].map(verified)).passed, false);

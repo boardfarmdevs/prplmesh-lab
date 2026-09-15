@@ -18,6 +18,8 @@ from .events import EventStore
 from .client_wifi import parallel_disconnections, parallel_reconnections
 from .recovery import RecoveryJournal
 from .pool import expand_initial_world
+from .traffic_experiment import TrafficExperiment, phase_at
+from wmdcfg.traffic_profile import validate_traffic
 
 
 class InteractionError(RuntimeError):
@@ -53,6 +55,8 @@ class InteractiveMediumSession:
         disconnect_client: Callable[[str], Any] | None = None,
         reconnect_client: Callable[[str], None] | None = None,
         traffic_probe_role: str | None = None,
+        traffic_target: str | None = None,
+        traffic_experiment: Any = None,
         resume_steering: Callable[[int], dict] | None = None,
         adaptive_backhaul: bool = False,
         model_backhaul: bool = False,
@@ -60,6 +64,12 @@ class InteractiveMediumSession:
         prepare_backhaul: Callable[[], Any] | None = None,
     ) -> None:
         self.store = store
+        validate_traffic(world)
+        self._traffic_experiment = traffic_experiment or (
+            TrafficExperiment(traffic_target, lambda payload: self.store.emit(
+                "traffic.experiment", self._world_time(), payload, producer="traffic"))
+            if traffic_target is not None else None)
+        self._traffic_run = 0
         backhaul_rf_policy(world)
         self.world = world
         self.layout = layout
@@ -344,6 +354,8 @@ class InteractiveMediumSession:
         with self._lock:
             if expire_lease:
                 self._expire_lease()
+            if self._faulted and self._traffic_experiment is not None:
+                self._traffic_experiment.sync(None)
             lease = None if self._lease is None else {
                 "held": True,
                 "owner": self._lease["owner"],
@@ -376,6 +388,8 @@ class InteractiveMediumSession:
                 ),
                 "playback": self._public_playback(),
                 "traffic_probe": self._traffic_probe(),
+                "traffic_experiment": (self._traffic_experiment.snapshot() if self._traffic_experiment
+                                       else {"state": "unavailable"}),
                 "allowed_roles": sorted(set(self._allowed_roles) & self._selected_roles),
                 "presence_roles": sorted(set(self._presence_roles) & self._selected_roles),
                 "movable_roles": sorted(set(self._movable_roles) & self._selected_roles),
@@ -575,6 +589,9 @@ class InteractiveMediumSession:
             if self.worlds is None:
                 raise InteractionError(409, "world_switch_unavailable", "world switching is not configured")
             world, layout = self.worlds.select(selection)
+            validate_traffic(world)
+            if world.get("traffic_experiment") and self._traffic_experiment is None:
+                raise InteractionError(409, "traffic_unavailable", "bounded room traffic is not configured")
             if world.get("band_steering") and self.band_profiles is None:
                 raise InteractionError(409, "band_profiles_unavailable", "client band settings are not configured")
             if self._recording is not None:
@@ -717,6 +734,7 @@ class InteractiveMediumSession:
                 "manual_roles": sorted(self._playback_overrides), "interval_ms": 1000}
 
     def _emit_playback(self, action: str, reason: str | None = None) -> dict[str, Any]:
+        self._sync_traffic()
         payload = {"revision": self._revision, "playback": self._public_playback(),
                    "roles": copy.deepcopy(self._roles),
                    "environment_epoch": self._environment_epoch,
@@ -734,6 +752,19 @@ class InteractiveMediumSession:
             self._revision += 1
             self._emit_playback("paused", reason)
         self._playback_wake.set()
+
+    def _sync_traffic(self) -> None:
+        if self._traffic_experiment is None:
+            return
+        phase = phase_at(self._playback_world.get("traffic_experiment"), self._playback_time_ms)
+        if (phase is None or self._closing or self._faulted or self._lease is None
+                or self._playback_status != "playing" or not self._roles[phase[1]["role"]]["present"]):
+            self._traffic_experiment.sync(None)
+            return
+        index, settings = phase
+        self._traffic_experiment.sync(
+            (self._playback_world["golden_sha256"], self._traffic_run, index), settings,
+            self.plan["bindings"][settings["role"]]["container"], settings["end_ms"] - self._playback_time_ms)
 
     def _validate_playback(self) -> None:
         try:
@@ -766,6 +797,10 @@ class InteractiveMediumSession:
                 raise InteractionError(400, "invalid_playback_action", "use play or pause")
             if action == "play":
                 self._validate_playback()
+                if self._playback_world.get("traffic_experiment") and self._traffic_experiment is None:
+                    raise InteractionError(409, "traffic_unavailable", "bounded room traffic is not configured")
+                if self._playback_status != "playing":
+                    self._traffic_run += 1
                 if self._playback_status == "completed":
                     self._playback_time_ms = 0
                     self._playback_rewind = True
@@ -1979,6 +2014,7 @@ class InteractiveMediumSession:
         return self._apply_roles([(role, change)], client_sequence=client_sequence)[0]
 
     def _apply_roles(self, changes, *, client_sequence, publish_roles=True):
+        self._sync_traffic()
         assert self._client is not None
         unique_updates = {}
         links_by_change = {}
@@ -2158,11 +2194,16 @@ class InteractiveMediumSession:
                 threads.append(self._playback_thread)
         for thread in threads:
             thread.join(timeout=2)
-        with self._lock:
-            if self._client is None:
-                return self._restored
-            try:
-                return self.restore()
-            finally:
-                self._client.close()
-                self._client = None
+        restored = self._restored
+        try:
+            if self._traffic_experiment is not None:
+                self._traffic_experiment.close()
+        finally:
+            with self._lock:
+                if self._client is not None:
+                    try:
+                        restored = self.restore()
+                    finally:
+                        self._client.close()
+                        self._client = None
+        return restored

@@ -30,6 +30,7 @@ from .band_profiles import BandProfileManager
 from .recovery import RecoveryJournal, inventory_identity, load_recovery, recover_medium
 from .server import RoomDemoServer
 from .worlds import BoundWorlds
+from .rf_manifest import annotate_manifest
 from .pool import bind_client_pool, pool_manifest
 from .client_wifi import disconnected_client, resume_bound_client
 
@@ -323,6 +324,7 @@ def _interactive(args) -> int:
             store, world, layout, plan, args.socket,
             lease_seconds=args.lease_seconds,
             traffic_probe_role=manifest["hero"]["role"],
+            traffic_target=manifest["traffic"]["target"],
             resume_steering=lambda revision: conductor.resume_steering(revision),
             worlds=BoundWorlds(
                 world, layout, CONFIGURATOR / "worlds",
@@ -405,6 +407,11 @@ def _interactive(args) -> int:
         )
         interactions.start()
         session_started = True
+        capability_report = annotate_manifest(_status(args.socket)["rf_contract"], REPO_ROOT,
+                                             "prplmesh", "external-" + args.mode, manifest["policy"])
+        store.emit("rf.capabilities", 0, capability_report, producer="interaction")
+        (runner.run_dir / "rf-capabilities.json").write_text(
+            json.dumps(capability_report, indent=2, sort_keys=True) + "\n", encoding="utf-8")
         store.emit(
             "demo.state", 0,
             {"state": "running", "mode": f"interactive-{args.mode}"},

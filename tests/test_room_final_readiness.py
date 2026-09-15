@@ -64,6 +64,17 @@ def test_absolute_best_requires_consistent_scores_and_fleet(room_state):
     assert readiness().convergence_state(optimizer, clients)["absolute_best_converged"] is False
 
 
+@pytest.mark.parametrize("optimizer, expected", [
+    ({"maximum_actions": None, "steering_safety": {"enabled": True}}, True),
+    ({"maximum_actions": 100, "steering_safety": {"enabled": True}}, False),
+    ({"steering_safety": {"enabled": True}}, False),
+    ({"maximum_actions": None}, False),
+    ({"maximum_actions": None, "steering_safety": {"enabled": False}}, False),
+])
+def test_default_steering_is_unlimited_with_safety_guards(optimizer, expected):
+    assert readiness().default_steering_budget(optimizer) is expected
+
+
 def test_native_nanoseconds_work_on_python_310():
     path = Path(__file__).with_name("room-final-readiness.py")
     specification = importlib.util.spec_from_file_location("readiness", path)

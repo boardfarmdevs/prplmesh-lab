@@ -2,6 +2,7 @@ import importlib.util
 from copy import deepcopy
 import json
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -10,6 +11,50 @@ SPEC = importlib.util.spec_from_file_location(
     "load_acceptance", Path(__file__).with_name("load-policy-acceptance.py"))
 DRIVER = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(DRIVER)
+
+
+@pytest.mark.parametrize('missing', ['lxc', 'nsenter', 'iperf3'])
+def test_missing_traffic_tool_fails_before_lab_changes(monkeypatch, missing):
+    monkeypatch.setattr(DRIVER.shutil, 'which', lambda name: None if name == missing else '/usr/bin/' + name)
+    with pytest.raises(RuntimeError, match='before changing the lab: ' + missing):
+        DRIVER.require_traffic_tools()
+
+
+def test_available_traffic_tools_pass(monkeypatch):
+    monkeypatch.setattr(DRIVER.shutil, 'which', lambda name: '/usr/bin/' + name)
+    DRIVER.require_traffic_tools()
+
+
+@pytest.mark.parametrize('status', [0, 1, 127, -15])
+def test_early_traffic_exit_is_not_misreported_as_no_overload(status):
+    with pytest.raises(RuntimeError, match='traffic process exited'):
+        DRIVER.require_running_traffic([SimpleNamespace(poll=lambda: status)])
+
+
+def test_running_traffic_continues():
+    DRIVER.require_running_traffic([SimpleNamespace(poll=lambda: None)])
+
+
+@pytest.mark.parametrize('hop_counts, preferred, expected', [
+    ([0, 1, 1, 1, 1], 1, 1),
+    ([0, 1, 1, 2, 2], 1, 3),
+    ([0, 1, 1, 2, 2], 3, 3),
+    ([0, 3, 1, 2, 2], 2, 3),
+])
+def test_positive_load_setup_respects_actual_backhaul(hop_counts, preferred, expected):
+    radios = [{'bssid': 'bss-' + str(index)} for index in range(5)]
+    bsses = {radio['bssid']: {'device_id': 'node-' + str(index)} for index, radio in enumerate(radios)}
+    hops = {'node-' + str(index): count for index, count in enumerate(hop_counts)}
+    assert DRIVER.select_source_radio(radios, bsses, hops, preferred) == expected
+
+
+@pytest.mark.parametrize('hop_counts', [[0, 1, 1, 1, 2], [0, 1, 1, 1, None]])
+def test_positive_load_setup_rejects_missing_or_additional_hop(hop_counts):
+    radios = [{'bssid': 'bss-' + str(index)} for index in range(5)]
+    bsses = {radio['bssid']: {'device_id': 'node-' + str(index)} for index, radio in enumerate(radios)}
+    hops = {'node-' + str(index): count for index, count in enumerate(hop_counts)}
+    with pytest.raises(RuntimeError, match='no additional backhaul hop'):
+        DRIVER.select_source_radio(radios, bsses, hops, 1)
 
 
 @pytest.mark.parametrize("response", ["FAIL\n", "", "UNKNOWN COMMAND\n"])

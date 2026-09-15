@@ -2,12 +2,40 @@
   'use strict';
 
   const shared = {
-    rf: 'All rooms use distance/logarithmic path loss, wall attenuation, per-band reference signal and seeded shadowing to produce directed SNR links. Presence and per-node transmit gain can change those links. wmediumd applies the RF matrix to hwsim frame delivery, losses, retries and modeled airtime. RSSI uses a fixed −91 dBm noise reference; candidate RCPI is synthesized from the configured links, not a physical scan.',
+    rf: 'All rooms use distance/logarithmic path loss, wall attenuation, per-band reference signal and seeded shadowing to produce directed SNR links. Presence and per-node transmit gain can change those links. wmediumd applies the RF matrix to hwsim frame delivery, losses, retries and modeled airtime. RSSI uses a fixed −91 dBm noise reference; ordinary same-band HAL candidate RCPI is synthesized from configured links. Explicit band-steering and received-scan rooms instead use AP→client passive reception for profiled clients.',
     evidence: 'Start paused and wait for fresh measurements and the expected online roster. Then Play at 1×; at checkpoints, wait for convergence before continuing. Compare the room’s actual serving links with Network Topology, native client BSSID/frequency, optimizer reasons and traffic-probe delivery. Dashed best-link predictions and green bars alone do not prove a handover. Script duration excludes checkpoint waits and settling time.',
-    limits: 'These are expected checks, not recorded PASS results. In live RDK, steering decisions belong to the external lab optimizer; native BTM/association outcomes test the EasyMesh stack, not autonomous controller policy or certification. No-connect is geometry-only and cannot prove steering. Startup backhaul may be protected: geometry need not change the parent tree. Channel utilization/BSS Load can report modeled traffic, but these rooms do not inject a controlled load test. Legacy-rate 20 MHz modeling does not prove calibrated throughput, modern PHY capacity or independently varying noise/interference.',
+    limits: 'These are expected checks, not recorded PASS results. In live RDK, steering decisions belong to the external lab optimizer; native BTM/association outcomes test the EasyMesh stack, not autonomous controller policy or certification. No-connect is geometry-only and cannot prove steering. Startup backhaul may be protected: geometry need not change the parent tree. Channel utilization/BSS Load can report modeled traffic, but only the explicit Traffic rooms schedule bounded ICMP traffic; ordinary rooms do not inject a controlled load test. Legacy-rate 20 MHz modeling does not prove calibrated throughput, modern PHY capacity or independently varying noise/interference.',
   };
 
   const entries = {
+    'traffic-low-high-off': {
+      title: 'Traffic · Low → High → Off', seconds: 30, clients: 10, pauses: [],
+      rf: 'Fixed geometry; sta_static_01 requests 10 ICMP packets/s during 5–10 s, then 200 packets/s during 10–23 s, using 1200-byte payloads through its existing wlan0. The first five and last seven seconds have no experimental traffic.',
+      optimizer: 'Default signal policy need not steer because traffic increased. With a deliberately enabled native-load policy, inspect actual AP reports and rejection reasons; requested packet rate is not a utilization input.',
+      watch: 'Open RF inspector → Traffic experiment for requested rate and end-of-phase transmitted/reply counts. Compare native AP utilization and sample age in Native observations with the separate modeled channel-activity panel. Topology should retain ten clients and accurate serving ownership.',
+      limits: 'Short live room checks pass on RDK and prplMesh (2026-09-15). ICMP echo is a bounded stimulus, not TCP/UDP goodput or saturation. Ordinary probes/beacons continue during the off phase. Pause, lease expiry, source offline or changing rooms stops the experiment.',
+    },
+    'traffic-quieter-ap': {
+      title: 'Traffic · Busy AP / Quieter Target', seconds: 30, clients: 10, pauses: [],
+      rf: 'Two extenders have similar strong coverage around sta_static_03. It requests 10 then 200 ICMP packets/s during 5–10 and 10–23 s. Geometry and channels are not changed by this schedule.',
+      optimizer: 'Default same-channel setup is a negative control: never load-balance onto a supposedly independent budget on the same radio/channel. For a positive comparison, prepare different native fronthaul channels, matching live bindings and client frequency permissions, and an explicit load-aware-policy session first. Steer only if native overload, activity, freshness, signal, hop and quieter-channel gates all pass.',
+      watch: 'Select sta_static_03; correlate generated/reply counts, current native utilization and each target exclusion in RF inspector. Confirm any actual roam in both views and native BSSID; retain ten clients. No overload or no safe target is a legitimate no-action result.',
+      limits: 'Short live room checks pass on RDK and prplMesh (2026-09-15). The room does not retune radios, enable the load policy, pin a BSSID or manufacture high utilization. A high requested rate alone does not guarantee a positive balancing demonstration.',
+    },
+    'received-same-band-roam': {
+      title: 'Received Scan · Same-Band Roam', seconds: 30, clients: 10, pauses: [16],
+      rf: 'sta_static_01 is explicitly profiled for received passive scans on 5 GHz. It moves from gateway to extender_1 during 4–12 s and returns during 20–28 s. sta_static_02 is a pinned 5 GHz control without the received-scan opt-in.',
+      optimizer: 'Use fresh AP→client reception for both serving and target RCPI, without band preference or HAL-matrix fallback for the profiled station. Expect gateway initially, extender_1 at the 16 s checkpoint, then gateway after return, subject to native visibility and signal-policy gates.',
+      watch: 'At each checkpoint inspect scan ID, timestamp, source, rejected BSSIDs and physical BSSID/frequency. Both views should agree on ten clients and eventual ownership. A second fresh scan is required across the hold; stale or missing scan evidence pauses steering.',
+      limits: 'Short live room checks pass on RDK and prplMesh (2026-09-15). Requires the existing hwsim receive-context support and working passive scanner. This is AP→client reception, not AP-heard uplink RCPI, native 802.11k completion or calibrated RF performance.',
+    },
+    'received-discovery-recovery': {
+      title: 'Received Scan · Discovery / Recovery', seconds: 36, clients: 10, pauses: [12, 24],
+      rf: 'The received-scan 5 GHz station walks toward extender_1 during 3–10 s. Extender_1 fronthaul is unavailable during 4–16 s, returns at 16 s, and the client returns to the gateway during 26–34 s. Backhaul and containers remain active.',
+      optimizer: 'At 12 s, an absent extender_1 must not retain an eligible fresh candidate from an old scan. If the serving beacon is also lost, wait rather than fill missing reception with modeled RCPI. At 24 s, fresh rediscovery should allow convergence to extender_1; after return prefer gateway when the normal signal margin permits.',
+      watch: 'Inspect not_received_in_fresh_scan, unavailable serving scans, new scan IDs after recovery and native association outcomes. Other clients may leave the disabled fronthaul. Keep ten clients represented once native associations recover; never infer actual ownership from the dashed best-link prediction.',
+      limits: 'Short live room checks pass on RDK and prplMesh (2026-09-15). This models RF visibility loss, not hostapd shutdown or a hidden SSID. Discovery timing follows actual beacon reception and bounded scan scheduling, not instantaneous geometry truth.',
+    },
     'backhaul-branch-formation': {
       title: 'Backhaul · Branch Formation', seconds: 24, clients: 10, pauses: [12], backhaul: 'geometry',
       rf: 'Extender roles 3 and 4 leave the gateway area for the far courtyard corners. A partition weakens direct gateway paths while roles 1 and 2 offer stronger relay links. Two nearby clients move with those extenders. All AP-to-AP RF follows geometry.',

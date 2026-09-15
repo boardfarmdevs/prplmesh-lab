@@ -56,6 +56,11 @@ def default_roster(health, clients, state):
             and set(roles) == stations | mesh | dormant and present == stations | mesh)
 
 
+def default_steering_budget(optimizer):
+    return ("maximum_actions" in optimizer and optimizer["maximum_actions"] is None
+            and optimizer.get("steering_safety", {}).get("enabled") is True)
+
+
 def main():
     parser = argparse.ArgumentParser(description="Read-only default room freshness/convergence check.")
     parser.add_argument("--room-url", required=True)
@@ -90,7 +95,7 @@ def main():
                     "healthy": bool(health.get("healthy")),
                     "default_roster": default_roster(health, clients, state),
                     "paused_unleased": state["playback"]["status"] == "paused" and state["playback"]["time_ms"] == 0 and not state["lease"]["held"] and not state["fault"],
-                    "action_limit": optimizer.get("maximum_actions") == 100,
+                    "steering_budget": default_steering_budget(optimizer),
                     "current_epoch": current["environment_epoch"] == state["environment_epoch"] == optimizer.get("environment_epoch"),
                     "complete": bool(fleet.get("measurement_complete")) and fleet.get("clients_checked") == 20 and fleet.get("clients_evaluated") == 20,
                     "converged": convergence[criterion],

@@ -106,7 +106,10 @@ class WorldSwitchTests(unittest.TestCase):
         )
 
     def test_catalog_and_multiple_worlds_use_fixed_pool_and_restore(self):
-        self.assertEqual(len(self.worlds.catalog()["worlds"]), 20)
+        self.assertEqual(len(self.worlds.catalog()["worlds"]), 24)
+        identifiers = {entry["id"] for entry in self.worlds.catalog()["worlds"]}
+        self.assertTrue({"traffic-low-high-off", "traffic-quieter-ap", "received-same-band-roam",
+                         "received-discovery-recovery"} <= identifiers)
         bindings = copy.deepcopy(self.plan)
         backhaul = dict(self.session._protected_backhaul)
         self.assertEqual(len(backhaul), 60)

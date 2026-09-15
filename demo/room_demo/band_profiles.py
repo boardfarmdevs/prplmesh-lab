@@ -20,12 +20,16 @@ def validate_profiles(world):
     for role, profile in profiles.items():
         if world["roles"].get(role) != "station" or not world["generations"][0]["present"].get(role):
             raise ValueError("band profiles require an initially present bound station")
-        if not isinstance(profile, dict) or set(profile) != {"allowed_bands", "initial_band"}:
+        if (not isinstance(profile, dict) or not {"allowed_bands", "initial_band"} <= set(profile)
+                or set(profile) - {"allowed_bands", "initial_band", "measurement_mode"}):
             raise ValueError("band profiles require allowed_bands and initial_band")
         bands = profile["allowed_bands"]
         if (not isinstance(bands, list) or not bands or any(band not in ("2.4", "5", "6") for band in bands)
                 or len(set(bands)) != len(bands) or profile["initial_band"] not in bands):
             raise ValueError("invalid or duplicate allowed bands or initial band")
+        if "measurement_mode" in profile and (
+                profile["measurement_mode"] != "received_same_band" or len(bands) != 1):
+            raise ValueError("received_same_band requires exactly one allowed band")
     return copy.deepcopy(profiles)
 
 
