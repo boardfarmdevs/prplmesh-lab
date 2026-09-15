@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"io/fs"
 	"log"
+	"net"
 	"net/http"
 	"strings"
 	"sync"
@@ -27,6 +28,7 @@ type Server struct {
 	handler    http.Handler
 	steeringMu sync.Mutex
 	steering   *model.SteeringEvent
+	actions    []model.SteeringAction
 }
 
 func New(source Source, networks []model.Network, logger *log.Logger) (*Server, error) {
@@ -39,6 +41,7 @@ func New(source Source, networks []model.Network, logger *log.Logger) (*Server, 
 	mux.Handle("/static/", http.StripPrefix("/static/", http.FileServer(http.FS(staticFS))))
 	mux.HandleFunc("/health", s.health)
 	mux.HandleFunc("/api/v1/topology", s.topology)
+	mux.Handle("/api/v1/room-layout", configuredRoomLayoutProxy())
 	mux.HandleFunc("/api/v1/steering-event", s.steeringEvent)
 	mux.HandleFunc("/api/v1/devices", s.devices)
 	mux.HandleFunc("/api/v1/clients", s.clients)
@@ -82,6 +85,7 @@ func (s *Server) topology(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	value.Topology.SteeringEvent = s.currentSteeringEvent(time.Now().UTC())
+	value.Topology.SteeringActions = s.currentSteeringActions(time.Now().UTC())
 	writeJSON(w, http.StatusOK, value.Topology)
 }
 
@@ -109,6 +113,9 @@ func (s *Server) steeringEvent(w http.ResponseWriter, r *http.Request) {
 		ClientName string `json:"client_name"`
 		TargetName string `json:"target_name"`
 		Phase      string `json:"phase"`
+		Method     string `json:"method"`
+		Source     string `json:"source_bssid"`
+		Target     string `json:"target_bssid"`
 	}
 	decoder := json.NewDecoder(http.MaxBytesReader(w, r.Body, 4096))
 	decoder.DisallowUnknownFields()
@@ -141,10 +148,47 @@ func (s *Server) steeringEvent(w http.ResponseWriter, r *http.Request) {
 		TargetName: request.TargetName, Phase: request.Phase,
 		ReceivedAt: now, ExpiresAt: now.Add(ttl),
 	}
+	if request.Method != "" {
+		if request.Method != "non-btm" || request.Phase != "completed" {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "only explicit completed non-BTM reports are supported"})
+			return
+		}
+		for _, value := range []*string{&request.STAMAC, &request.Source, &request.Target} {
+			address, err := net.ParseMAC(*value)
+			if err != nil || len(address) != 6 {
+				writeJSON(w, http.StatusBadRequest, map[string]string{"error": "station, source and target require six-byte MAC addresses"})
+				return
+			}
+			*value = address.String()
+		}
+		if request.Source == request.Target {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "source and target must differ"})
+			return
+		}
+	}
 	s.steeringMu.Lock()
 	s.steering = event
+	if request.Method == "non-btm" {
+		s.actions = append(s.actions, model.SteeringAction{Station: request.STAMAC, Source: request.Source,
+			Target: request.Target, Method: "non-btm", RequestedAt: now, Evidence: "operator-report"})
+		if len(s.actions) > 100 {
+			s.actions = s.actions[len(s.actions)-100:]
+		}
+	}
 	s.steeringMu.Unlock()
 	writeJSON(w, http.StatusAccepted, event)
+}
+
+func (s *Server) currentSteeringActions(now time.Time) []model.SteeringAction {
+	s.steeringMu.Lock()
+	defer s.steeringMu.Unlock()
+	result := []model.SteeringAction{}
+	for _, action := range s.actions {
+		if age := now.Sub(action.RequestedAt); age >= 0 && age < 30*time.Second {
+			result = append(result, action)
+		}
+	}
+	return result
 }
 
 func (s *Server) currentSteeringEvent(now time.Time) *model.SteeringEvent {

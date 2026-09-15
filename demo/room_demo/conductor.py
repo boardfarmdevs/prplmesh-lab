@@ -27,10 +27,12 @@ from optimizer.verifier import OutcomeVerifier
 from wmdcfg.observers import mesh_health
 
 from .events import EventStore
+from .steering_safety import SteeringSafety
 from .topology import project_topology
 from .client_wifi import read_client_link
 from .interactions import InteractionError
-from optimizer.band_steering import BandSteeringMeasurements, band_fleet_status, band_policy, evaluate_band_clients
+from optimizer.band_steering import (BandSteeringMeasurements, band_fleet_status, band_policy,
+                                     evaluate_band_clients, received_scan_enabled, same_band_received)
 from optimizer.band_scan import SOURCE as BAND_SCAN_SOURCE
 
 
@@ -316,6 +318,7 @@ class LiveConductor:
         interactive: bool = False,
         profiling: bool = False,
         maximum_actions: int | None = None,
+        steering_rate_limit: int = 300,
         steering_transaction: Callable[
             [str, str, str, str, Callable[[], Any]], Any
         ] | None = None,
@@ -335,6 +338,7 @@ class LiveConductor:
         self.interactive = interactive
         self.profiling = profiling
         self.maximum_actions = maximum_actions
+        self.steering_safety = SteeringSafety(steering_rate_limit)
         self.steering_transaction = None if profiling else steering_transaction
         self.coordination = {"candidate_parallel_agents": 1, "negotiated": False}
         self.backhaul_manager = backhaul_manager
@@ -393,6 +397,42 @@ class LiveConductor:
         self.hero_mac = plan["bindings"][hero_role].get("station_mac", plan["bindings"][hero_role]["radio_permanent_mac"]).lower()
         self.hero_container = plan["bindings"][hero_role]["container"]
 
+    def steering_status(self) -> dict:
+        if not self.interactive or self.mode != "act":
+            return {"enabled": False, "resume_supported": False}
+        status = self.steering_safety.snapshot()
+        status["paused_clients"] = [
+            {**client, "role": self._role_by_mac.get(client["sta_mac"])}
+            for client in status["paused_clients"]
+        ]
+        return status
+
+    def _sync_steering_safety(self, room, world_epoch) -> None:
+        if self.interactive:
+            self.steering_safety.sync(world_epoch, {
+                station: self._candidate_epoch(station, room or {})
+                for station in self._role_by_mac
+            })
+
+    def _emit_steering_safety(self, reason, **fields) -> dict:
+        status = self.steering_status()
+        self.store.emit("optimizer.safety", self._time(),
+                        {"steering_safety": status, "reason": reason, **fields}, producer="optimizer")
+        return status
+
+    def resume_steering(self, expected_pause_revision) -> dict:
+        if not self.interactive or self.mode != "act" or self.stop_event.is_set() or not self._active():
+            raise InteractionError(409, "steering_resume_unavailable", "Automatic steering is not active in this session")
+        resumed = self.steering_safety.resume(expected_pause_revision)
+        status = self._emit_steering_safety("operator_resume", resumed_clients=resumed["resumed_clients"])
+        self._candidate_updated.set()
+        return status
+
+    def _complete_steering_safety(self, ticket, success, reason) -> None:
+        if ticket is not None:
+            self.steering_safety.complete(ticket, success, reason)
+            self._emit_steering_safety("request_outcome")
+
     def _optimization_subject(
         self, room: dict[str, Any] | None
     ) -> tuple[str, str, str] | None:
@@ -440,6 +480,16 @@ class LiveConductor:
         return room.get("last_rf_applied_at") if (
             moved_mac is None or client.sta_mac == moved_mac or client.sta_mac in moved_clients
         ) else None
+
+    def _candidate_epoch(self, station, room):
+        epochs = room.get("candidate_epochs")
+        if epochs is None:
+            return (room.get("environment_epoch"), None)
+        return (epochs["global"], epochs["roles"].get(self._role_by_mac.get(station), 0))
+
+    def _candidate_changes(self, stations, before, after):
+        return {station for station in stations
+                if self._candidate_epoch(station, before) != self._candidate_epoch(station, after)}
 
     def _observation_key(self, room, *, include_generation=True):
         if self.profiling:
@@ -857,6 +907,7 @@ class LiveConductor:
                 payload = mesh_health(expected_devices, expected_clients)
                 payload["pool_clients"] = int(health["expected_clients"])
                 payload["expected_online_clients"] = expected_clients
+                payload["expected_mesh_devices"] = expected_devices
                 payload["healthy"] = (
                     payload.get("api_active") == expected_clients
                     and payload.get("topology_nodes") == expected_devices
@@ -928,7 +979,7 @@ class LiveConductor:
             if self.interactive and self.room_state and not self.profiling else None,
             client_selector=lambda client, observed_at: (
                 (self.interactive or client.sta_mac == self.hero_mac)
-                and len((room_before or {}).get("band_steering", {}).get(client.sta_mac, {}).get("profile", {}).get("allowed_bands", [])) <= 1
+                and not received_scan_enabled((room_before or {}).get("band_steering", {}).get(client.sta_mac))
                 and (_candidate_measurement_needed(policy, state, client, observed_at)
                      if self.interactive else policy.requires_candidate_measurement(client, observed_at))
             ),
@@ -953,6 +1004,7 @@ class LiveConductor:
             provider = StreamingCandidateProvider(provider, maximum_clients=8,
                                                 maximum_age_seconds=min(30, policy.config.reject_stale_metrics_after_seconds),
                                                 identity=lambda: self._observation_key(room_before),
+                                                client_identity=lambda station: self._candidate_epoch(station, room_before),
                                                 updated=self._candidate_updated.set,
                                                 telemetry=lambda value: self.store.emit(
                                                     "optimizer.collection", self._time(), value, producer="optimizer"))
@@ -977,10 +1029,11 @@ class LiveConductor:
         if self.profiling:
             interval = 0.25
         pending_verifications = {}
+        pending_safety_tickets = {}
         action_window = [int(value) for value in optimizer["action_window_ms"]]
         maximum_actions = (
             int(self.maximum_actions)
-            if self.maximum_actions is not None else int(optimizer["max_actions"])
+            if self.maximum_actions is not None else None if self.interactive else int(optimizer["max_actions"])
         )
         observed_epoch: int | None = None
         policy_world_epoch = None
@@ -991,18 +1044,28 @@ class LiveConductor:
             retry_delay = 0.0
             try:
                 room_before = self.room_state() if self.room_state else None
-                if self.profiling and policy_world_epoch != self.store.world_epoch():
-                    policy_world_epoch = self.store.world_epoch()
+                cycle_world_epoch = self.store.world_epoch()
+                self._sync_steering_safety(room_before, cycle_world_epoch)
+                if self.profiling and policy_world_epoch != cycle_world_epoch:
+                    policy_world_epoch = cycle_world_epoch
                     state = PolicyState()
                     pending_verifications.clear()
+                    pending_safety_tickets.clear()
                 for station, future in list(pending_verifications.items()):
                     if not future.done():
                         continue
-                    completed_decision, verified, completed_at, completed_guard = future.result()
+                    safety_ticket = pending_safety_tickets.pop(station, None)
+                    del pending_verifications[station]
+                    try:
+                        completed_decision, verified, completed_at, completed_guard = future.result()
+                    except Exception as error:
+                        self._complete_steering_safety(safety_ticket, False, str(error))
+                        raise
+                    self._complete_steering_safety(safety_ticket,
+                                                  verified.success, verified.reason)
                     if room_before and completed_guard == self._observation_key(room_before, include_generation=False):
                         state = _completed_action_state(state, completed_decision, policy.config, verified.success,
                                                         verified.reason, completed_at)
-                    del pending_verifications[station]
                 if room_before is not None:
                     epoch = int(room_before["environment_epoch"])
                     stable_for = room_before.get("stable_for_seconds")
@@ -1094,6 +1157,11 @@ class LiveConductor:
                             item.sta_mac in offline_macs for item in snapshot.clients)),
                         clients=online_clients,
                         candidates=tuple(item for item in snapshot.candidates if item.sta_mac in online_macs))
+                    if self.profiling:
+                        changed_candidates = self._candidate_changes(online_macs, room_before, room_after)
+                        snapshot = replace(snapshot, candidates=tuple(
+                            replace(item, rcpi=None, metric_observed_at=None)
+                            if item.sta_mac in changed_candidates else item for item in snapshot.candidates))
                     policy.config = replace(
                         policy_config, expected_clients=int(room_after["expected_online_clients"])
                     )
@@ -1133,11 +1201,11 @@ class LiveConductor:
                 if self._load_provider is not None:
                     snapshot = self._load_provider.enrich(snapshot, observer.last_raw)
                 band_profiles = {station: profile for station, profile in (room_after or {}).get("band_steering", {}).items()
-                                 if len(profile["profile"]["allowed_bands"]) > 1}
+                                 if received_scan_enabled(profile)}
                 snapshot = self._band_measurements.enrich(snapshot, band_profiles,
                                                          self.store.world_epoch() if band_profiles else None)
                 band_stations = set(band_profiles) & {client.sta_mac for client in snapshot.clients}
-                evaluation = evaluate_band_clients(policy, snapshot, prior, band_stations)
+                evaluation = evaluate_band_clients(policy, snapshot, prior, band_stations, band_profiles)
                 if not evaluation.decisions:
                     self.store.emit(
                         "optimizer.measurement.waiting", self._time(),
@@ -1157,7 +1225,7 @@ class LiveConductor:
                    {self._mac_by_role[role] for role, value in room_after["roles"].items()
                     if value.get("present") and role in self._mac_by_role} if room_after else None,
                    native_roster_macs)
-                fleet = band_fleet_status(fleet, snapshot, policy, band_stations, self._band_measurements)
+                fleet = band_fleet_status(fleet, snapshot, policy, band_stations, self._band_measurements, band_profiles)
                 ranked_steer_decisions = _ranked_action_batch(
                     steer_decisions, len(steer_decisions)
                 )
@@ -1191,21 +1259,31 @@ class LiveConductor:
                 subject_mac = decision.sta_mac
                 subject_role = self._role_by_mac.get(subject_mac, preferred_role)
                 subject_container = self._container_by_mac[subject_mac]
-                display_config = band_policy(policy.config).config if subject_mac in band_stations else policy.config
+                display_config = (band_policy(policy.config, same_band=same_band_received(band_profiles.get(subject_mac))).config
+                                  if subject_mac in band_stations else policy.config)
                 now = self._time()
                 window_open, window_kind = self._action_window(now, action_window)
                 can_act = (
                     self.mode == "act"
                     and window_open
-                    and self.action_attempts < maximum_actions
+                    and (maximum_actions is None or self.action_attempts < maximum_actions)
                 )
                 configured_batch_size = max(
                     1, int(optimizer.get("interactive_action_batch_size", 1))
                 )
                 batch_size = configured_batch_size if self.interactive else 1
-                remaining_actions = max(0, maximum_actions - self.action_attempts)
+                remaining_actions = batch_size if maximum_actions is None else max(0, maximum_actions - self.action_attempts)
+                safety_reasons = {}
+                if self.interactive and self.mode == "act":
+                    self._sync_steering_safety(room_after, cycle_world_epoch)
+                    for item in ranked_steer_decisions:
+                        reason = self.steering_safety.check(item.sta_mac, item.source_bssid, item.target_bssid)
+                        if reason:
+                            safety_reasons[item.sta_mac] = reason
+                    if self.steering_status()["rate_retry_seconds"] > 0:
+                        can_act = False
                 action_batch = (
-                    ranked_steer_decisions[:min(batch_size, remaining_actions)]
+                    [item for item in ranked_steer_decisions if item.sta_mac not in safety_reasons][:min(batch_size, remaining_actions)]
                     if can_act else []
                 )
                 if self.profiling:
@@ -1217,10 +1295,7 @@ class LiveConductor:
                 if steer_decisions and self.mode == "recommend":
                     state = _recommendation_state(prior, evaluation)
                 elif steer_decisions and self.mode == "act" and not can_act:
-                    state = (
-                        _deferred_state(prior, evaluation)
-                        if not window_open else _recommendation_state(prior, evaluation)
-                    )
+                    state = _deferred_state(prior, evaluation)
                 elif steer_decisions and can_act:
                     state = _deferred_state(prior, evaluation)
                 else:
@@ -1249,6 +1324,8 @@ class LiveConductor:
                         "blocking_preview_seconds": 0 if self.interactive else 3,
                         "client_decisions": [
                             {**item, "role": self._role_by_mac.get(item["sta_mac"]),
+                             **({"action": "none", "reason": safety_reasons[item["sta_mac"]]}
+                                if item["sta_mac"] in safety_reasons else {}),
                              "source_role": self._ap_role_by_bssid.get(item["source_bssid"]),
                              "target_role": self._ap_role_by_bssid.get(item["target_bssid"])}
                             for item in _client_optimizer_status(
@@ -1259,6 +1336,14 @@ class LiveConductor:
                         ],
                         "policy_state": asdict(subject_state),
                         "candidates": candidates,
+                        "rf_observations": {
+                            "schema": "easymesh.rf-inspection.v1",
+                            "enabled": policy_config.load_aware_enabled,
+                            "maximum_age_seconds": policy.config.load_maximum_age_seconds,
+                            "bss_loads": [{**asdict(row), "role": self._ap_role_by_bssid.get(row.bssid)}
+                                         for row in snapshot.bss_loads],
+                            "client_activity": [asdict(row) for row in snapshot.client_activity],
+                        },
                         "candidate_transactions": len(provider.last_raw),
                         "candidate_selection": provider.last_selection,
                         "native_roster_clients": native_roster_clients,
@@ -1283,7 +1368,9 @@ class LiveConductor:
                             if self.steering_transaction is not None else
                             "unassisted_native_btm" if self.profiling else "btm_request"
                         ),
-                        "optimization_goal": "safe_band_preference_and_best_eligible_ap" if band_profiles else "best_eligible_same_network_band_ap",
+                        "optimization_goal": ("safe_band_preference_and_best_eligible_ap"
+                                              if any(not same_band_received(profile) for profile in band_profiles.values())
+                                              else "best_eligible_same_network_band_ap"),
                         "band_steering": self._band_measurements.status,
                         "minimum_target_gain_rcpi": policy.config.minimum_target_gain_rcpi,
                         "expected_online_clients": policy.config.expected_clients,
@@ -1302,6 +1389,7 @@ class LiveConductor:
                         },
                         "actions_used": self.action_attempts,
                         "maximum_actions": maximum_actions,
+                        "steering_safety": self.steering_status(),
                         "action_batch_size": len(action_batch),
                         "action_batch_limit": batch_size,
                         "action_batch_subjects": [
@@ -1348,6 +1436,22 @@ class LiveConductor:
                                     producer="optimizer",
                                 )
                                 break
+                            if self.profiling and self._candidate_changes({decision.sta_mac}, room_after, current_room):
+                                state = state.replace(_deferred_state(prior, evaluation).for_sta(decision.sta_mac))
+                                self.store.emit(
+                                    "optimizer.batch.aborted", self._time(),
+                                    {"reason": "candidate_rf_changed", "completed_actions": batch_index - 1,
+                                     "planned_actions": len(action_batch), "subject_role": self._role_by_mac[decision.sta_mac]},
+                                    producer="optimizer",
+                                )
+                                continue
+                        safety_ticket = None
+                        if self.interactive:
+                            safety_ticket, blocked_reason = self.steering_safety.reserve(
+                                decision.sta_mac, decision.source_bssid, decision.target_bssid)
+                            if blocked_reason:
+                                self._emit_steering_safety(blocked_reason, subject_mac=decision.sta_mac)
+                                continue
                         state = state.replace(
                             evaluation.state.for_sta(decision.sta_mac)
                         )
@@ -1370,6 +1474,7 @@ class LiveConductor:
                              "batch_index": batch_index,
                              "batch_size": len(action_batch),
                              "actions_used": self.action_attempts,
+                             "steering_safety": self.steering_status(),
                              "measurement_reused": batch_index > 1},
                             producer="optimizer",
                         )
@@ -1382,21 +1487,21 @@ class LiveConductor:
                         execute_action = lambda current=decision: actuator.execute(
                             current, snapshot
                         )
-                        if self.steering_transaction is not None:
-                            if source_ap_role is None or target_ap_role is None:
-                                raise ValueError(
-                                    "steering source or target is not bound to a room AP"
-                                )
-                            result = self.steering_transaction(
-                                subject_role,
-                                source_ap_role,
-                                target_ap_role,
-                                decision.target_band or decision.current_band or "",
-                                execute_action,
-                                expected_epoch=room_after["environment_epoch"] if room_after else None,
-                            )
-                        else:
-                            result = execute_action()
+                        try:
+                            if self.steering_transaction is not None:
+                                if source_ap_role is None or target_ap_role is None:
+                                    raise ValueError("steering source or target is not bound to a room AP")
+                                result = self.steering_transaction(
+                                    subject_role, source_ap_role, target_ap_role,
+                                    decision.target_band or decision.current_band or "", execute_action,
+                                    expected_epoch=room_after["environment_epoch"] if room_after else None)
+                            else:
+                                result = execute_action()
+                        except Exception as error:
+                            self._complete_steering_safety(safety_ticket,
+                                None if isinstance(error, InteractionError) and error.code == "environment_changed" else False,
+                                str(error))
+                            raise
                         if result.success:
                             self.action_successes += 1
                         self.store.emit(
@@ -1412,6 +1517,7 @@ class LiveConductor:
                             producer="optimizer",
                         )
                         if not result.success:
+                            self._complete_steering_safety(safety_ticket, False, "steering_request_failed")
                             if self.interactive:
                                 state = _completed_action_state(state, decision, policy.config, False,
                                                                 "steering_request_failed", datetime.now(timezone.utc))
@@ -1427,19 +1533,30 @@ class LiveConductor:
                             )
                             break
                         if self.profiling:
-                            pending_verifications[decision.sta_mac] = self._verification_executor.submit(
-                                self._verify_profile_action, verifier, decision, batch_guard, policy.config,
-                                batch_index, len(action_batch), action_context, action_started)
+                            pending_safety_tickets[decision.sta_mac] = safety_ticket
+                            try:
+                                pending_verifications[decision.sta_mac] = self._verification_executor.submit(
+                                    self._verify_profile_action, verifier, decision, batch_guard, policy.config,
+                                    batch_index, len(action_batch), action_context, action_started)
+                            except Exception as error:
+                                pending_safety_tickets.pop(decision.sta_mac, None)
+                                self._complete_steering_safety(safety_ticket, False, str(error))
+                                raise
                             continue
-                        verified = verifier.verify(
-                            decision.sta_mac,
-                            decision.target_bssid,
-                            timeout_seconds=policy.config.steer_timeout_seconds,
-                            poll_seconds=0.2 if self.interactive else 1,
-                            source_bssid=decision.source_bssid,
-                        )
+                        try:
+                            verified = verifier.verify(
+                                decision.sta_mac,
+                                decision.target_bssid,
+                                timeout_seconds=policy.config.steer_timeout_seconds,
+                                poll_seconds=0.2 if self.interactive else 1,
+                                source_bssid=decision.source_bssid,
+                            )
+                        except Exception as error:
+                            self._complete_steering_safety(safety_ticket, False, str(error))
+                            raise
                         if verified.success:
                             self.verification_successes += 1
+                        self._complete_steering_safety(safety_ticket, verified.success, verified.reason)
                         if self.interactive:
                             state = _completed_action_state(state, decision, policy.config, verified.success,
                                                             verified.reason, datetime.now(timezone.utc))
@@ -1507,6 +1624,7 @@ class LiveConductor:
                         "automatic_actuation_ready": False,
                         "actions_used": self.action_attempts,
                         "maximum_actions": maximum_actions,
+                        "steering_safety": self.steering_status(),
                         "policy_hold_reset": True,
                         "fleet": {"measurement_complete": False, "converged": False},
                         "failed_transactions": [

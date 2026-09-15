@@ -6,29 +6,38 @@
 
 ## Open and control
 
-Open the live room and network topology side by side. The room's built-in
-Help is the detailed control reference; this page describes the operating rules.
-No `?mode=` is required for the normal live URL.
+Room-follow topology packing keeps bearings and relative ordering while bringing
+distant AP groups closer for readability; diagram distances are not RF distances.
+The convergence badge distinguishes checked from online clients and names health
+mismatches. Steering has no default lifetime cap: rolling limits recover
+automatically; repeated failures/oscillation pause affected clients only.
+**Resume steering** clears those pauses without resetting room, counters or
+cooldowns. Measurements continue.
 
-- **Load world** immediately applies its initial geometry, RF and presence to
-  the lab. Wait for completion; there is no separate Apply World step.
-- **Play / Pause** controls scripted movement. You can also drag devices without
-  switching camera/interactive modes. A moving best AP may change continuously.
-- **Ctrl-click any client** selects the traffic probe. Selection does not steer
-  that station or give it a special permanent role. “Private-Laptop” is not a
-  separate appliance capability.
+Open room and topology side by side. Built-in Help details the controls.
+No `?mode=` is required.
+
+- **Load world** applies geometry, RF and presence immediately; wait for completion.
+- **Play / Pause** controls scripted movement. Dragging remains available.
+- **Ctrl-click any client** selects the traffic probe, without steering it.
 - Station names remain visible. Drag the black properties label out of the way.
 - **Full screen** is available in both views; Esc exits. Topology layout fitting
   changes presentation, not radio positions or actual parent selection.
 - Stop/restore a custom run before leaving. Return to the default twenty-client
   world and leave it paused when handing the lab to someone else.
 
-Twenty client containers and six logical mesh roles remain provisioned.
+One hundred client containers and six logical mesh roles remain provisioned.
 Smaller worlds make selected roles unavailable; they do not rebuild the VM.
 Absent clients must disappear from the observed roster after convergence.
 Disabling an extender's **fronthaul** does not disable its backhaul.
 
 ## Read the views correctly
+
+World controls come first; Browse rooms explains RF, policy and evidence.
+Both views have room titles, resizable panels and fullscreen. Topology follows
+the default room-camera orientation, not manual orbit. **CONVERGED** requires
+fresh policy, roster and health evidence. prpl health counts five physical
+devices; the separate Controller icon is not another device.
 
 | Indication | Meaning |
 | --- | --- |
@@ -41,10 +50,8 @@ Disabling an extender's **fronthaul** does not disable its backhaul.
 | Fronthaul disabled | Client-facing AP unavailable; mesh uplink may still work |
 | Network topology | Controller-reported ownership; verify independently for tests |
 
-The same signal scale is used in both views. A client can have the best
-available AP without green/maximal SNR. Walls, distance, band eligibility,
-SSID, policy margins and station behavior still matter. RDK and prpl radios
-have different inventory mappings; compare identities, not just drawing labels.
+Both views share the signal scale. The best eligible AP need not have maximum
+SNR. Compare native identities, not discovery-order labels.
 
 ## Optimizer activity
 
@@ -61,21 +68,20 @@ candidate set cannot be obtained. The room remains interactive. Preserve the
 error/age/retry information rather than treating grey as zero, borrowing stale
 candidates or forcing clients onto the dashed link.
 
-A star can be correct in profiling: startup backhaul is protected. Moving
-extenders does not by itself request native backhaul optimization. The
+A star can be correct in ordinary rooms: startup backhaul is protected. The
+three `backhaul-*` rooms explicitly apply geometry to mesh RF and leave parent
+selection to native prplMesh. Outages are visible; no RDK parent actuator is
+ported. Returning to an ordinary room restores the protected baseline. The
 [coordination reference](../../reference/rooms/architecture.md) separates demonstration
 assistance, client profiling and explicitly modeled-backhaul experiments.
 
 ## Safe use and troubleshooting
 
-Use one operator lease and one RF writer. Do not run a second scenario, manual
-RF-assisted steer or conductor against the same medium. A paused room may
-still collect/steer; stop its service before a standalone native experiment.
+Use one lease and RF writer. Paused rooms still collect/steer; stop the service
+before running standalone native experiments.
 
-If a load or recovery fails, keep the fault and journal. Do not delete the
-ownership record, invent topology entries or restart every native service.
-Check service health, current world/epoch, actual station link and candidate
-freshness in that order. Remote access is covered in
+After failures, retain the fault/journal and check health, world/epoch, native
+links and candidate freshness before restarting. Remote access is covered in
 [transport and access](../../reference/rooms/access.md).
 
 For a correctness claim, use [room acceptance](../../reference/testing/room-acceptance.md).

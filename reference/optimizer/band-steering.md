@@ -4,10 +4,11 @@
 
 ## Status and scope
 
-Implemented and deployed on RDK/rev140 and prplMesh/rev150, `codex/0908-clean`.
-On September 13, 2026 UTC, both backends pass all three dedicated band rooms
-and the complete seventeen-room regression with native passive scans. Separate
-dedicated repeats pass the strengthened physical-owner and WLAN traffic probes.
+Implemented and deployed on RDK/rev140 and prplMesh/rev150, `codex/0913-clean`.
+The September 15, 2026 UTC short qualification passes all three dedicated band
+rooms, both new received same-band rooms and six other selected rooms on each
+backend, with independent physical-owner and WLAN traffic probes. This is a
+targeted eleven-room run, not a full 25-room catalog or long-term soak.
 
 This is the **external lab optimizer**, using native controller steering on RDK
 and prplMesh. It does not establish vendor-autonomous band policy or native
@@ -15,6 +16,17 @@ end-to-end 802.11k beacon-report support. RDK's beacon-query handler is incomple
 the current prplMesh lab rejects the tested native beacon request.
 
 ## Measurement and decision path
+
+The new opt-in `received-same-band-roam` and
+`received-discovery-recovery` rooms reuse this received-scan path without
+enabling band preference. A single-band profile explicitly adds
+`"measurement_mode": "received_same_band"`; an ordinary single-band profile
+still does not opt into scans. Signal thresholds/gain stay with the configured
+policy, with a one-second new-scan hold, three-second dwell and two-second age
+budget. Missing serving reception fails closed, and unknown/absent candidates
+do not acquire HAL-matrix values. Both rooms now pass initial, checkpoint and
+final native ownership/traffic and room/topology checks on both backends.
+See [RF work and measured results](../radio/virtual-rf-assessment.md#127-rf-increments-and-short-qualification).
 
 Only explicitly profiled room clients gain cross-band eligibility. The scanner
 reads each client's kernel radio capabilities and supplicant security capabilities.

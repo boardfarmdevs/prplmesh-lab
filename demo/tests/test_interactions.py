@@ -149,6 +149,28 @@ class InteractiveMediumSessionTests(unittest.TestCase):
         self.addCleanup(self.session.close)
         self.lease = self.session.acquire("browser-test")
 
+    def test_candidate_epochs_track_client_and_mesh_changes(self):
+        initial = self.session.snapshot()["candidate_epochs"]
+        self.session.position("sta_01", token=self.lease["token"], expected_revision=0,
+                              position=[8, 2], final=True)
+        moved = self.session.snapshot()["candidate_epochs"]
+        self.assertEqual(moved["global"], initial["global"])
+        self.assertEqual(moved["roles"], {"sta_01": 1})
+        self.session.position("sta_01", token=self.lease["token"], expected_revision=1,
+                              position=[2, 2], final=True)
+        returned = self.session.snapshot()["candidate_epochs"]
+        self.assertEqual(returned["roles"], {"sta_01": 2})
+        self.session.position("extender_1", token=self.lease["token"], expected_revision=2,
+                              position=[8, 2], final=True)
+        mesh = self.session.snapshot()["candidate_epochs"]
+        self.assertEqual(mesh["global"], initial["global"] + 1)
+        self.assertEqual(mesh["roles"], returned["roles"])
+        self.assertEqual(initial["roles"], {})
+
+    def test_batch_candidate_epochs_cover_every_changed_station(self):
+        self.session._mark_rf_committed("sta_01", roles={"sta_01", "sta_02"})
+        self.assertEqual(self.session.snapshot()["candidate_epochs"]["roles"], {"sta_01": 1, "sta_02": 1})
+
     def test_position_is_atomic_revisioned_and_frequency_qualified(self):
         # The initial room is complete: four station/AP directions plus both
         # directions of the gateway/extender backhaul in this one-band fixture.

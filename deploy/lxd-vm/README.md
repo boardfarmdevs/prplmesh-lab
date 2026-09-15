@@ -26,6 +26,12 @@ automatically applies RF and presence without recreating containers or radios.
 All five physical mesh containers (six displayed roles) remain provisioned.
 
 Defaults are 8 vCPUs, 16 GiB RAM, 120 hwsim radios, and a sparse 160-GiB disk.
+Budget at least 200 GiB of free backing-storage space for a new import, plus
+space for retained VMs, exports and build intermediates. A storage backend may
+allocate the full logical disk despite the small compressed download. Check
+the selected pool and its backing filesystem before importing. Retain a working
+rollback or a verified private export before deleting its VM; an export from
+a monitored lab contains credentials and must not become a public download.
 Leave resources for the host; do not run multiple appliances to select a room
 size. First boot validates all 100 clients, then the room service disconnects
 unused stations. Stopping/recovering the room restores that 100-client baseline;

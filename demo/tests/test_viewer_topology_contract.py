@@ -75,7 +75,9 @@ class ViewerTopologyContractTests(unittest.TestCase):
 
         self.assertIn("automatic_actuation_ready", source)
         self.assertIn("AUTO BTM", source)
-        self.assertIn("Action budget", source)
+        self.assertIn("Total requests", source)
+        self.assertIn("Rolling window", source)
+        self.assertIn("Resume steering", source)
         self.assertIn("optimizerSubjectRole()", source)
         self.assertIn("Fleet check", source)
         self.assertIn("Stronger AP available", source)
@@ -94,7 +96,7 @@ class ViewerTopologyContractTests(unittest.TestCase):
 
         self.assertIn("optimizerState.status === 'unavailable'", source)
         self.assertIn("Automatic steering paused", source)
-        self.assertIn("optimizer.measurement.unavailable') optimizerState = event.payload", source)
+        self.assertIn("optimizer.measurement.unavailable') optimizerState = RoomConvergence.withSafety(optimizerState, event.payload)", source)
 
 
 if __name__ == "__main__":

@@ -12,12 +12,14 @@ from typing import Any, Callable
 from wmdcfg.actuator import ActuatorError, ControlClient
 from wmdcfg.geometry import directed_link, quantize_position
 from wmdcfg.runner import FREQUENCY_CAPABILITIES
-from wmdcfg.world import _hash, compile_world, playback_pause_points
+from wmdcfg.world import _hash, backhaul_rf_policy, compile_world, playback_pause_points
 
 from .events import EventStore
 from .client_wifi import parallel_disconnections, parallel_reconnections
 from .recovery import RecoveryJournal
 from .pool import expand_initial_world
+from .traffic_experiment import TrafficExperiment, phase_at
+from wmdcfg.traffic_profile import validate_traffic
 
 
 class InteractionError(RuntimeError):
@@ -53,11 +55,22 @@ class InteractiveMediumSession:
         disconnect_client: Callable[[str], Any] | None = None,
         reconnect_client: Callable[[str], None] | None = None,
         traffic_probe_role: str | None = None,
+        traffic_target: str | None = None,
+        traffic_experiment: Any = None,
+        resume_steering: Callable[[int], dict] | None = None,
         adaptive_backhaul: bool = False,
         model_backhaul: bool = False,
         band_profiles: Any = None,
+        prepare_backhaul: Callable[[], Any] | None = None,
     ) -> None:
         self.store = store
+        validate_traffic(world)
+        self._traffic_experiment = traffic_experiment or (
+            TrafficExperiment(traffic_target, lambda payload: self.store.emit(
+                "traffic.experiment", self._world_time(), payload, producer="traffic"))
+            if traffic_target is not None else None)
+        self._traffic_run = 0
+        backhaul_rf_policy(world)
         self.world = world
         self.layout = layout
         self.plan = plan
@@ -66,12 +79,14 @@ class InteractiveMediumSession:
         self.lease_seconds = max(10, min(120, int(lease_seconds)))
         self.minimum_update_interval = max(0.0, float(minimum_update_interval))
         self.recovery = recovery
+        self._resume_steering = resume_steering
         self.worlds = worlds
         self.adaptive_backhaul = adaptive_backhaul
         self.model_backhaul = model_backhaul
         self.disconnect_client = disconnect_client
         self.reconnect_client = reconnect_client
         self.band_profiles = band_profiles
+        self.prepare_backhaul = prepare_backhaul
         self._selected_roles = set(world["roles"])
         self._selected_world = world["name"]
         self._lock = threading.RLock()
@@ -84,6 +99,8 @@ class InteractiveMediumSession:
         self._backhaul_epoch = 0
         self._last_backhaul_change_monotonic: float | None = None
         self._measurement_epoch = 0
+        self._candidate_global_epoch = 0
+        self._candidate_role_epochs: dict[str, int] = {}
         self._last_rf_apply_monotonic: float | None = None
         self._last_rf_applied_at: str | None = None
         self._last_rf_role: str | None = None
@@ -188,6 +205,8 @@ class InteractiveMediumSession:
         with self._lock:
             if self._client is not None:
                 raise InteractionError(409, "already_started", "interactive session is already started")
+            if self.backhaul_policy() != "fixed-startup-mesh":
+                self._prepare_backhaul_radios()
             client = self.client_factory(self.socket_path)
             recovery_prepared = False
             try:
@@ -335,6 +354,8 @@ class InteractiveMediumSession:
         with self._lock:
             if expire_lease:
                 self._expire_lease()
+            if self._faulted and self._traffic_experiment is not None:
+                self._traffic_experiment.sync(None)
             lease = None if self._lease is None else {
                 "held": True,
                 "owner": self._lease["owner"],
@@ -346,6 +367,8 @@ class InteractiveMediumSession:
                 "revision": self._revision,
                 "environment_epoch": self._environment_epoch,
                 "measurement_epoch": self._measurement_epoch,
+                "candidate_epochs": {"global": self._candidate_global_epoch,
+                                     "roles": dict(self._candidate_role_epochs)},
                 "backhaul_epoch": self._backhaul_epoch,
                 "backhaul_stable_for_seconds": (
                     None if self._last_backhaul_change_monotonic is None else
@@ -365,11 +388,15 @@ class InteractiveMediumSession:
                 ),
                 "playback": self._public_playback(),
                 "traffic_probe": self._traffic_probe(),
+                "traffic_experiment": (self._traffic_experiment.snapshot() if self._traffic_experiment
+                                       else {"state": "unavailable"}),
                 "allowed_roles": sorted(set(self._allowed_roles) & self._selected_roles),
                 "presence_roles": sorted(set(self._presence_roles) & self._selected_roles),
                 "movable_roles": sorted(set(self._movable_roles) & self._selected_roles),
                 "world_switch_enabled": self.worlds is not None,
                 "backhaul_policy": self.backhaul_policy(),
+                "backhaul_rf": "fixed" if self.backhaul_policy() == "fixed-startup-mesh" else "geometry",
+                "backhaul_authority": "external-rdk" if self.adaptive_backhaul else "native",
                 "backhaul_links": self.backhaul_links(),
                 "selected_world": self._selected_world,
                 "band_steering": self.band_profiles.snapshot() if self.band_profiles else {},
@@ -509,6 +536,14 @@ class InteractiveMediumSession:
             self.store.emit("traffic.probe.selected", self._world_time(), result, producer="interaction")
             return result
 
+    def resume_steering(self, *, token: str, expected_revision: Any, expected_pause_revision: Any) -> dict:
+        with self._lock:
+            self._validate_mutation("gateway", token, expected_revision, allowed_roles=self._movable_roles)
+            if self._resume_steering is None:
+                raise InteractionError(409, "steering_resume_unavailable", "This session has no automatic steering control")
+            return {"revision": self._revision,
+                    "steering_safety": self._resume_steering(expected_pause_revision)}
+
     def world_catalog(self) -> dict[str, Any]:
         if self.worlds is None:
             return {"enabled": False, "worlds": []}
@@ -533,6 +568,17 @@ class InteractiveMediumSession:
                 by_key[(item["source"], item["destination"], item["frequency_mhz"])] = item
         return list(by_key.values())
 
+    def _prepare_backhaul_radios(self):
+        if self.prepare_backhaul is None:
+            return
+        try:
+            readiness = self.prepare_backhaul()
+        except Exception as error:
+            raise InteractionError(503, "backhaul_radios_unavailable",
+                                   f"Cannot apply geometry backhaul: {error}") from error
+        self.store.emit("backhaul.radios.prepared", self._playback_time_ms, readiness,
+                        producer="interaction")
+
     def apply_world(
         self, selection: Any, *, token: str, expected_revision: Any
     ) -> dict[str, Any]:
@@ -543,10 +589,15 @@ class InteractiveMediumSession:
             if self.worlds is None:
                 raise InteractionError(409, "world_switch_unavailable", "world switching is not configured")
             world, layout = self.worlds.select(selection)
+            validate_traffic(world)
+            if world.get("traffic_experiment") and self._traffic_experiment is None:
+                raise InteractionError(409, "traffic_unavailable", "bounded room traffic is not configured")
             if world.get("band_steering") and self.band_profiles is None:
                 raise InteractionError(409, "band_profiles_unavailable", "client band settings are not configured")
             if self._recording is not None:
                 raise InteractionError(409, "recording_active", "stop and download the recording before changing worlds")
+            if backhaul_rf_policy(world) == "geometry" or self.model_backhaul or self.adaptive_backhaul:
+                self._prepare_backhaul_radios()
             self._pause_playback("world_changed")
             previous = (self.world, self.layout, self._roles, self._nodes,
                         self._selected_roles, self._selected_world, self._initial_roles)
@@ -649,6 +700,7 @@ class InteractiveMediumSession:
             runtime["interaction"]["initial_frame_only"] = True
             runtime["interaction"]["backhaul_policy"] = self.backhaul_policy()
             payload = {"revision": self._revision, "world": runtime,
+                       "backhaul_policy": self.backhaul_policy(), "backhaul_rf_verified": True,
                        "apply_timing": apply_timing,
                        "roles": copy.deepcopy(roles), "environment_epoch": self._environment_epoch,
                        "pool_clients": len(self._allowed_roles),
@@ -682,6 +734,7 @@ class InteractiveMediumSession:
                 "manual_roles": sorted(self._playback_overrides), "interval_ms": 1000}
 
     def _emit_playback(self, action: str, reason: str | None = None) -> dict[str, Any]:
+        self._sync_traffic()
         payload = {"revision": self._revision, "playback": self._public_playback(),
                    "roles": copy.deepcopy(self._roles),
                    "environment_epoch": self._environment_epoch,
@@ -699,6 +752,19 @@ class InteractiveMediumSession:
             self._revision += 1
             self._emit_playback("paused", reason)
         self._playback_wake.set()
+
+    def _sync_traffic(self) -> None:
+        if self._traffic_experiment is None:
+            return
+        phase = phase_at(self._playback_world.get("traffic_experiment"), self._playback_time_ms)
+        if (phase is None or self._closing or self._faulted or self._lease is None
+                or self._playback_status != "playing" or not self._roles[phase[1]["role"]]["present"]):
+            self._traffic_experiment.sync(None)
+            return
+        index, settings = phase
+        self._traffic_experiment.sync(
+            (self._playback_world["golden_sha256"], self._traffic_run, index), settings,
+            self.plan["bindings"][settings["role"]]["container"], settings["end_ms"] - self._playback_time_ms)
 
     def _validate_playback(self) -> None:
         try:
@@ -731,6 +797,10 @@ class InteractiveMediumSession:
                 raise InteractionError(400, "invalid_playback_action", "use play or pause")
             if action == "play":
                 self._validate_playback()
+                if self._playback_world.get("traffic_experiment") and self._traffic_experiment is None:
+                    raise InteractionError(409, "traffic_unavailable", "bounded room traffic is not configured")
+                if self._playback_status != "playing":
+                    self._traffic_run += 1
                 if self._playback_status == "completed":
                     self._playback_time_ms = 0
                     self._playback_rewind = True
@@ -1100,6 +1170,8 @@ class InteractiveMediumSession:
         recording_layout = copy.deepcopy(self.layout)
         recording_layout["nodes"] = [node for node in recording_layout["nodes"] if node["role"] in self._selected_roles]
         mobility["nodes"] = [node for node in mobility["nodes"] if node["role"] in self._selected_roles]
+        if "backhaul_rf" in self.world or self.backhaul_policy() != "fixed-startup-mesh":
+            mobility["backhaul_rf"] = "fixed" if self.backhaul_policy() == "fixed-startup-mesh" else "geometry"
         world = compile_world(recording_layout, mobility)
         world["rf_nodes"] = {
             role: {key: copy.deepcopy(value) for key, value in self._nodes[role].items()
@@ -1605,7 +1677,7 @@ class InteractiveMediumSession:
             )
         for item in updates:
             protected = self._protected_backhaul.get((item["source"], item["destination"], item["frequency_mhz"]))
-            if protected is not None:
+            if protected is not None and self.backhaul_policy() == "fixed-startup-mesh":
                 item["value"], item["override"] = protected
         return updates, summary
 
@@ -1676,7 +1748,8 @@ class InteractiveMediumSession:
 
     def backhaul_policy(self) -> str:
         return "adaptive-rdk" if self.adaptive_backhaul else (
-            "fixed-startup-mesh" if self.worlds is not None and not self.model_backhaul else "modeled")
+            "fixed-startup-mesh" if self.worlds is not None and not self.model_backhaul
+            and self.world.get("backhaul_rf", "fixed") == "fixed" else "modeled")
 
     def backhaul_links(self) -> list[dict[str, Any]]:
         """Expose verified applied RF, not a fresh controller SNR measurement."""
@@ -1903,7 +1976,7 @@ class InteractiveMediumSession:
                 raise action_error
             return result
 
-    def _mark_rf_committed(self, role: str | None = None) -> None:
+    def _mark_rf_committed(self, role: str | None = None, *, roles=None) -> None:
         self._environment_epoch += 1
         if role is None:
             self._recent_rf_roles.clear()
@@ -1912,10 +1985,16 @@ class InteractiveMediumSession:
         if role is None or self.world["roles"].get(role) == "fronthaul_ap":
             self._backhaul_epoch += 1
             self._last_backhaul_change_monotonic = time.monotonic()
-        self._mark_measurements_stale(role)
+        self._mark_measurements_stale(role, roles=roles)
 
-    def _mark_measurements_stale(self, role: str | None = None) -> None:
+    def _mark_measurements_stale(self, role: str | None = None, *, roles=None) -> None:
         self._measurement_epoch += 1
+        affected = set(roles) if roles is not None else {role}
+        if None in affected or any(self.world["roles"].get(item) == "fronthaul_ap" for item in affected):
+            self._candidate_global_epoch += 1
+        else:
+            for item in affected:
+                self._candidate_role_epochs[item] = self._candidate_role_epochs.get(item, 0) + 1
         self._last_rf_apply_monotonic = time.monotonic()
         self._last_rf_applied_at = dt.datetime.now(dt.timezone.utc).isoformat()
         self._last_rf_role = role
@@ -1935,6 +2014,7 @@ class InteractiveMediumSession:
         return self._apply_roles([(role, change)], client_sequence=client_sequence)[0]
 
     def _apply_roles(self, changes, *, client_sequence, publish_roles=True):
+        self._sync_traffic()
         assert self._client is not None
         unique_updates = {}
         links_by_change = {}
@@ -1980,7 +2060,7 @@ class InteractiveMediumSession:
                     and role in self._allowed_roles and self._roles[role]["present"]
                 ))
                 representative = min(roles, key=lambda role: (self.world["roles"].get(role) != "fronthaul_ap", role))
-                self._mark_rf_committed(representative)
+                self._mark_rf_committed(representative, roles=roles)
                 self._recent_rf_roles.update({role: time.monotonic() for role in roles})
             else:
                 applied = []
@@ -2114,11 +2194,16 @@ class InteractiveMediumSession:
                 threads.append(self._playback_thread)
         for thread in threads:
             thread.join(timeout=2)
-        with self._lock:
-            if self._client is None:
-                return self._restored
-            try:
-                return self.restore()
-            finally:
-                self._client.close()
-                self._client = None
+        restored = self._restored
+        try:
+            if self._traffic_experiment is not None:
+                self._traffic_experiment.close()
+        finally:
+            with self._lock:
+                if self._client is not None:
+                    try:
+                        restored = self.restore()
+                    finally:
+                        self._client.close()
+                        self._client = None
+        return restored

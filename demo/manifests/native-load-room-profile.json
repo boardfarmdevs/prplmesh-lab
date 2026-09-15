@@ -1,0 +1,64 @@
+{
+  "schema": "easymesh.room-demo.v1",
+  "name": "native-load-room-profile",
+  "description": "Opt-in native AP-load inspection and guarded balancing; keeps the ordinary startup room and fixed client pool.",
+  "world": "wmediumd/configurator/worlds/golden/home-a-private-client-room-walk.world.json",
+  "bindings": "demo/bindings/private-client-room-walk.json",
+  "policy": "optimizer/configs/load-aware-policy.yaml",
+  "hero": {
+    "role": "sta_mobile_01",
+    "container": "prpl-client-03",
+    "friendly_name": "sta-02",
+    "expected_ssid": "private_ssid",
+    "expected_band": "5"
+  },
+  "optimizer": {
+    "interval_seconds": 5,
+    "candidate_timeout_seconds": 30,
+    "action_window_ms": [
+      150000,
+      220000
+    ],
+    "max_actions": 1,
+    "allow_simulated_candidates": true,
+    "request_only": true
+  },
+  "traffic": {
+    "target": "192.168.77.1",
+    "interval_seconds": 2,
+    "timeout_seconds": 2
+  },
+  "health": {
+    "interval_seconds": 10,
+    "expected_mesh_devices": 5,
+    "expected_clients": 20,
+    "expected_private_clients": 10,
+    "expected_iot_clients": 10
+  },
+  "narrative": [
+    {
+      "time_ms": 0,
+      "label": "Stable near Extender-1"
+    },
+    {
+      "time_ms": 30000,
+      "label": "Walking away from the serving AP"
+    },
+    {
+      "time_ms": 90000,
+      "label": "Approaching the cell boundary"
+    },
+    {
+      "time_ms": 140000,
+      "label": "Crossing into the target room"
+    },
+    {
+      "time_ms": 150000,
+      "label": "Steering action window open"
+    },
+    {
+      "time_ms": 220000,
+      "label": "Action window closed; verify and cool down"
+    }
+  ]
+}

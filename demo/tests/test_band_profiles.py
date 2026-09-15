@@ -185,3 +185,11 @@ def test_unrestricted_restore_requires_a_real_frequency_and_correct_ssid():
     ])
     settings.restore({**RECORD, "values": {**VALUES, "freq_list": None, "scan_freq": None}}, wait=True)
     assert settings.sleep.call_count == 2
+
+def test_same_band_reception_requires_explicit_single_band_mode():
+    world = {"roles": {"client": "station"}, "generations": [{"present": {"client": True}}]}
+    profile = {"allowed_bands": ["5"], "initial_band": "5", "measurement_mode": "received_same_band"}
+    assert validate_profiles({**world, "band_steering": {"client": profile}}) == {"client": profile}
+    for invalid in [{**profile, "measurement_mode": "oracle"}, {**PROFILE, "measurement_mode": "received_same_band"}]:
+        with pytest.raises(ValueError):
+            validate_profiles({**world, "band_steering": {"client": invalid}})

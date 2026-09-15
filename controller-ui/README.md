@@ -48,6 +48,7 @@ API exposed by this process includes:
 ```text
 GET /health
 GET /api/v1/topology
+GET /api/v1/room-layout
 GET /api/v1/devices
 GET /api/v1/clients
 GET /api/v1/bsses
@@ -60,6 +61,30 @@ POST /api/v1/steering-event
 The steering endpoint carries a short-lived `planned`, `moving`, `completed`,
 or `failed` visualization event. `scripts/steer-client.sh` uses it to identify
 the next client before BTM; it is not a steering control API.
+
+## Room and topology parity
+
+The September 14 UI follows live room mesh coordinates by device identity,
+using the default room camera orientation. The room title stays in the existing
+topology header. Grey dividers resize both views; topology packing preserves
+orientation and fits the available drawing area with a thin margin. Dragging a
+mesh icon switches to manual layout; Follow room restores coordinate following.
+Manual room-camera orbit remains local to that browser, not a topology rotation.
+
+The independent read-only layout proxy uses `EASYMESH_ROOM_URL`, default
+`http://127.0.0.1:8891`; an empty value disables it. It has a 750 ms upstream
+deadline, 64 KiB response limit and 200 ms in-flight/coalesced cache. No topology
+query or steering request waits for this proxy. Outages retain diagram positions
+and mark the last room title as previously observed.
+
+Six-second roam trails mark the old client position and current association:
+teal means a matching accepted native BTM request, pink an explicit non-BTM
+operator report, grey unknown. Planned/moving intent alone never proves BTM.
+The room projects accepted optimizer events into a bounded 30-second history;
+there are no extra native measurements or synchronous UI calls in the actuator.
+For explicit non-BTM reports, add `method: "non-btm"`, `source_bssid` and
+`target_bssid` to a completed steering event. This annotates, never steers.
+The separate Controller icon does not add a sixth physical NBAPI mesh device.
 
 ## Multiple networks and VLANs
 

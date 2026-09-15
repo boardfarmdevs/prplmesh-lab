@@ -83,6 +83,29 @@ class FakeInteractions:
 
 
 class ServerTests(unittest.TestCase):
+    def test_mesh_layout_is_a_read_only_small_projection(self):
+        self.store.emit("room.world.committed", 0, {"world": {
+            "name": "layout", "duration_ms": 1000, "tick_ms": 100,
+            "roles": {"gateway": "fronthaul_ap", "extender_1": "fronthaul_ap", "sta": "station"}},
+            "roles": {role: {"position": position, "present": True} for role, position in
+                      {"gateway": [5, 5], "extender_1": [1, 2], "sta": [4, 2]}.items()}})
+        self.store.emit("network.snapshot", 0, {"observed_at": "2026-09-14T20:00:00Z",
+            "mesh": {"nodes": [{"device_id": "mac-1", "role": "gateway"},
+                                {"device_id": "mac-2", "role": "extender_1"}]},
+            "clients": [{"large": "x" * 100000}]})
+        with patch.object(self.store, "current", side_effect=AssertionError("full snapshot copied")):
+            with urllib.request.urlopen(self.base + "/api/demo/mesh-layout") as response:
+                body = response.read()
+                self.assertLess(len(body), 2048)
+                result = json.loads(body)
+        self.assertEqual(result["nodes"][1]["position"], [1, 2])
+        self.assertTrue(result["live"])
+        self.assertNotIn("clients", result)
+        self.store.emit("room.position.committed", 0, {"role": "extender_1", "position": [8, 9], "revision": 2})
+        self.assertEqual(self.store.mesh_layout()["nodes"][1]["position"], [8, 9])
+        result["nodes"][0]["position"][0] = 999
+        self.assertEqual(self.store.mesh_layout()["nodes"][0]["position"], [5, 5])
+
     def setUp(self):
         temp = tempfile.TemporaryDirectory()
         self.addCleanup(temp.cleanup)

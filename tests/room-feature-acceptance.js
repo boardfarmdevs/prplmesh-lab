@@ -60,6 +60,26 @@ function bandNativeErrors(world, probes, clients) {
   });
 }
 
+function trafficExperimentSummary(world, records) {
+  const reports = records.filter(record => record.event.kind === 'traffic.experiment')
+    .map(record => record.event.payload).filter(value => value.world_sha256 === world.golden_sha256);
+  const phases = world.traffic_experiment.phases.map((phase, index) => {
+    const starts = reports.filter(value => value.state === 'running' && value.key?.[2] === index);
+    const result = reports.flatMap(value => value.history || []).filter(value =>
+      value.world_sha256 === world.golden_sha256 && value.key?.[2] === index).at(-1);
+    return {index, configured: phase, result, passed: starts.length === 1 &&
+      starts[0].requested_packets_per_second === phase.packets_per_second &&
+      starts[0].payload_bytes === phase.payload_bytes && result?.role === phase.role &&
+      result.source === 'bound_client_wlan0_icmp_echo' &&
+      ['completed', 'cancelled'].includes(result.state) &&
+      result.transmitted_packets > 0 && result.transmitted_packets <= result.requested_packets &&
+      result.received_echo_replies > 0 && result.received_echo_replies <= result.transmitted_packets};
+  });
+  return {passed: phases.every(phase => phase.passed) && reports.at(-1)?.state === 'off', phases,
+    finalState: reports.at(-1)?.state || 'missing',
+    scope: 'bounded actual ICMP stimulus and replies; not utilization or throughput qualification'};
+}
+
 function bandSteeringSummary(world, events, verifications) {
   const verifiedIds = new Set(verifications.filter(item => item.success && item.traffic_ok).map(item => item.action_id));
   const actions = events.filter(record => record.event.kind === 'optimizer.action' && record.event.payload.phase === 'requested')
@@ -69,7 +89,7 @@ function bandSteeringSummary(world, events, verifications) {
   for (const [role, profile] of Object.entries(world.band_steering)) {
     const expected = [];
     let previous = profile.initial_band;
-    for (const checkpoint of [...world.band_steering_expectations].sort((left, right) => left.time_ms - right.time_ms)) {
+    for (const checkpoint of [...(world.band_steering_expectations || [])].sort((left, right) => left.time_ms - right.time_ms)) {
       const target = checkpoint.roles[role]?.band;
       if (target && target !== previous) expected.push({from: previous, to: target});
       previous = target || previous;
@@ -171,7 +191,7 @@ function distribution(values) {
 }
 
 function recordedEventKind(kind) {
-  return /^(optimizer\.(action|verification(?:\.discarded)?|collection|band_scan)|rf\.generation\.applied|playback\.rf\.applied|interaction\.playback\.(paused|completed)|worker\.error|room\.world\.committed)$/.test(kind);
+  return /^(optimizer\.(action|verification(?:\.discarded)?|collection|band_scan)|traffic\.experiment|rf\.generation\.applied|playback\.rf\.applied|interaction\.playback\.(paused|completed)|worker\.error|room\.world\.committed)$/.test(kind);
 }
 
 function eventPerformance(records) {
@@ -536,6 +556,7 @@ async function run(args) {
     if (bandWorld.band_steering) {
       result.bandSteering = bandSteeringSummary(bandWorld, relevant, verifications);
     }
+    if (bandWorld.traffic_experiment) result.trafficExperiment = trafficExperimentSummary(bandWorld, relevant);
     result.scriptCorrect = during.length > 0 && during.every(sample => !sample.scriptErrors.length && !sample.mediumFault);
     result.sceneCorrect = during.length > 0 && during.every(sample => !sample.sceneErrors.length);
     result.viewCorrect = during.every(sample => !sample.duplicates && sample.meshCount === 6 && sample.associations.every(client => client.visible && client.label)) && agreement.passed;
@@ -556,7 +577,7 @@ async function run(args) {
       result.checkpoints.every(checkpoint => checkpoint.passed) && result.scriptCorrect && result.sceneCorrect && result.viewCorrect &&
       result.presencePhases.every(entry => entry.topologyVerified) &&
       result.fronthaulOutages.every(outage => outage.samples > 0 && !outage.remainingAssociations.length && outage.meshConnected) &&
-      result.kernel?.passed && result.bandSteering?.passed !== false && !result.errors.length && !report.errors.some(error => error.room === result.id));
+      result.kernel?.passed && result.bandSteering?.passed !== false && result.trafficExperiment?.passed !== false && !result.errors.length && !report.errors.some(error => error.room === result.id));
     result.sampleCount = result.samples.length;
     delete result.samples;
   }
@@ -737,6 +758,6 @@ function kernelClientAudit(bindings, wanted, associations, links) {
   return {onlineCount: online.size, offlineCount: bound.size - online.size, passed: errors.length === 0, errors, links};
 }
 
-module.exports = {expectedFrame, evaluate, distribution, eventPerformance, viewAgreement, recordedEventKind, fronthaulOutages, bandExpectations, bandSteeringSummary, bandNativeErrors, kernelClientAudit};
+module.exports = {expectedFrame, evaluate, distribution, eventPerformance, viewAgreement, recordedEventKind, fronthaulOutages, bandExpectations, bandSteeringSummary, bandNativeErrors, kernelClientAudit, trafficExperimentSummary};
 if (require.main === module) run(argumentsFrom(process.argv.slice(2))).then(report => { process.exitCode = report.passed ? 0 : 1; })
   .catch(error => { console.error(error); process.exitCode = 2; });

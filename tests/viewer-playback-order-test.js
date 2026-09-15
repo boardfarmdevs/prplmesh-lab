@@ -15,6 +15,7 @@ const state = vm.createContext({
   interaction: {revision: 0, apiEnabled: true, overrides: {}, previewPositions: {}, initialRoles: {}},
   acquireInteractionLease: async () => true,
   update() {}, eventLabel: () => null,
+  renderBackhaulPolicy() {},
   $: selector => {
     if (!elements.has(selector)) elements.set(selector, {classList: {toggle() {}}});
     return elements.get(selector);

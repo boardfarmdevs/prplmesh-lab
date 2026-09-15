@@ -5,6 +5,7 @@ import json
 import os
 from pathlib import Path
 import re
+import shutil
 import signal
 import subprocess
 import time
@@ -59,6 +60,30 @@ def apply_radio_subdoc(node, document):
         raise RuntimeError('single-radio configuration rejected: ' + result)
 
 
+def require_traffic_tools():
+    missing = [name for name in ('lxc', 'nsenter', 'iperf3') if shutil.which(name) is None]
+    if missing:
+        raise RuntimeError('install required outer-VM tools before changing the lab: ' + ', '.join(missing))
+
+
+def require_running_traffic(processes):
+    for process in processes:
+        status = process.poll()
+        if status is not None:
+            raise RuntimeError('traffic process exited before qualification completed: status ' + str(status))
+
+
+def select_source_radio(radios, bsses, hops, preferred):
+    radio_hops = [hops.get(bsses.get(radio['bssid'], {}).get('device_id')) for radio in radios]
+    target_hops = radio_hops[-1]
+    eligible = [index for index in range(1, len(radios) - 1)
+                if radio_hops[index] is not None and target_hops is not None
+                and radio_hops[index] >= target_hops]
+    if not eligible:
+        raise RuntimeError('prepare a target with no additional backhaul hop before qualification')
+    return min(eligible, key=lambda index: (index != preferred, radio_hops[index] - target_hops, index))
+
+
 def main():
     def interrupted(_signal, _frame):
         raise InterruptedError('qualification interrupted; restoring owned changes')
@@ -73,6 +98,7 @@ def main():
     args = parser.parse_args()
     if os.geteuid() or not args.yes_change_lab:
         parser.error('requires root and --yes-change-lab')
+    require_traffic_tools()
     state_room = fetch('http://127.0.0.1:8891/api/demo/interactions')
     if (state_room['lease']['held'] or state_room['recording']['active']
             or state_room['playback']['status'] != 'paused' or state_room['playback']['time_ms'] != 0
@@ -97,7 +123,9 @@ def main():
     if len(original_roster) != 20:
         raise RuntimeError('requires complete native twenty-client roster')
     radios = [private_radio(command('lxc', 'exec', node, '--', 'iw', 'dev')) for node in nodes]
-    source_radio = radios[1] if rdk else radios[-2]
+    bsses, hops = inventory(inventory_observer.last_raw)
+    source_index = select_source_radio(radios, bsses, hops, 1 if rdk else len(radios) - 2)
+    source_radio = radios[source_index]
     if any(radio['frequency'] != 2437 for radio in radios):
         raise RuntimeError('requires default channel 6 on all private 2.4 GHz radios')
     processes = {node: json.loads(command('lxc', 'query', f'/1.0/instances/{node}/state'))['pid']
@@ -111,7 +139,10 @@ def main():
     args.output.mkdir(parents=True, exist_ok=False)
     report = {'stack': args.stack, 'state': 'failed', 'original_associations': originals,
               'station_macs': station_macs, 'radios': radios, 'actions': [], 'restoration_errors': [],
-              'scope': 'two-client native load policy qualification; production pool remains 20',
+              'source_node': nodes[source_index], 'source_bssid': source_radio['bssid'],
+              'source_backhaul_hops': hops[bsses[source_radio['bssid']]['device_id']],
+              'target_backhaul_hops': hops[bsses[radios[-1]['bssid']]['device_id']],
+              'scope': 'two-client native load policy qualification; default 20 active, provisioned pool unchanged',
               'rf_candidates': 'native controller query using explicitly enabled idealized hwsim measurements'}
     cleanup, traffic, servers, handles = [], [], [], []
     provider = None
@@ -170,7 +201,7 @@ def main():
                 time.sleep(1)
             raise RuntimeError('fresh native twenty-client roster was not restored; operator recovery required')
 
-        cleanup.append(('native client roster', verify_native_restoration))
+        cleanup.insert(0, ('native client roster', verify_native_restoration))
         with ControlClient(control_path) as control:
             original_frequencies = control.dump_frequency_links()[1]
             links = control.dump_links()[1]
@@ -274,12 +305,11 @@ def main():
         level = re.search(r'Current level:\s*(\w+)', original_level)[1]
         require_ok('lxc', 'exec', clients[0], '--', 'wpa_cli', '-i', 'wlan0', 'log_level', 'DEBUG')
         cleanup.append(('supplicant logging', lambda: require_ok('lxc', 'exec', clients[0], '--', 'wpa_cli', '-i', 'wlan0', 'log_level', level)))
-        if not rdk:
-            cleanup.append(('supplicant evidence', lambda: (args.output / 'supplicant.log').write_text(command('lxc', 'exec', clients[0], '--', 'tail', '-n', '1800', '/tmp/wpa_supplicant.log'))))
-        else:
+        if rdk:
             cleanup.append(('native steering evidence', lambda: (args.output / 'source-agent.log').write_text(
-                command('lxc', 'exec', nodes[1], '--', 'tail', '-n', '3000', '/rdklogs/logs/emAgent.txt'))))
+                command('lxc', 'exec', nodes[source_index], '--', 'tail', '-n', '3000', '/rdklogs/logs/emAgent.txt'))))
         capture_path = args.output / 'supplicant-events.jsonl'
+        report['supplicant_evidence'] = capture_path.name
         capture_output = capture_path.open('w')
         handles.append(capture_output)
         capture = subprocess.Popen(['nsenter', '-t', str(processes[clients[0]]), '-n', 'python3',
@@ -307,13 +337,14 @@ def main():
             servers.append(subprocess.Popen(['nsenter', '-t', str(processes[nodes[0]]), '-n', 'iperf3', '-s', '-1', '-B', gateway, '-p', port, '-J', '-i', '1'],
                                             stdout=server_output, stderr=subprocess.STDOUT))
             time.sleep(.3)
-            traffic.append(subprocess.Popen(['nsenter', '-t', str(processes[node]), '-n', 'iperf3', '-c', gateway, '-p', port, '-u', '-b', '12M', '-l', '1200', '-t', '85', '-J', '-i', '1'],
+            traffic.append(subprocess.Popen(['nsenter', '-t', str(processes[node]), '-n', 'iperf3', '-c', gateway, '-B', addresses[index], '-p', port, '-u', '-b', '12M', '-l', '1200', '-t', '85', '-J', '-i', '1'],
                                             stdout=client_output, stderr=subprocess.STDOUT))
         report['traffic_started_at'] = time.time()
         deadline = time.monotonic() + 65
         verified_monotonic = None
         with (args.output / 'cycles.jsonl').open('w') as journal:
             while time.monotonic() < deadline:
+                require_running_traffic(traffic + servers)
                 snapshot = observer.observe()
                 snapshot = replace(snapshot, health=replace(snapshot.health, clients=2),
                     clients=tuple(row for row in snapshot.clients if row.sta_mac in station_macs),

@@ -22,6 +22,17 @@ from room_demo.events import EventStore
 
 
 class ConductorProjectionTests(unittest.TestCase):
+    def test_profile_candidate_epochs_invalidate_only_affected_clients(self):
+        conductor, _store = self._conductor()
+        conductor._role_by_mac = {"first": "sta_01", "second": "sta_02"}
+        before = {"candidate_epochs": {"global": 1, "roles": {"sta_01": 0}}}
+        after = {"candidate_epochs": {"global": 1, "roles": {"sta_01": 1}}}
+        self.assertEqual(conductor._candidate_changes({"first", "second"}, before, after), {"first"})
+        after["candidate_epochs"]["global"] = 2
+        self.assertEqual(conductor._candidate_changes({"first", "second"}, before, after), {"first", "second"})
+        self.assertEqual(conductor._candidate_changes({"first"}, {"environment_epoch": 1},
+                                                      {"environment_epoch": 2}), {"first"})
+
     def test_unavailable_topology_keeps_observation_workers_alive_without_publishing_old_data(self):
         for worker, method in (("network", "observe_topology"), ("network-metrics", "metrics_for")):
             with self.subTest(worker=worker):
@@ -47,6 +58,7 @@ class ConductorProjectionTests(unittest.TestCase):
 
     def test_full_verification_queue_never_marks_unsent_clients_pending(self):
         conductor, store = self._conductor()
+        conductor.action_attempts = 100
         conductor.interactive = True
         conductor.profiling = True
         conductor.mode = "act"
@@ -108,6 +120,8 @@ class ConductorProjectionTests(unittest.TestCase):
             conductor._optimizer_worker()
         self.assertEqual(conductor.errors, [])
         self.assertEqual(waits, [5, 5, 6])
+        self.assertEqual(conductor.action_attempts, 106)
+        self.assertIsNone(store.current()["optimizer"]["maximum_actions"])
         queued_state = evaluate.call_args_list[2].args[1]
         for client in clients[5:]:
             pending = queued_state.for_sta(client.sta_mac)

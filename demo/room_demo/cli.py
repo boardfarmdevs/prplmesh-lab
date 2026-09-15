@@ -30,6 +30,7 @@ from .band_profiles import BandProfileManager
 from .recovery import RecoveryJournal, inventory_identity, load_recovery, recover_medium
 from .server import RoomDemoServer
 from .worlds import BoundWorlds
+from .rf_manifest import annotate_manifest
 from .pool import bind_client_pool, pool_manifest
 from .client_wifi import disconnected_client, resume_bound_client
 
@@ -305,6 +306,8 @@ def _interactive(args) -> int:
         raise ActuatorError("interactive act mode requires --yes-act")
     if args.max_actions is not None and args.max_actions < 1:
         raise ActuatorError("interactive --max-actions must be a positive integer")
+    if getattr(args, "steering_rate_limit", 300) < 1:
+        raise ActuatorError("--steering-rate-limit must be a positive integer")
     manifest, world_path, bindings_path = _paths(args)
     world, source, inventory, binding_doc, plan = _prepare(world_path, bindings_path, pool=True)
     manifest = pool_manifest(manifest, plan)
@@ -321,6 +324,8 @@ def _interactive(args) -> int:
             store, world, layout, plan, args.socket,
             lease_seconds=args.lease_seconds,
             traffic_probe_role=manifest["hero"]["role"],
+            traffic_target=manifest["traffic"]["target"],
+            resume_steering=lambda revision: conductor.resume_steering(revision),
             worlds=BoundWorlds(
                 world, layout, CONFIGURATOR / "worlds",
                 roles={role: binding["role_type"] for role, binding in plan["bindings"].items()},
@@ -332,17 +337,13 @@ def _interactive(args) -> int:
             model_backhaul=args.model_backhaul,
         )
     )
-    # Interactive act mode is a continuously running reconciler. Keep a
-    # generous explicit circuit breaker rather than inheriting the scripted
-    # demonstration's single-action budget.
     maximum_actions = args.max_actions
-    if maximum_actions is None and args.mode == "act":
-        maximum_actions = 100
     conductor = LiveConductor(
         store, plan, manifest, mode=args.mode, repo_root=REPO_ROOT,
         base_url=args.base_url, room_state=interactions.snapshot,
         room_projection=interactions.projection_snapshot,
         interactive=True, profiling=args.profiling, maximum_actions=maximum_actions,
+        steering_rate_limit=args.steering_rate_limit,
         steering_transaction=interactions.steering_action,
     )
     server = RoomDemoServer(
@@ -350,6 +351,7 @@ def _interactive(args) -> int:
         store,
         DEFAULT_VIEWER,
         interactions,
+        optimizer_status=conductor.steering_status,
     )
     stop_event = threading.Event()
     clock_thread: threading.Thread | None = None
@@ -405,6 +407,11 @@ def _interactive(args) -> int:
         )
         interactions.start()
         session_started = True
+        capability_report = annotate_manifest(_status(args.socket)["rf_contract"], REPO_ROOT,
+                                             "prplmesh", "external-" + args.mode, manifest["policy"])
+        store.emit("rf.capabilities", 0, capability_report, producer="interaction")
+        (runner.run_dir / "rf-capabilities.json").write_text(
+            json.dumps(capability_report, indent=2, sort_keys=True) + "\n", encoding="utf-8")
         store.emit(
             "demo.state", 0,
             {"state": "running", "mode": f"interactive-{args.mode}"},
@@ -626,8 +633,10 @@ def parser() -> argparse.ArgumentParser:
                              help="model backhaul RF without choosing parents (profiling stimulus only)")
     interactive.add_argument(
         "--max-actions", type=int,
-        help="automatic BTM circuit breaker in act mode (default: 100)",
+        help="optional finite-run BTM request cap; continuous sessions have no lifetime cap",
     )
+    interactive.add_argument("--steering-rate-limit", type=int, default=300,
+                             help="maximum automatic requests per rolling 60 seconds (default: 300)")
     interactive.add_argument("--base-url", default="http://127.0.0.1:8092")
     interactive.add_argument(
         "--listen", type=_address, default=("127.0.0.1", 8891), metavar="HOST:PORT"

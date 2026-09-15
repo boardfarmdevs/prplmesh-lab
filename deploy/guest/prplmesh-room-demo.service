@@ -11,7 +11,7 @@ Type=simple
 WorkingDirectory=/opt/prplmesh-lab
 Environment=PYTHONUNBUFFERED=1
 ExecCondition=/usr/bin/grep -qx PROVISIONED_CLIENT_COUNT=100 /etc/default/prplmesh-lab
-ExecStart=/opt/prplmesh-lab/demo/room-demo interactive --mode act --yes-act --profiling --max-actions 100 --listen 0.0.0.0:8891 --output-root /var/lib/prplmesh-lab/room-runs
+ExecStart=/opt/prplmesh-lab/demo/room-demo interactive --mode act --yes-act --profiling --steering-rate-limit 300 --listen 0.0.0.0:8891 --output-root /var/lib/prplmesh-lab/room-runs
 TimeoutStopSec=180
 Restart=on-failure
 RestartSec=15

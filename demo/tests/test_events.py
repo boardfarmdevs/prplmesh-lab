@@ -23,6 +23,16 @@ def event(sequence: int, kind: str, **payload):
 
 
 class EventStoreTests(unittest.TestCase):
+    def test_newer_resume_survives_old_evaluation_and_action(self):
+        paused = {"revision": 2, "paused_clients": [{"sta_mac": "station"}]}
+        ready = {"revision": 3, "paused_clients": []}
+        self.store.emit("optimizer.evaluation", 0, {"steering_safety": paused})
+        self.store.emit("optimizer.safety", 0, {"steering_safety": ready})
+        for kind in ("optimizer.evaluation", "optimizer.measurement.unavailable", "optimizer.action"):
+            self.store.emit(kind, 0, {"steering_safety": paused, "actions_used": 350})
+            self.assertEqual(self.store.current()["optimizer"]["steering_safety"], ready)
+        self.assertEqual(self.store.current()["optimizer"]["actions_used"], 350)
+
     def test_probe_selection_clears_old_sample_and_ignores_late_old_identity(self):
         old = {"role": "sta_old", "selection": 0}
         selected = {"role": "sta_new", "selection": 1}

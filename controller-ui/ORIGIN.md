@@ -2,7 +2,9 @@
 
 This application is a host-native port of the RDK Unified EasyMesh EM CLI Web
 application. The topology renderer, shared signal meter and fullscreen assets
-are synchronized with the patched RDK 0908 source at layer commit `56a689f`:
+started with the patched RDK 0908 source at layer commit `56a689f`. The room-follow,
+compact layout, pane dividers and expiring steering history are synchronized with
+the September 14 working source on RDK `codex/0913-clean` (base `a41216d`):
 
 ```text
 unified-wifi-mesh/src/rdkb-cli/static/

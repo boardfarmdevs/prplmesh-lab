@@ -10,6 +10,7 @@ from wmdcfg.world import _hash, _merge_nodes, _validate_layout, load_json, verif
 
 from .interactions import InteractionError
 from .band_profiles import validate_profiles
+from wmdcfg.traffic_profile import validate_traffic
 
 
 class BoundWorlds:
@@ -133,6 +134,7 @@ class BoundWorlds:
                 raise ValueError("world duration must be positive")
             if type(world.get("tick_ms")) is not int or not 100 <= world["tick_ms"] <= 60000:
                 raise ValueError("world tick must be 100..60000 milliseconds")
+            validate_traffic(world)
             world["walls"] = copy.deepcopy(layout.get("walls", []))
             world["counts"] = {**world.get("counts", {}), "agents": len(mesh),
                                "stations": len(roles) - len(mesh)}
@@ -147,6 +149,7 @@ class BoundWorlds:
             try:
                 world, _ = self.select(name)
                 entries.append({"id": name, "name": world["name"],
+                                "backhaul_rf": world.get("backhaul_rf", "fixed"),
                                 "clients": sum(kind == "station" for kind in world["roles"].values())})
             except InteractionError:
                 continue
