@@ -1,6 +1,11 @@
 'use strict';
 
 const assert = require('assert').strict;
+const fs = require('fs');
+const path = require('path');
+const harness = fs.readFileSync(path.join(__dirname, 'room-backhaul-features.js'), 'utf8');
+assert.ok(harness.includes("document.fullscreenElement ? '#fullscreenPlay' : '#play'"));
+assert.match(harness, /async function load\(id\)[\s\S]*?fullscreenElement[\s\S]*?#roomFullscreen[\s\S]*?changed = true/);
 const {interfaceState, summarizeNative, stackProfile, ready} = require('./room-backhaul-features.js');
 assert.equal(stackProfile('rdk').gateway, '10.0.0.1');
 assert.equal(stackProfile('prpl').gateway, '192.168.77.1');

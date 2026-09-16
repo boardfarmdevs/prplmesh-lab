@@ -152,6 +152,7 @@ async function run(options) {
 
   async function load(id) {
     await roomPage.bringToFront();
+    if (await roomPage.evaluate(() => Boolean(document.fullscreenElement))) await roomPage.locator('#roomFullscreen').click();
     changed = true;
     const applied = roomPage.waitForResponse(response => response.url().endsWith('/api/demo/world/apply') && response.request().method() === 'POST', {timeout: 60000});
     if (id === 'default') await roomPage.locator('#defaultWorld').click();
@@ -161,12 +162,14 @@ async function run(options) {
     assert.ok(response.ok(), JSON.stringify(result));
     assert.equal(result.backhaul_rf_verified, true);
     await roomPage.waitForFunction(() => !document.getElementById('world').disabled, null, {timeout: 60000});
+    await roomPage.locator('#roomFullscreen').click();
     return result;
   }
 
   async function playTo(time) {
     await roomPage.bringToFront();
-    await roomPage.locator('#play').click();
+    const button = await roomPage.evaluate(() => document.fullscreenElement ? '#fullscreenPlay' : '#play');
+    await roomPage.locator(button).click();
     const deadline = Date.now() + 35000;
     while (Date.now() < deadline) {
       const state = await request('/api/demo/interactions');
