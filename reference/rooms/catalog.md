@@ -35,9 +35,11 @@ The geometry rooms pause at 12 s and return before the end. They change real
 AP-to-AP RF, not parent BSSID configuration. Verify actual `wlan3` ownership,
 both topology views and wireless-backhaul traffic; then verify recovery after
 return and after loading Default. Moving closer to a relay does not itself
-guarantee proactive native handover while the old uplink still works. The 0916
-release's added stronger-parent assertion remains an open qualification gate;
-it is not evidence that such a policy was already implemented. See the
+guarantee selection of the absolute strongest local link regardless of its
+root path. The 0916 native proactive policy additionally requires local gain,
+non-degrading bottleneck and loop-safe topology. The bounded 0916 native run
+passes all three geometry rooms, including both proactive handover directions;
+the combined 22+3 rerun remains required. See the
 [release recovery checks](../testing/room-acceptance.md#0916-release-recovery-checks).
 
 **Quick demo:** One Client Handover. **Most visible population change:** Flash

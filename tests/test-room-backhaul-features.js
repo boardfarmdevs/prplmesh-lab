@@ -5,8 +5,14 @@ const fs = require('fs');
 const path = require('path');
 const harness = fs.readFileSync(path.join(__dirname, 'room-backhaul-features.js'), 'utf8');
 assert.ok(harness.includes("document.fullscreenElement ? '#fullscreenPlay' : '#play'"));
+assert.match(harness, /const returned = entry => ready\(entry, profile.healthNodes\)[\s\S]*?entry.native.parents.extender_3 === 'extender_1'[\s\S]*?edge.child_role === 'extender_3' && edge.parent_role === 'extender_1'/);
+assert.ok(harness.includes('upperRelayRestored'));
 assert.match(harness, /async function load\(id\)[\s\S]*?fullscreenElement[\s\S]*?#roomFullscreen[\s\S]*?changed = true/);
-const {interfaceState, summarizeNative, stackProfile, ready} = require('./room-backhaul-features.js');
+const {interfaceState, summarizeNative, stackProfile, ready, nativeCycles} = require('./room-backhaul-features.js');
+assert.deepEqual(nativeCycles({first: 'root', second: 'first', isolated: null}), []);
+assert.deepEqual(nativeCycles({first: 'second', second: 'first'}), [['first', 'second']]);
+assert.deepEqual(nativeCycles({first: 'second', second: 'third', third: 'first'}), [['first', 'second', 'third']]);
+assert.deepEqual(nativeCycles({first: 'first'}), [['first']]);
 assert.equal(stackProfile('rdk').gateway, '10.0.0.1');
 assert.equal(stackProfile('prpl').gateway, '192.168.77.1');
 assert.equal(stackProfile('prpl').healthNodes, 5);
@@ -20,6 +26,8 @@ const healthy = {native: {
   optimizer: {fleet: {converged: true}},
   topology: {nodes: Array(6).fill({}), stations: Array.from({length: 10}, (_, index) => ({mac: String(index)}))}};
 assert.equal(ready(healthy, 5), true);
+assert.equal(ready({...healthy, native: {...healthy.native, parents: {
+  ...healthy.native.parents, extender_2: 'extender_4'}}}, 5), false);
 assert.equal(ready(healthy, 6), false);
 assert.equal(ready({...healthy, native: {...healthy.native, nodes: {}}}, 5), false);
 assert.equal(ready({...healthy, native: {...healthy.native, parents: {...healthy.native.parents, extender_4: null}}}, 5), false);

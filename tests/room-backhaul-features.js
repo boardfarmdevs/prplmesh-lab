@@ -22,10 +22,32 @@ function stackProfile(flavor) {
 function ready(entry, healthNodes, clients = 10) {
   return Object.keys(entry.native.nodes).length === 5 && Object.keys(entry.native.parents).length === 4 &&
     Object.values(entry.native.parents).every(Boolean) &&
+    nativeCycles(entry.native.parents).length === 0 &&
     Object.values(entry.native.nodes).every(node => node.pingOk && node.fronthaulAps === 6 && node.apOperating) &&
     entry.health?.healthy && entry.health.topology_nodes === healthNodes && entry.health.api_active === clients &&
     entry.optimizer?.fleet?.converged === true && entry.topology.nodes.length === 6 &&
     new Set(entry.topology.stations.map(station => station.mac)).size === clients;
+}
+
+function nativeCycles(parents) {
+  const cycles = new Map();
+  for (const start of Object.keys(parents)) {
+    const visited = new Map();
+    const path = [];
+    let current = start;
+    while (current && Object.hasOwn(parents, current)) {
+      if (visited.has(current)) {
+        const cycle = path.slice(visited.get(current));
+        const key = [...cycle].sort().join(',');
+        if (!cycles.has(key)) cycles.set(key, cycle);
+        break;
+      }
+      visited.set(current, path.length);
+      path.push(current);
+      current = parents[current];
+    }
+  }
+  return [...cycles.values()];
 }
 
 function interfaceState(raw) {
@@ -155,6 +177,7 @@ async function run(options) {
     const result = {at: new Date().toISOString(), label, interactions, visible, topology,
       health: state.health, mesh: state.network?.mesh, clients: state.network?.clients, optimizer: state.optimizer,
       native: includeNative ? await native() : undefined};
+    if (includeNative) result.nativeCycles = nativeCycles(result.native.parents);
     if (currentRoom) currentRoom.samples.push(result);
     return result;
   }
@@ -303,14 +326,22 @@ async function run(options) {
       currentRoom.returnObservation = await sample('returned', true);
       {
         const deadline = Date.now() + 60000;
-        while (!ready(currentRoom.returnObservation, profile.healthNodes) && Date.now() < deadline) {
+        const returned = entry => ready(entry, profile.healthNodes) &&
+          (id !== 'backhaul-parent-handover' || (entry.native.parents.extender_3 === 'extender_1' &&
+            entry.mesh?.backhaul_edges?.some(edge => edge.child_role === 'extender_3' && edge.parent_role === 'extender_1')));
+        while (!returned(currentRoom.returnObservation) && Date.now() < deadline) {
           await delay(1000);
           currentRoom.returnObservation = await sample('return-recovery', true);
         }
-        currentRoom.nativeOutcome.returnRecoveryObserved = ready(currentRoom.returnObservation, profile.healthNodes);
+        currentRoom.nativeOutcome.returnRecoveryObserved = returned(currentRoom.returnObservation);
+        if (id === 'backhaul-parent-handover')
+          currentRoom.nativeOutcome.upperRelayRestored = currentRoom.returnObservation.native.parents.extender_3 === 'extender_1';
         assert.equal(currentRoom.nativeOutcome.returnRecoveryObserved, true, 'Ten-client native recovery must converge after return');
         currentRoom.returnKernel = await auditClients(currentRoom.returnObservation);
       }
+      currentRoom.nativeOutcome.observedCycles = currentRoom.samples.flatMap(entry =>
+        (entry.nativeCycles || []).map(cycle => ({at: entry.at, label: entry.label, cycle})));
+      assert.deepEqual(currentRoom.nativeOutcome.observedCycles, [], 'Native backhaul cycles must not occur');
       currentRoom.featureChecksPassed = true;
       save(id + '.json', currentRoom);
       console.log(JSON.stringify({room: id, featureChecksPassed: true, native: currentRoom.nativeOutcome}));
@@ -358,7 +389,7 @@ async function run(options) {
   return report;
 }
 
-module.exports = {summarizeNative, interfaceState, stackProfile, ready};
+module.exports = {summarizeNative, interfaceState, stackProfile, ready, nativeCycles};
 if (require.main === module) {
   const options = {};
   for (let index = 2; index < process.argv.length; index += 2) options[process.argv[index].replace(/^--/, '')] = process.argv[index + 1];

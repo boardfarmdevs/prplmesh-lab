@@ -75,7 +75,9 @@ def collect():
             raise RuntimeError(f"{container}: native mesh namespace is unavailable")
         result = subprocess.run(["nsenter", "--target", str(process), "--net", "--", sys.executable,
                                  str(Path(__file__).resolve()), role], capture_output=True,
-                                text=True, timeout=15, check=True)
+                                text=True, timeout=15)
+        if result.returncode:
+            raise RuntimeError(f"{container}: native probe failed: {result.stderr.strip()}")
         return role, json.loads(result.stdout)
 
     with concurrent.futures.ThreadPoolExecutor(max_workers=5) as workers:

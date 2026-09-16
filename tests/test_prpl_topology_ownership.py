@@ -1,4 +1,5 @@
 from pathlib import Path
+import re
 import shutil
 import subprocess
 
@@ -22,13 +23,32 @@ def test_native_notifications_record_live_association_authority():
 
 
 @pytest.mark.parametrize("removed_guard", [None, "age", "completion", "empty", "owner", "detach"])
-def test_native_topology_recovery_preserves_newer_ownership(tmp_path, removed_guard):
+@pytest.mark.parametrize("native_recovery", [False, True])
+def test_native_topology_recovery_preserves_newer_ownership(tmp_path, removed_guard, native_recovery):
     compiler = shutil.which("c++")
     if not compiler:
         pytest.skip("C++ compiler required for native topology reconciliation")
     source = fragments()
     handler = source[source.index("bool topology_task::handle_associated_clients_tlv"):
                      source.index("void topology_task::handle_vbss_configuration_tlv")]
+    if native_recovery:
+        from test_backhaul_roaming import added_source, PATCH_PATH
+
+        header = added_source("controller/src/beerocks/master/db/topology_query_tracker.h")
+        (tmp_path / "query.h").write_text(header)
+        patch = PATCH_PATH.read_text().split(
+            "+++ b/controller/src/beerocks/master/tasks/topology_task.cpp\n", 1)[1].split("--- a/", 1)[0]
+        handler = "    }\n}\n\n" + handler
+        for hunk in re.split(r"(?=^@@ )", patch, flags=re.MULTILINE):
+            match = re.match(r"@@ -(\d+)", hunk)
+            if not match or not 811 <= int(match[1]) <= 900:
+                continue
+            lines = hunk.splitlines()[1:]
+            previous = "\n".join(line[1:] for line in lines if line.startswith((" ", "-")))
+            replacement = "\n".join(line[1:] for line in lines if line.startswith((" ", "+")))
+            assert previous in handler
+            handler = handler.replace(previous, replacement, 1)
+        handler = handler[handler.index("bool topology_task::handle_associated_clients_tlv"):]
     ownership = source[source.index("    std::shared_ptr<Agent::sRadio::sBss> old_parent"):
                        source.index("bool db::remove_sta")]
     ownership = ownership[:ownership.index("\n}")]
@@ -81,7 +101,7 @@ struct Station {
     beerocks::eNodeState state = beerocks::STATE_DISCONNECTED;
     Clock::time_point association_event_time = Clock::time_point::min();
     std::shared_ptr<Bss> parent, previous;
-    std::string dm_path;
+    std::string dm_path, parent_mac;
     unsigned clears = 0;
     std::shared_ptr<Bss> get_bss() { return parent; }
     void set_bss(std::shared_ptr<Bss> bss) { previous = parent; parent = bss; }
@@ -124,6 +144,7 @@ struct Database {
             m_stations.add(station);
         }
         set_station_bss(station, get_bss(bssid, agent));
+        station->parent_mac = std::to_string(bssid);
         station->dm_path = std::to_string(bssid);
         return station;
     }
@@ -189,6 +210,7 @@ struct tlvAssociatedClients {
 namespace ieee1905_1 {
 struct CmduMessageRx {
     std::shared_ptr<wfa_map::tlvAssociatedClients> report;
+    int getMessageId() { return 42; }
     template<class Value> std::shared_ptr<Value> getClass() { return report; }
 };
 }
@@ -263,6 +285,39 @@ int main() {
     if (task.handle_associated_clients_tlv(empty, new_agent)) return 1;
 }
 '''.replace("OWNERSHIP", ownership).replace("REMOVAL", removal).replace("STATE_METHOD", state).replace("HANDLER", handler)
+    if native_recovery:
+        program = '#include "query.h"\nusing son::TopologyQueryTracker;\n' + program
+        program = program.replace(
+            "bool handle_associated_clients_tlv(ieee1905_1::CmduMessageRx &, Agent &);",
+            "bool handle_associated_clients_tlv(ieee1905_1::CmduMessageRx &, Agent &, "
+            "Clock::time_point query_sent = Clock::time_point::min());")
+        program = program.replace("    database.add_success = false;", r'''
+    database.set_sta_state("11", beerocks::STATE_DISCONNECTED);
+    station->dm_path.clear();
+    station->association_event_time = Clock::now() - std::chrono::seconds(2);
+    const auto fresh_query = Clock::now();
+    ieee1905_1::CmduMessageRx recovery{std::make_shared<wfa_map::tlvAssociatedClients>()};
+    recovery.report->bsses = {{201, {{11, UINT16_MAX}, {42, 20}}}};
+    if (!task.handle_associated_clients_tlv(recovery, new_agent) ||
+        station->state != beerocks::STATE_DISCONNECTED) return 1;
+    if (!task.handle_associated_clients_tlv(recovery, new_agent, fresh_query) ||
+        station->state != beerocks::STATE_CONNECTED || station->dm_path.empty() ||
+        station->association_event_time < fresh_query) return 1;
+    if (!apply(old_agent, {{101, {{11, 1}}}}) || station->parent != new_bss) return 1;
+    database.set_sta_state("11", beerocks::STATE_DISCONNECTED);
+    if (!task.handle_associated_clients_tlv(recovery, new_agent, fresh_query) ||
+        station->state != beerocks::STATE_DISCONNECTED) return 1;
+    station->association_event_time = Clock::now() - std::chrono::seconds(2);
+    station->parent.reset();
+    station->dm_path.clear();
+    if (!task.handle_associated_clients_tlv(recovery, new_agent, Clock::now()) ||
+        station->parent != new_bss || station->state != beerocks::STATE_CONNECTED) return 1;
+    station->dm_path.clear();
+    station->association_event_time = Clock::now() - std::chrono::seconds(2);
+    if (!task.handle_associated_clients_tlv(recovery, new_agent, Clock::now()) ||
+        station->dm_path.empty()) return 1;
+    database.add_success = false;
+''')
     cpp = tmp_path / "topology.cpp"
     cpp.write_text(program)
     binary = tmp_path / "topology"

@@ -46,12 +46,12 @@ forwarding. Management interfaces require a trusted LAN/VPN.
 ## Latest distribution and qualification
 
 **0916 remains held; no thin tar is published and no older downloads removed.**
-The fresh native build passes its 100-client baseline. The bounded client
-catalog passes **22/22**, including native identities and default restoration.
-Repaired branch and isolation/recovery checks also pass. The new stronger-parent
-handover assertion is unresolved: the old 11 dB parent remains usable despite a
-26 dB relay. The original room observed native choice, not guaranteed proactive
-strongest-parent policy. This is not a 25/25 qualification.
+The earlier native build passes its 100-client baseline and **22/22** client
+catalog. The new native proactive build passes **3/3 geometry rooms**, including
+ext3→ext2→ext1 handover, strict rosters/kernel ownership, traffic, both views,
+unchanged native identities and Default restoration. Native scans, rooted safety
+and standard 1905 steering drive the moves, not external parent forcing.
+Fresh full **22+3 qualification remains pending** on this combined build.
 
 [Room acceptance](../reference/testing/room-acceptance.md#0916-release-recovery-checks)
 records source identities, recovered failures, retries and remaining gates.
@@ -73,7 +73,8 @@ VM/export space; a compressed download may allocate the entire 160-GiB disk.
 - The reference optimizer supplies client policy; native NBAPI and BTM provide
   observations and actuation. This does not assert native autonomous optimization.
 - Most rooms protect startup backhaul. Three geometry rooms change AP-to-AP RF,
-  not parent configuration; native loss recovery differs from proactive steering.
+  not parent configuration. Native proactive steering and loss recovery are
+  separate from the external client optimizer; see [native policy](../reference/rooms/architecture.md#native-backhaul-roaming-0916-qualification).
 - Candidates require native timestamp advancement, correct radio identities
   and current RF/association epochs. Retries neither reuse stale values nor
   reset the original collection deadline.

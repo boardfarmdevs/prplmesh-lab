@@ -8,27 +8,29 @@ or intrinsic stack-speed ranking. A targeted `--world` run is not full coverage.
 
 ## 0916 release recovery checks
 
-The complete client-policy run passes **22/22** on `a9ee070`, with independent
+The previous client-policy run passes **22/22** on `a9ee070`, with independent
 report validation, unchanged native identities and default twenty restoration.
-Two failed steering verifications in the stationary room recovered before its
-acceptance gate; retain them rather than reporting zero transient failures.
-Evidence is under `/home/rev/work/release-0916/evidence/prpl-clients-final/`.
+Evidence: `/home/rev/work/release-0916/evidence/prpl-clients-final/`.
 
-Native branch formation and isolation/recovery also pass on `ccc97f4`, including
-initial/return kernel ownership and default restoration. The latter's initial
-settlement was observed after 11.586 s; the retained prior attempt exhausted
-its 60-second gate. The repaired initial collection retried at 2.139 and 6.195 s
-and obtained fresh native results without a 30-second timeout.
-Evidence: `prpl-query-retry-backhaul-branch-formation/` and
-`prpl-query-retry-backhaul-isolation-recovery/`. This is a bounded recovery
-comparison, not a latency guarantee or full 25-room qualification.
+Native proactive steering passes **3/3 geometry rooms** on 16 September:
+branch formation, both-direction parent handover, and isolation/recovery.
+All original roster/kernel/traffic/view gates, unchanged native identities,
+no sampled cycles and Default twenty-client restoration pass. Evidence:
+`/home/rev/work/release-0916/evidence/prpl-native-roaming-geometry-reconciliation/`.
+Native bundle SHA256:
+`74bd45051c514eafc822092365277ec91f4e8b67f2464899d1f3a4f9cef832e1`.
 
-**Release remains held:** the newly added stronger-parent handover assertion
-fails while the original working uplink remains usable (11 dB versus 26 dB at
-the closer relay). The original room contract observed native parent choice;
-it did not promise proactive strongest-parent optimization. RDK exhibits the
-same distinction. No test exception, forced parent change or proactive native
-backhaul policy has been introduced to turn this into a passing result.
+The controller proactively moves ext3→ext2 and back ext3→ext1; wire captures
+show standard 1905 requests and successful matching responses (MIDs `0x8003`,
+`0x8004`). Request-to-verified-native-topology times are **1.208 s / 1.158 s**;
+wire request-to-response times are **81.0 ms / 81.6 ms**. These exclude eligibility
+dwell and are not full RF-change-to-client-convergence latency guarantees.
+Continuous and rotated controller logs are retained. No geometry/gate changes,
+external BSSID forcing or synthetic client reassociation are used.
+
+**Release remains held pending a fresh full 22+3 run on this native build.**
+[Native policy and guards](../rooms/architecture.md#native-backhaul-roaming-0916-qualification)
+describe native scans, rooted safety, reachability probes and reconciliation.
 
 The candidate collector refreshes native device/radio paths before each collection.
 Agent reconnection can recreate NBAPI instances with new numbers even when the
@@ -63,6 +65,9 @@ deliberately isolates an upstream link while APs remain enabled: the client-only
 all-online checkpoint is not applicable. Require actual native branches,
 parent handover, isolation, initial/return kernel client ownership, unchanged
 native process identities, ten-client return and default twenty restoration.
+Require return ext3→ext1 in native links and room edges (`upperRelayRestored`).
+Reject sampled self/reciprocal/longer cycles even if later recovered; disconnected
+isolated links are not cycles.
 Each script half allows 35 s and each native convergence/recovery gate 60 s.
 Copy `tests/room-feature-guest-audit.py` and `tests/backhaul-native-probe.py`
 to `/tmp/` inside the lab VM before running the geometry harness. prpl's

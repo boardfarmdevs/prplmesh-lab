@@ -1,6 +1,8 @@
 import importlib.util
+import json
 from pathlib import Path
 import socket
+import subprocess
 
 import pytest
 
@@ -28,6 +30,18 @@ def test_arp_reply_rejects_other_frames_or_stations(offset):
 
 def test_short_frame_cannot_verify_connectivity():
     assert not PROBE.arp_reply(REPLY[:41], SOURCE, TARGET)
+
+
+def test_namespace_probe_preserves_failure_reason(monkeypatch):
+    def run(command, **kwargs):
+        if command[0] == "lxc":
+            inventory = [{"name": "prpl-controller", "state": {"pid": 123, "status": "Running"}}]
+            return subprocess.CompletedProcess(command, 0, stdout=json.dumps(inventory))
+        return subprocess.CompletedProcess(command, 1, stdout="", stderr="native interface missing\n")
+
+    monkeypatch.setattr(PROBE.subprocess, "run", run)
+    with pytest.raises(RuntimeError, match="prpl-controller: native probe failed: native interface missing"):
+        PROBE.collect()
 
 
 @pytest.mark.parametrize("received,reachable", [(REPLY, True), (None, False)])

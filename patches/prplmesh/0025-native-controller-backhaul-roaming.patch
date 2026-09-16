@@ -1,0 +1,1602 @@
+--- a/agent/src/beerocks/slave/backhaul_manager/backhaul_manager.cpp
++++ b/agent/src/beerocks/slave/backhaul_manager/backhaul_manager.cpp
+@@ -35,6 +35,7 @@
+ 
+ #include <tlvf/wfa_map/tlvBackhaulSteeringRequest.h>
+ #include <tlvf/wfa_map/tlvBackhaulSteeringResponse.h>
++#include <tlvf/wfa_map/tlvHigherLayerData.h>
+ #include <tlvf/wfa_map/tlvProfile2AssociationStatusNotification.h>
+ 
+ // BPL Error Codes
+@@ -511,6 +512,18 @@
+         return true;
+     }
+ 
++    if (dst_mac == db->bridge.mac && src_mac == db->controller_info.bridge_mac &&
++        src_mac != beerocks::net::network_utils::ZERO_MAC) {
++        const auto now = std::chrono::steady_clock::now();
++        if (cmdu_rx.getMessageType() == ieee1905_1::eMessageType::ACK_MESSAGE &&
++            m_roaming_lease.acknowledge(cmdu_rx.getMessageId(), now)) {
++            LOG(DEBUG) << "native_backhaul_recovery controller heartbeat acknowledged mid="
++                       << cmdu_rx.getMessageId();
++            return true;
++        }
++        m_roaming_lease.controller_seen(now);
++    }
++
+     // TODO: Add optimization of PID filtering for cases like the following:
+     // 1. If VS message was sent by Controllers local agent to the controller, it is looped back.
+     // 2. If IRE is sending message to the Controller of the Controller, it will be received in
+@@ -908,6 +921,44 @@
+     }
+     // Backhaul manager is OPERATIONAL!
+     case EState::OPERATIONAL: {
++        const auto now = std::chrono::steady_clock::now();
++        if (!m_roaming_peers.empty() && m_roaming_lease.probe_due(now) &&
++            m_backhaul_steering_bssid == beerocks::net::network_utils::ZERO_MAC) {
++            auto native_db = AgentDB::get();
++            if (cmdu_tx.create(++m_roaming_probe_mid,
++                               ieee1905_1::eMessageType::HIGHER_LAYER_DATA_MESSAGE) &&
++                cmdu_tx.addClass<wfa_map::tlvHigherLayerData>() &&
++                send_cmdu_to_broker(cmdu_tx, native_db->controller_info.bridge_mac,
++                                    native_db->bridge.mac)) {
++                m_roaming_lease.probe_sent(m_roaming_probe_mid, now);
++                LOG(DEBUG) << "native_backhaul_recovery controller heartbeat sent mid="
++                           << m_roaming_probe_mid;
++            }
++        }
++        if (!m_roaming_peers.empty() && m_roaming_lease.due(now) &&
++            m_backhaul_steering_bssid == beerocks::net::network_utils::ZERO_MAC) {
++            auto active_hal = get_wireless_hal();
++            if (active_hal && active_hal->update_status() && active_hal->is_connected()) {
++                m_roaming_orphan_parent = active_hal->get_bssid();
++                m_roaming_orphan_until  = now + std::chrono::seconds(5);
++                m_roaming_lease.started(m_roaming_orphan_parent, now);
++                LOG(WARNING)
++                    << "native_backhaul_recovery three native heartbeats unanswered; parent="
++                    << m_roaming_orphan_parent;
++                if (!active_hal->disconnect()) {
++                    LOG(WARNING) << "native_backhaul_recovery disconnect rejected";
++                    break;
++                }
++                m_roaming_scan_pending = false;
++                state_attempts         = 0;
++                FSM_MOVE_STATE(INITIATE_SCAN);
++                break;
++            }
++        }
++        if (m_roaming_scan_pending &&
++            std::chrono::steady_clock::now() - m_roaming_scan_started > std::chrono::seconds(3)) {
++            send_roaming_scan_response(false);
++        }
+         /*
+         * TODO
+         * This code segment is commented out since wireless-backhaul is not yet supported and
+@@ -950,6 +1001,8 @@
+     }
+     case EState::RESTART: {
+ 
++        m_roaming_scan_pending = false;
++
+         LOG(DEBUG) << "Restarting ...";
+ 
+         if (m_remove_platform_manager_client) {
+@@ -1267,7 +1320,7 @@
+         selected_bssid_channel = {0, beerocks::FREQ_AUTO};
+         selected_bssid.clear();
+ 
+-        if (state_attempts > MAX_FAILED_SCAN_ATTEMPTS && !roam_flag) {
++        if (state_attempts > MAX_FAILED_SCAN_ATTEMPTS && !roam_flag && m_roaming_peers.empty()) {
+             LOG(DEBUG)
+                 << "exceeded maximum failed scan attempts, attempting hidden ssid connection";
+             hidden_ssid              = true;
+@@ -2011,6 +2064,11 @@
+         return handle_backhaul_steering_request(cmdu_rx, src_mac);
+     }
+     case ieee1905_1::eMessageType::VENDOR_SPECIFIC_MESSAGE: {
++        auto header = message_com::parse_intel_vs_message(cmdu_rx);
++        if (header && header->action() == beerocks_message::ACTION_CONTROL &&
++            header->action_op() == beerocks_message::ACTION_CONTROL_BACKHAUL_SCAN_REQUEST) {
++            return handle_roaming_scan_request(header, src_mac);
++        }
+         // We should not handle vendor specific messages here, return false so the message will
+         // be forwarded and will not be passed to the task_pool.
+         return false;
+@@ -2148,6 +2206,10 @@
+                    << " on channel=" << (iface_hal->get_channel()) << " on iface=" << iface;
+ 
+         auto db = AgentDB::get();
++        if (iface == db->backhaul.selected_iface_name) {
++            db->backhaul.backhaul_bssid = bssid;
++            m_roaming_lease.connected(std::chrono::steady_clock::now());
++        }
+         if (db->device_conf.certification_mode) {
+             /* When the station is connected we wanted to enable
+                3addr multicast packets entering the system.
+@@ -2176,7 +2238,10 @@
+         if ((m_backhaul_steering_bssid != beerocks::net::network_utils::ZERO_MAC) &&
+             (m_backhaul_steering_bssid == bssid)) {
+ 
+-            m_backhaul_steering_bssid = beerocks::net::network_utils::ZERO_MAC;
++            m_completed_steering_mid = m_backhaul_steering_mid;
++            ++m_completed_steering_generation;
++            m_completed_steering_target = bssid;
++            m_backhaul_steering_bssid   = beerocks::net::network_utils::ZERO_MAC;
+             m_timer_manager->remove_timer(m_backhaul_steering_timer);
+ 
+             create_backhaul_steering_response(wfa_map::tlvErrorCode::eReasonCode::RESERVED, bssid);
+@@ -2299,6 +2364,15 @@
+             return true;
+         }
+         auto db = AgentDB::get();
++        if (iface == db->backhaul.selected_iface_name && data) {
++            auto notification =
++                static_cast<bwl::sACTION_BACKHAUL_DISCONNECT_REASON_NOTIFICATION *>(data);
++            if (m_roaming_lease.consume_disconnect(tlvf::mac_to_string(notification->bssid),
++                                                   std::chrono::steady_clock::now())) {
++                LOG(DEBUG) << "native_backhaul_recovery expected disconnect; continuing scan";
++                return true;
++            }
++        }
+         if (db->device_conf.certification_mode) {
+             /* When the station is disconnected we wanted to disable
+                3addr multicast packets entering the system.
+@@ -2369,6 +2443,9 @@
+     } break;
+ 
+     case Event::ScanResults: {
++        if (m_roaming_scan_pending && iface == AgentDB::get()->backhaul.selected_iface_name) {
++            send_roaming_scan_response(FSM_IS_IN_STATE(OPERATIONAL));
++        }
+         if (FSM_IS_IN_STATE(WAIT_WPS)) {
+             return true;
+         }
+@@ -2552,13 +2629,30 @@
+         std::string &iface = radio_info->sta_iface;
+ 
+         LOG(DEBUG) << "select_bssid: iface  = " << iface;
+-        int num_of_results = radio_info->sta_wlan_hal->get_scan_results(
+-            db->device_conf.back_radio.ssid, scan_results);
++        int num_of_results = 0;
++        if (m_roaming_peers.empty()) {
++            num_of_results = radio_info->sta_wlan_hal->get_scan_results(
++                db->device_conf.back_radio.ssid, scan_results);
++        } else if (radio_info->sta_wlan_hal->get_roaming_scan_results(
++                       db->device_conf.back_radio.ssid, scan_results)) {
++            num_of_results = scan_results.size();
++        }
+         LOG(DEBUG) << "Scan Results: " << num_of_results;
+ 
+         for (auto &scan_result : scan_results) {
+ 
+             auto bssid = tlvf::mac_to_string(scan_result.bssid);
++            if (!recovery_candidate_allowed(bssid)) {
++                continue;
++            }
++            auto peer = m_roaming_peers.find(bssid);
++            if (peer != m_roaming_peers.end() && peer->second.gateway && scan_result.rssi >= -80 &&
++                m_roaming_lease.upstream_stale(std::chrono::steady_clock::now())) {
++                selected_bssid_channel           = {scan_result.channel, scan_result.freq_type};
++                selected_bssid                   = bssid;
++                db->backhaul.selected_iface_name = iface;
++                return true;
++            }
+             LOG(DEBUG) << "select_bssid: bssid = " << bssid
+                        << ", channel = " << int(scan_result.channel) << " iface = " << iface
+                        << ", rssi=" << int(scan_result.rssi);
+@@ -2740,6 +2834,132 @@
+     return true;
+ }
+ 
++bool BackhaulManager::handle_roaming_scan_request(std::shared_ptr<beerocks::beerocks_header> header,
++                                                  const sMacAddr &source)
++{
++    auto db = AgentDB::get();
++    if (source != db->controller_info.bridge_mac ||
++        header->actionhdr()->direction() != beerocks::BEEROCKS_DIRECTION_AGENT) {
++        return true;
++    }
++    auto request    = header->addClass<beerocks_message::cACTION_CONTROL_BACKHAUL_SCAN_REQUEST>();
++    auto active_hal = get_wireless_hal();
++    auto radio      = db->radio(db->backhaul.selected_iface_name);
++    if (!request || !active_hal || !radio || db->device_conf.certification_mode ||
++        request->topology_size() == 0 || request->topology_size() > 48 ||
++        header->actionhdr()->radio_mac() != radio->front.iface_mac ||
++        (m_roaming_scan_pending &&
++         std::chrono::steady_clock::now() - m_roaming_scan_started < std::chrono::seconds(3))) {
++        return true;
++    }
++    BackhaulRecoveryGuard::Peers peers;
++    for (size_t index = 0; index < request->topology_size(); ++index) {
++        auto entry = request->topology(index);
++        if (!std::get<0>(entry)) {
++            return false;
++        }
++        const auto &peer = std::get<1>(entry);
++        if (peer.bssid == beerocks::net::network_utils::ZERO_MAC ||
++            peer.agent == beerocks::net::network_utils::ZERO_MAC) {
++            return false;
++        }
++        peers[tlvf::mac_to_string(peer.bssid)] = {
++            tlvf::mac_to_string(peer.agent),
++            peer.parent == beerocks::net::network_utils::ZERO_MAC
++                ? ""
++                : tlvf::mac_to_string(peer.parent),
++            tlvf::mac_to_string(peer.station), peer.gateway != 0};
++    }
++    m_roaming_peers = std::move(peers);
++    m_roaming_lease.controller_seen(std::chrono::steady_clock::now());
++    m_roaming_scan_task     = header->id();
++    m_roaming_scan_sequence = request->sequence();
++    m_roaming_scan_radio    = header->actionhdr()->radio_mac();
++    m_roaming_scan_started  = std::chrono::steady_clock::now();
++    m_roaming_scan_pending  = true;
++    if (!FSM_IS_IN_STATE(OPERATIONAL) ||
++        m_backhaul_steering_bssid != beerocks::net::network_utils::ZERO_MAC ||
++        !active_hal->initiate_roaming_scan()) {
++        send_roaming_scan_response(false);
++        return true;
++    }
++    m_roaming_scan_bssid = active_hal->get_bssid();
++    return true;
++}
++
++bool BackhaulManager::recovery_candidate_allowed(const std::string &bssid)
++{
++    if (m_roaming_peers.empty()) {
++        return true;
++    }
++    if (bssid == m_roaming_orphan_parent &&
++        std::chrono::steady_clock::now() < m_roaming_orphan_until) {
++        return false;
++    }
++    auto db = AgentDB::get();
++    std::set<std::string> children;
++    for (const auto &radio : db->get_radios_list()) {
++        for (const auto &station : radio->associated_clients) {
++            children.insert(tlvf::mac_to_string(station.first));
++        }
++    }
++    return BackhaulRecoveryGuard::allowed(tlvf::mac_to_string(db->bridge.mac), bssid,
++                                          m_roaming_peers, children);
++}
++
++void BackhaulManager::send_roaming_scan_response(bool valid)
++{
++    m_roaming_scan_pending = false;
++    auto db                = AgentDB::get();
++    auto active_hal        = get_wireless_hal();
++    auto radio             = db->radio(db->backhaul.selected_iface_name);
++    std::vector<bwl::sScanResult> entries;
++    valid = valid && active_hal && radio && radio->front.iface_mac == m_roaming_scan_radio &&
++            m_backhaul_steering_bssid == beerocks::net::network_utils::ZERO_MAC &&
++            std::chrono::steady_clock::now() - m_roaming_scan_started <= std::chrono::seconds(3) &&
++            active_hal->update_status() && active_hal->is_connected() &&
++            active_hal->get_bssid() == m_roaming_scan_bssid &&
++            active_hal->get_roaming_scan_results(db->device_conf.back_radio.ssid, entries) &&
++            active_hal->update_status() && active_hal->is_connected() &&
++            active_hal->get_bssid() == m_roaming_scan_bssid;
++    if (entries.size() > 64) {
++        valid = false;
++    }
++    auto response =
++        message_com::create_vs_message<beerocks_message::cACTION_CONTROL_BACKHAUL_SCAN_RESPONSE>(
++            cmdu_tx, m_roaming_scan_task);
++    if (!response) {
++        return;
++    }
++    response->sequence()                      = m_roaming_scan_sequence;
++    response->valid()                         = valid;
++    response->completed_steering_mid()        = m_completed_steering_mid;
++    response->completed_steering_generation() = m_completed_steering_generation;
++    response->completed_steering_target()     = m_completed_steering_target;
++    response->station() = radio ? radio->back.iface_mac : beerocks::net::network_utils::ZERO_MAC;
++    response->current_bssid() = valid ? tlvf::mac_from_string(m_roaming_scan_bssid)
++                                      : beerocks::net::network_utils::ZERO_MAC;
++    if (valid && !response->alloc_entries(entries.size())) {
++        return;
++    }
++    if (valid) {
++        for (size_t index = 0; index < entries.size(); ++index) {
++            auto target = response->entries(index);
++            if (!std::get<0>(target)) {
++                return;
++            }
++            auto &entry   = std::get<1>(target);
++            entry.bssid   = entries[index].bssid;
++            entry.channel = entries[index].channel;
++            entry.rssi    = entries[index].rssi;
++        }
++    }
++    auto header                      = message_com::get_beerocks_header(cmdu_tx);
++    header->actionhdr()->radio_mac() = m_roaming_scan_radio;
++    header->actionhdr()->direction() = beerocks::BEEROCKS_DIRECTION_CONTROLLER;
++    send_cmdu_to_broker(cmdu_tx, db->controller_info.bridge_mac, db->bridge.mac);
++}
++
+ void BackhaulManager::get_scan_measurement()
+ {
+     // Support up to 256 scan results
+@@ -2889,6 +3109,13 @@
+     const auto mid = cmdu_rx.getMessageId();
+     LOG(DEBUG) << "Received BACKHAUL_STA_STEERING message, mid=" << std::hex << mid;
+ 
++    auto native_db = AgentDB::get();
++    if (src_mac != native_db->controller_info.bridge_mac ||
++        m_backhaul_steering_bssid != beerocks::net::network_utils::ZERO_MAC) {
++        return true;
++    }
++    m_backhaul_steering_mid = mid;
++
+     auto bh_sta_steering_req = cmdu_rx.getClass<wfa_map::tlvBackhaulSteeringRequest>();
+     if (!bh_sta_steering_req) {
+         LOG(WARNING) << "Failed cmdu_rx.getClass<wfa_map::tlvBackhaulSteeringRequest>(), mid="
+@@ -2896,6 +3123,13 @@
+         return false;
+     }
+ 
++    auto selected_radio = native_db->radio(native_db->backhaul.selected_iface_name);
++    if (!selected_radio ||
++        bh_sta_steering_req->backhaul_station_mac() != selected_radio->back.iface_mac) {
++        return true;
++    }
++    m_roaming_scan_pending = false;
++
+     // build ACK message CMDU
+     auto cmdu_tx_header = cmdu_tx.create(mid, ieee1905_1::eMessageType::ACK_MESSAGE);
+     if (!cmdu_tx_header) {
+@@ -2944,6 +3178,18 @@
+         return false;
+     }
+ 
++    if (!recovery_candidate_allowed(tlvf::mac_to_string(bssid))) {
++        LOG(WARNING) << "native_backhaul_roaming rejecting unsafe receiver target " << bssid;
++        if (!create_backhaul_steering_response(
++                wfa_map::tlvErrorCode::eReasonCode::
++                    BACKHAUL_STEERING_REQUEST_REJECTED_TARGET_BSS_SIGNAL_NOT_SUITABLE,
++                bssid)) {
++            return false;
++        }
++        send_cmdu_to_broker(cmdu_tx, db->controller_info.bridge_mac, db->bridge.mac);
++        return true;
++    }
++
+     // If current BSSID is the same as the specified target BSSID, then do not steer and send a
+     // response immediately.
+     if (tlvf::mac_from_string(active_hal->get_bssid()) == bssid) {
+@@ -3000,7 +3246,7 @@
+     // Create a timer to check if this Backhaul Steering Request times out.
+     m_backhaul_steering_timer = m_timer_manager->add_timer(
+         "Backhaul Steering Timeout", backhaul_steering_timeout, std::chrono::milliseconds::zero(),
+-        [&](int fd, beerocks::EventLoop &loop) {
++        [this, bssid](int fd, beerocks::EventLoop &loop) {
+             cancel_backhaul_steering_operation();
+ 
+             // We'll end up in this situation only if an attempt to scan and associate was made, but
+@@ -3031,8 +3277,8 @@
+ bool BackhaulManager::create_backhaul_steering_response(
+     wfa_map::tlvErrorCode::eReasonCode error_code, const sMacAddr &target_bssid)
+ {
+-    auto cmdu_tx_header =
+-        cmdu_tx.create(0, ieee1905_1::eMessageType::BACKHAUL_STEERING_RESPONSE_MESSAGE);
++    auto cmdu_tx_header = cmdu_tx.create(
++        m_backhaul_steering_mid, ieee1905_1::eMessageType::BACKHAUL_STEERING_RESPONSE_MESSAGE);
+     if (!cmdu_tx_header) {
+         LOG(ERROR) << "Failed to create Backhaul Steering Response message";
+         return false;
+--- a/agent/src/beerocks/slave/backhaul_manager/backhaul_manager.h
++++ b/agent/src/beerocks/slave/backhaul_manager/backhaul_manager.h
+@@ -10,6 +10,7 @@
+ #define _BACKHAUL_MANAGER_H
+ 
+ #include "../tasks/task_pool.h"
++#include "backhaul_roaming_guard.h"
+ #include "wan_monitor.h"
+ 
+ #include <bcl/beerocks_backport.h>
+@@ -285,6 +286,10 @@
+ 
+     bool is_eth_link_up();
+     void get_scan_measurement();
++    bool handle_roaming_scan_request(std::shared_ptr<beerocks::beerocks_header> header,
++                                     const sMacAddr &source);
++    void send_roaming_scan_response(bool valid);
++    bool recovery_candidate_allowed(const std::string &bssid);
+     bool select_bssid();
+     void platform_notify_error(bpl::eErrorCode code, const std::string &error_data);
+     bool send_slaves_enable();
+@@ -496,7 +501,22 @@
+      * The BSSID of the target BSS in an ongoing backhaul steering operation.
+      * Empty MAC address if no steering operation is in progress.
+      */
+-    sMacAddr m_backhaul_steering_bssid = beerocks::net::network_utils::ZERO_MAC;
++    sMacAddr m_backhaul_steering_bssid       = beerocks::net::network_utils::ZERO_MAC;
++    uint16_t m_backhaul_steering_mid         = 0;
++    uint16_t m_completed_steering_mid        = 0;
++    uint32_t m_completed_steering_generation = 0;
++    sMacAddr m_completed_steering_target     = beerocks::net::network_utils::ZERO_MAC;
++    bool m_roaming_scan_pending              = false;
++    uint16_t m_roaming_scan_task             = 0;
++    uint32_t m_roaming_scan_sequence         = 0;
++    sMacAddr m_roaming_scan_radio            = beerocks::net::network_utils::ZERO_MAC;
++    std::string m_roaming_scan_bssid;
++    std::chrono::steady_clock::time_point m_roaming_scan_started;
++    BackhaulRecoveryGuard::Peers m_roaming_peers;
++    BackhaulRecoveryLease m_roaming_lease;
++    uint16_t m_roaming_probe_mid = 49152;
++    std::chrono::steady_clock::time_point m_roaming_orphan_until;
++    std::string m_roaming_orphan_parent;
+ 
+     /**
+      * The channel of the target BSS in an ongoing backhaul steering operation.
+--- a/agent/src/beerocks/slave/backhaul_manager/backhaul_roaming_guard.h
++++ b/agent/src/beerocks/slave/backhaul_manager/backhaul_roaming_guard.h
+@@ -0,0 +1,141 @@
++#ifndef BACKHAUL_ROAMING_GUARD_H
++#define BACKHAUL_ROAMING_GUARD_H
++
++#include <chrono>
++#include <cstdint>
++#include <map>
++#include <set>
++#include <string>
++
++namespace beerocks {
++
++class BackhaulRecoveryLease {
++public:
++    using Clock = std::chrono::steady_clock;
++
++    void controller_seen(Clock::time_point now)
++    {
++        enabled         = true;
++        last_controller = now;
++        probes.clear();
++    }
++
++    void connected(Clock::time_point now)
++    {
++        last_connected = now;
++        disconnect_parent.clear();
++        probes.clear();
++    }
++
++    bool upstream_stale(Clock::time_point now) const
++    {
++        return enabled && now - last_controller > std::chrono::seconds(15);
++    }
++
++    bool probe_due(Clock::time_point now) const
++    {
++        return upstream_stale(now) && now - last_connected > std::chrono::seconds(15) &&
++               now - last_recovery > std::chrono::seconds(15) && probes.size() < 3 &&
++               (probes.empty() || now - last_probe >= std::chrono::seconds(2));
++    }
++
++    void probe_sent(uint16_t mid, Clock::time_point now)
++    {
++        probes[mid] = now;
++        last_probe  = now;
++    }
++
++    bool acknowledge(uint16_t mid, Clock::time_point now)
++    {
++        auto found = probes.find(mid);
++        if (found == probes.end() || now < found->second ||
++            now - found->second > std::chrono::seconds(8)) {
++            return false;
++        }
++        controller_seen(now);
++        return true;
++    }
++
++    bool due(Clock::time_point now) const
++    {
++        return upstream_stale(now) && probes.size() == 3 &&
++               now - last_probe >= std::chrono::seconds(2) &&
++               now - last_connected > std::chrono::seconds(15) &&
++               now - last_recovery > std::chrono::seconds(15);
++    }
++
++    void started(const std::string &parent, Clock::time_point now)
++    {
++        last_recovery     = now;
++        disconnect_parent = parent;
++        disconnect_until  = now + std::chrono::seconds(5);
++        probes.clear();
++    }
++
++    bool consume_disconnect(const std::string &parent, Clock::time_point now)
++    {
++        if (disconnect_parent.empty() || parent != disconnect_parent || now > disconnect_until) {
++            return false;
++        }
++        disconnect_parent.clear();
++        return true;
++    }
++
++private:
++    bool enabled = false;
++    Clock::time_point last_controller;
++    Clock::time_point last_connected;
++    Clock::time_point last_recovery;
++    Clock::time_point disconnect_until;
++    Clock::time_point last_probe;
++    std::string disconnect_parent;
++    std::map<uint16_t, Clock::time_point> probes;
++};
++
++struct BackhaulRecoveryPeer {
++    std::string agent;
++    std::string parent;
++    std::string station;
++    bool gateway = false;
++};
++
++class BackhaulRecoveryGuard {
++public:
++    using Peers = std::map<std::string, BackhaulRecoveryPeer>;
++
++    static bool allowed(const std::string &self, const std::string &candidate, const Peers &peers,
++                        const std::set<std::string> &children)
++    {
++        auto found = peers.find(candidate);
++        if (found == peers.end()) {
++            return false;
++        }
++        std::map<std::string, std::string> parents;
++        for (const auto &entry : peers) {
++            auto parent = entry.second.parent;
++            if (children.count(entry.second.station)) {
++                parent = self;
++            } else if (parent == self) {
++                parent.clear();
++            }
++            parents[entry.second.agent] = parent;
++        }
++        auto current = found->second.agent;
++        std::set<std::string> visited;
++        while (!current.empty()) {
++            if (current == self || !visited.insert(current).second) {
++                return false;
++            }
++            auto parent = parents.find(current);
++            if (parent == parents.end()) {
++                break;
++            }
++            current = parent->second;
++        }
++        return true;
++    }
++};
++
++}
++
++#endif
+--- a/common/beerocks/bwl/include/bwl/sta_wlan_hal.h
++++ b/common/beerocks/bwl/include/bwl/sta_wlan_hal.h
+@@ -50,6 +50,13 @@
+ 
+     virtual bool initiate_scan() = 0;
+ 
++    virtual bool initiate_roaming_scan() { return false; }
++    virtual bool get_roaming_scan_results(const std::string &ssid,
++                                          std::vector<sScanResult> &results)
++    {
++        return false;
++    }
++
+     /*
+      * @brief Trigger a scan for a specific BSS.
+      * 
+--- a/common/beerocks/bwl/nl80211/sta_wlan_hal_nl80211.cpp
++++ b/common/beerocks/bwl/nl80211/sta_wlan_hal_nl80211.cpp
+@@ -81,9 +81,48 @@
+     return true;
+ }
+ 
+-bool sta_wlan_hal_nl80211::initiate_scan()
++bool sta_wlan_hal_nl80211::initiate_scan() { return wpa_ctrl_send_msg("SCAN TYPE=ONLY"); }
++
++bool sta_wlan_hal_nl80211::initiate_roaming_scan()
++{
++    ConnectionStatus status;
++    if (!read_status(status) || !is_connected(status.wpa_state) || status.freq <= 0) {
++        return false;
++    }
++    update_status(status);
++    return wpa_ctrl_send_msg("SCAN TYPE=ONLY freq=" + std::to_string(status.freq));
++}
++
++bool sta_wlan_hal_nl80211::get_roaming_scan_results(const std::string &ssid,
++                                                    std::vector<sScanResult> &results)
+ {
+-    return wpa_ctrl_send_msg("SCAN TYPE=ONLY");
++    results.clear();
++    std::vector<sScanResult> cached;
++    if (get_scan_results(ssid, cached) <= 0 || cached.size() > 64) {
++        return false;
++    }
++    for (const auto &entry : cached) {
++        char *reply = nullptr;
++        if (!wpa_ctrl_send_msg("BSS " + tlvf::mac_to_string(entry.bssid), &reply) || !reply) {
++            continue;
++        }
++        std::istringstream fields(reply);
++        std::string field;
++        int age = -1;
++        while (std::getline(fields, field)) {
++            if (field.compare(0, 4, "age=") == 0) {
++                std::istringstream value(field.substr(4));
++                if (!(value >> age) || !(value >> std::ws).eof()) {
++                    age = -1;
++                }
++                break;
++            }
++        }
++        if (age >= 0 && age <= 2) {
++            results.push_back(entry);
++        }
++    }
++    return !results.empty();
+ }
+ 
+ bool sta_wlan_hal_nl80211::scan_bss(const sMacAddr &bssid, uint8_t channel,
+@@ -271,19 +310,20 @@
+         return false;
+     }
+ 
+-    auto bssid_str = tlvf::mac_to_string(bssid);
++    auto bssid_str            = tlvf::mac_to_string(bssid);
++    const auto previous_bssid = m_active_bssid;
++    if (!set_network(m_active_network_id, "bssid", bssid_str)) {
++        LOG(ERROR) << "Failed preparing the native steering target on " << get_iface_name();
++        return false;
++    }
+ 
+     const std::string cmd = "ROAM " + bssid_str;
+     if (!wpa_ctrl_send_msg(cmd)) {
+         LOG(ERROR) << "WPA command '" << cmd << "' failed";
+-        ;
++        set_network(m_active_network_id, "bssid", previous_bssid);
+         return false;
+     }
+ 
+-    // Update the active channel and bssid
+-    m_active_bssid.assign(bssid_str);
+-    m_active_channel = channel.first;
+-
+     return true;
+ }
+ 
+--- a/common/beerocks/bwl/nl80211/sta_wlan_hal_nl80211.h
++++ b/common/beerocks/bwl/nl80211/sta_wlan_hal_nl80211.h
+@@ -39,6 +39,10 @@
+ 
+     virtual bool initiate_scan() override;
+     bool scan_bss(const sMacAddr &bssid, uint8_t channel, beerocks::eFreqType freq_type) override;
++
++    bool initiate_roaming_scan() override;
++    bool get_roaming_scan_results(const std::string &ssid,
++                                  std::vector<sScanResult> &results) override;
+     virtual int get_scan_results(const std::string &ssid, std::vector<sScanResult> &list,
+                                  bool parse_vsie = false) override;
+ 
+--- a/common/beerocks/tlvf/yaml/beerocks/tlvf/beerocks_message_action.yaml
++++ b/common/beerocks/tlvf/yaml/beerocks/tlvf/beerocks_message_action.yaml
+@@ -92,7 +92,9 @@
+   ACTION_CONTROL_CHANNEL_SCAN_ABORT_NOTIFICATION: 146
+   ACTION_CONTROL_CHANNEL_SCAN_FINISHED_NOTIFICATION: 147
+ 
+-  ACTION_CONTROL_ENUM_END: 149
++  ACTION_CONTROL_BACKHAUL_SCAN_REQUEST: 149
++  ACTION_CONTROL_BACKHAUL_SCAN_RESPONSE: 150
++  ACTION_CONTROL_ENUM_END: 151
+ 
+ ####################################################
+ ####################################################
+--- a/common/beerocks/tlvf/yaml/beerocks/tlvf/beerocks_message_common.yaml
++++ b/common/beerocks/tlvf/yaml/beerocks/tlvf/beerocks_message_common.yaml
+@@ -57,6 +57,20 @@
+     _type: char
+     _length: ["beerocks::message::VAP_LABEL_MAX_LENGTH"]
+ 
++sBackhaulRoamingScanEntry:
++  _type: struct
++  bssid: sMacAddr
++  channel: uint8_t
++  rssi: int8_t
++
++sBackhaulRoamingTopologyEntry:
++  _type: struct
++  bssid: sMacAddr
++  agent: sMacAddr
++  parent: sMacAddr
++  station: sMacAddr
++  gateway: uint8_t
++
+ sSonConfig:
+   _type: struct
+   monitor_total_ch_load_notification_lo_th_percent: uint8_t
+--- a/common/beerocks/tlvf/yaml/beerocks/tlvf/beerocks_message_control.yaml
++++ b/common/beerocks/tlvf/yaml/beerocks/tlvf/beerocks_message_control.yaml
+@@ -16,6 +16,32 @@
+ # CONTROL_SLAVE
+ #################################################
+ 
++cACTION_CONTROL_BACKHAUL_SCAN_REQUEST:
++  _type: class
++  sequence: uint32_t
++  topology_size:
++    _type: uint8_t
++    _length_var: True
++  topology:
++    _type: sBackhaulRoamingTopologyEntry
++    _length: [topology_size]
++
++cACTION_CONTROL_BACKHAUL_SCAN_RESPONSE:
++  _type: class
++  sequence: uint32_t
++  station: sMacAddr
++  current_bssid: sMacAddr
++  completed_steering_mid: uint16_t
++  completed_steering_generation: uint32_t
++  completed_steering_target: sMacAddr
++  valid: uint8_t
++  entries_size:
++    _type: uint8_t
++    _length_var: True
++  entries:
++    _type: sBackhaulRoamingScanEntry
++    _length: [entries_size]
++
+ cACTION_CONTROL_SLAVE_HANDSHAKE_REQUEST:
+   _type: class
+ 
+--- a/controller/src/beerocks/master/controller.cpp
++++ b/controller/src/beerocks/master/controller.cpp
+@@ -12,6 +12,7 @@
+ #include "son_actions.h"
+ #include "son_management.h"
+ #include "tasks/agent_monitoring_task.h"
++#include "tasks/backhaul_roaming_task.h"
+ #include "tasks/bml_task.h"
+ #include "tasks/btm_request_task.h"
+ #include "tasks/client_association_task.h"
+@@ -368,6 +369,9 @@
+ {
+     LOG(DEBUG) << "Start mandatory periodic tasks";
+ 
++    LOG_IF(!m_task_pool.add_task(std::make_shared<BackhaulRoamingTask>(database, cmdu_tx)), FATAL)
++        << "Failed adding native backhaul roaming task!";
++
+     LOG_IF(!m_task_pool.add_task(std::make_shared<bml_task>(database, cmdu_tx, m_task_pool)), FATAL)
+         << "Failed adding BML task!";
+ 
+@@ -3655,6 +3659,13 @@
+     database.update_radio_last_seen(radio_mac);
+ 
+     switch (beerocks_header->action_op()) {
++    case beerocks_message::ACTION_CONTROL_BACKHAUL_SCAN_RESPONSE: {
++        if (!database.get_radio(src_mac, radio_mac)) {
++            return false;
++        }
++        m_task_pool.response_received(tlvf::mac_to_string(src_mac), beerocks_header);
++        return true;
++    }
+     case beerocks_message::ACTION_CONTROL_HOSTAP_SET_RESTRICTED_FAILSAFE_CHANNEL_RESPONSE: {
+         LOG(DEBUG)
+             << "received ACTION_CONTROL_HOSTAP_SET_RESTRICTED_FAILSAFE_CHANNEL_RESPONSE from "
+--- a/controller/src/beerocks/master/db/agent.h
++++ b/controller/src/beerocks/master/db/agent.h
+@@ -9,6 +9,7 @@
+ #ifndef AGENT_H
+ #define AGENT_H
+ 
++#include "topology_query_tracker.h"
+ #include <array>
+ #include <memory>
+ #include <string>
+@@ -649,6 +650,8 @@
+ 
+     friend class ::son::db;
+ 
++    son::TopologyQueryTracker topology_queries;
++
+ private:
+     /**
+      * @brief The last time that the Agent was contacted via the Multi-AP control protocol.
+--- a/controller/src/beerocks/master/db/topology_query_tracker.h
++++ b/controller/src/beerocks/master/db/topology_query_tracker.h
+@@ -0,0 +1,67 @@
++#ifndef TOPOLOGY_QUERY_TRACKER_H
++#define TOPOLOGY_QUERY_TRACKER_H
++
++#include <chrono>
++#include <cstdint>
++#include <deque>
++
++namespace son {
++
++class TopologyQueryTracker {
++public:
++    using Clock = std::chrono::steady_clock;
++    using Time  = Clock::time_point;
++
++    static uint16_t next_mid()
++    {
++        static uint16_t previous = 0x4000;
++        if (++previous == 0) {
++            ++previous;
++        }
++        return previous;
++    }
++
++    void sent(uint16_t mid, Time now)
++    {
++        if (mid == 0) {
++            return;
++        }
++        if (requests.size() == 16) {
++            requests.pop_front();
++        }
++        requests.push_back({mid, now});
++    }
++
++    Time consume(uint16_t mid, Time now)
++    {
++        for (auto request = requests.begin(); request != requests.end(); ++request) {
++            if (request->mid != mid) {
++                continue;
++            }
++            const auto sent_at = request->sent_at;
++            requests.erase(request);
++            return sent_at <= now && now - sent_at <= std::chrono::seconds(5) ? sent_at
++                                                                              : Time::min();
++        }
++        return Time::min();
++    }
++
++    static bool restores_same_owner(bool same_owner, bool missing_association, Time last_event,
++                                    Time query_sent, Time now)
++    {
++        return same_owner && missing_association && query_sent != Time::min() &&
++               query_sent > last_event && query_sent <= now &&
++               now - query_sent <= std::chrono::seconds(5);
++    }
++
++private:
++    struct Request {
++        uint16_t mid;
++        Time sent_at;
++    };
++    std::deque<Request> requests;
++};
++
++}
++
++#endif
+--- a/controller/src/beerocks/master/son_actions.cpp
++++ b/controller/src/beerocks/master/son_actions.cpp
+@@ -495,7 +495,8 @@
+ bool son_actions::send_topology_query_msg(const sMacAddr &dest_mac,
+                                           ieee1905_1::CmduMessageTx &cmdu_tx, db &database)
+ {
+-    if (!cmdu_tx.create(0, ieee1905_1::eMessageType::TOPOLOGY_QUERY_MESSAGE)) {
++    const auto mid = TopologyQueryTracker::next_mid();
++    if (!cmdu_tx.create(mid, ieee1905_1::eMessageType::TOPOLOGY_QUERY_MESSAGE)) {
+         LOG(ERROR) << "Failed building TOPOLOGY_QUERY_MESSAGE message!";
+         return false;
+     }
+@@ -504,7 +505,15 @@
+         LOG(ERROR) << "addClass wfa_map::tlvProfile2MultiApProfile failed";
+         return false;
+     }
+-    return send_cmdu_to_agent(dest_mac, cmdu_tx, database);
++    const auto sent_at = std::chrono::steady_clock::now();
++    if (!send_cmdu_to_agent(dest_mac, cmdu_tx, database)) {
++        return false;
++    }
++    auto agent = database.m_agents.get(dest_mac);
++    if (agent) {
++        agent->topology_queries.sent(mid, sent_at);
++    }
++    return true;
+ }
+ 
+ bool son_actions::send_client_association_control(
+--- a/controller/src/beerocks/master/tasks/topology_task.cpp
++++ b/controller/src/beerocks/master/tasks/topology_task.cpp
+@@ -109,6 +109,10 @@
+         return false;
+     }
+ 
++    const auto query_sent =
++        src_mac == al_mac ? agent->topology_queries.consume(mid, std::chrono::steady_clock::now())
++                          : std::chrono::steady_clock::time_point::min();
++
+     // Update Profile Information in Agent.
+     auto tlvProfile2MultiApProfile = cmdu_rx.getClass<wfa_map::tlvProfile2MultiApProfile>();
+     if (tlvProfile2MultiApProfile) {
+@@ -252,7 +256,7 @@
+                 agent->backhaul.backhaul_interface = iface_mac;
+                 agent->backhaul.parent_interface   = media_info->network_membership;
+                 agent->backhaul.wireless_backhaul_radio =
+-                    database.get_radio_by_backhaul_cap(media_info->network_membership);
++                    database.get_radio_by_backhaul_cap(iface_mac);
+             }
+         }
+     }
+@@ -717,7 +721,7 @@
+         handle_assoc_sta_mld_configuration_tlv(cmdu_rx, *agent);
+     }
+ 
+-    if (!handle_associated_clients_tlv(cmdu_rx, *agent)) {
++    if (!handle_associated_clients_tlv(cmdu_rx, *agent, query_sent)) {
+         LOG(ERROR) << "handle_associated_clients_tlv failed";
+     }
+ 
+@@ -811,7 +815,8 @@
+     }
+ }
+ 
+-bool topology_task::handle_associated_clients_tlv(ieee1905_1::CmduMessageRx &cmdu_rx, Agent &agent)
++bool topology_task::handle_associated_clients_tlv(ieee1905_1::CmduMessageRx &cmdu_rx, Agent &agent,
++                                                  std::chrono::steady_clock::time_point query_sent)
+ {
+     auto assoc_client_tlv = cmdu_rx.getClass<wfa_map::tlvAssociatedClients>();
+     std::unordered_map<sMacAddr, sMacAddr> previous_connected;
+@@ -861,14 +866,26 @@
+     }
+ 
+     for (const auto &connected : current_connected) {
+-        auto station = database.get_station(connected.first);
+-        auto bss = database.get_bss(connected.second, agent.al_mac);
++        auto station  = database.get_station(connected.first);
++        auto bss      = database.get_bss(connected.second, agent.al_mac);
++        bool restored = false;
+         if (station) {
+-            if (station->get_bss() == bss && station->state == beerocks::STATE_CONNECTED) {
++            if (station->get_bss() == bss && station->state == beerocks::STATE_CONNECTED &&
++                !station->dm_path.empty()) {
+                 continue;
+             }
+-            if (association_times.at(connected.first) <= station->association_event_time) {
+-                continue;
++            restored = TopologyQueryTracker::restores_same_owner(
++                station->parent_mac == tlvf::mac_to_string(connected.second),
++                station->state != beerocks::STATE_CONNECTED || station->dm_path.empty(),
++                station->association_event_time, query_sent, now);
++            if (association_times.at(connected.first) <= station->association_event_time &&
++                !restored) {
++                continue;
++            }
++            if (restored) {
++                LOG(INFO) << "Native topology query restores associated station " << connected.first
++                          << " on " << connected.second << " from " << agent.al_mac
++                          << " mid=" << cmdu_rx.getMessageId();
+             }
+         }
+         station = database.add_station(agent.al_mac, connected.first, connected.second);
+@@ -893,8 +910,8 @@
+         }
+         tasks.push_event(database.get_dhcp_task_id(), DhcpTask::STA_CONNECTED);
+         son_actions::handle_completed_connection(database, cmdu_tx, tasks,
+-                                                tlvf::mac_to_string(connected.first));
+-        station->association_event_time = association_times.at(connected.first);
++                                                 tlvf::mac_to_string(connected.first));
++        station->association_event_time = restored ? now : association_times.at(connected.first);
+     }
+ 
+     for (const auto &previous : previous_connected) {
+--- a/controller/src/beerocks/master/tasks/topology_task.h
++++ b/controller/src/beerocks/master/tasks/topology_task.h
+@@ -97,7 +97,8 @@
+      * @param[in] cmdu_rx Received CMDU.
+      * @param[in] agent agent db object.
+      */
+-    bool handle_associated_clients_tlv(ieee1905_1::CmduMessageRx &cmdu_rx, Agent &agent);
++    bool handle_associated_clients_tlv(ieee1905_1::CmduMessageRx &cmdu_rx, Agent &agent,
++                                       std::chrono::steady_clock::time_point query_sent);
+ 
+     db &database;
+     ieee1905_1::CmduMessageTx &cmdu_tx;
+--- a/controller/src/beerocks/master/tasks/backhaul_roaming_task.cpp
++++ b/controller/src/beerocks/master/tasks/backhaul_roaming_task.cpp
+@@ -0,0 +1,340 @@
++#include "backhaul_roaming_task.h"
++#include "../son_actions.h"
++
++#include <beerocks/tlvf/beerocks_message.h>
++#include <easylogging++.h>
++#include <tlvf/wfa_map/tlvBackhaulSteeringRequest.h>
++#include <tlvf/wfa_map/tlvBackhaulSteeringResponse.h>
++
++namespace son {
++
++static int64_t roaming_now_ms()
++{
++    return std::chrono::duration_cast<std::chrono::milliseconds>(
++               std::chrono::steady_clock::now().time_since_epoch())
++        .count();
++}
++
++BackhaulRoamingTask::BackhaulRoamingTask(db &database, ieee1905_1::CmduMessageTx &transmit)
++    : task("native_backhaul_roaming"), database(database), transmit(transmit)
++{
++}
++
++BackhaulRoamingPolicy::Nodes BackhaulRoamingTask::topology(int64_t now_ms)
++{
++    BackhaulRoamingPolicy::Nodes nodes;
++    for (const auto &agent : database.get_all_connected_agents()) {
++        const auto identity = tlvf::mac_to_string(agent->al_mac);
++        auto &node          = nodes[identity];
++        node.gateway        = agent->is_gateway;
++        node.connected      = agent->state == beerocks::STATE_CONNECTED;
++        if (node.gateway) {
++            continue;
++        }
++        auto parent = agent->backhaul.parent_agent.lock();
++        if (!parent) {
++            node.connected = false;
++            continue;
++        }
++        node.parent = tlvf::mac_to_string(parent->al_mac);
++        auto found  = observations.find(identity);
++        if (found == observations.end() || !agent->backhaul.wireless_backhaul_radio) {
++            node.connected = false;
++            continue;
++        }
++        const auto &observation = found->second;
++        if (observation.parent_bssid != tlvf::mac_to_string(agent->backhaul.parent_interface) ||
++            observation.station != tlvf::mac_to_string(agent->backhaul.backhaul_interface) ||
++            observation.radio !=
++                tlvf::mac_to_string(agent->backhaul.wireless_backhaul_radio->radio_uid)) {
++            node.connected = false;
++            continue;
++        }
++        node.rssi        = observation.rssi;
++        node.observed_ms = observation.observed_ms;
++    }
++    return nodes;
++}
++
++void BackhaulRoamingTask::work()
++{
++    const auto now_ms = roaming_now_ms();
++    wait_for(500);
++    if (!moving_agent.empty()) {
++        auto found     = observations.find(moving_agent);
++        int bottleneck = 0;
++        int hops       = 0;
++        if (found != observations.end() && found->second.observed_ms > moving_started_ms &&
++            found->second.station == moving_station && found->second.radio == moving_radio &&
++            BackhaulRoamingPolicy::path(topology(now_ms), moving_agent, "", now_ms, bottleneck,
++                                        hops) &&
++            BackhaulRoamingReservation::settled(
++                moving_target, found->second.parent_bssid, steering_mid,
++                found->second.completed_steering_mid, found->second.completed_steering_target,
++                moving_completion_generation, found->second.completed_steering_generation)) {
++            if (found->second.parent_bssid != moving_target) {
++                LOG(INFO) << "native_backhaul_roaming completed_then_recovered agent="
++                          << moving_agent << " target=" << moving_target
++                          << " actual=" << found->second.parent_bssid << " mid=" << steering_mid;
++            }
++            complete(found->second.parent_bssid == moving_target, now_ms);
++        } else {
++            if (now_ms >= moving_topology_ms) {
++                son_actions::send_topology_query_msg(tlvf::mac_from_string(moving_agent), transmit,
++                                                     database);
++                auto parent = database.get_agent_by_bssid(tlvf::mac_from_string(moving_target));
++                if (parent) {
++                    son_actions::send_topology_query_msg(parent->al_mac, transmit, database);
++                }
++                moving_topology_ms = now_ms + 2000;
++            }
++            if (reservation.timed_out(now_ms) && !moving_timeout_logged) {
++                moving_timeout_logged = true;
++                LOG(WARNING) << "native_backhaul_roaming unresolved agent=" << moving_agent
++                             << " target=" << moving_target << " attempts=" << reservation.attempts
++                             << "; retaining topology reservation until native target is observed";
++            }
++            if (reservation.retry_due(now_ms) && found != observations.end() &&
++                now_ms - found->second.observed_ms <= 4000 &&
++                found->second.station == moving_station && found->second.radio == moving_radio &&
++                found->second.parent_bssid == moving_original &&
++                BackhaulRoamingPolicy::select(topology(now_ms), moving_agent,
++                                              found->second.candidates, now_ms)
++                        .bssid == moving_target) {
++                if (!issue_steering(moving_agent, moving_target, now_ms)) {
++                    reservation.requested_ms = now_ms;
++                }
++            }
++        }
++    }
++    for (const auto &agent : database.get_all_connected_agents()) {
++        if (agent->is_gateway || !agent->is_prplmesh ||
++            agent->backhaul.backhaul_iface_type == beerocks::IFACE_TYPE_ETHERNET) {
++            continue;
++        }
++        const auto identity = tlvf::mac_to_string(agent->al_mac);
++        auto &observation   = observations[identity];
++        if (now_ms < observation.next_query_ms) {
++            continue;
++        }
++        if (!agent->backhaul.wireless_backhaul_radio ||
++            agent->backhaul.backhaul_interface == beerocks::net::network_utils::ZERO_MAC) {
++            observation.next_query_ms = now_ms + 5000;
++            observation.requested_ms  = -1;
++            if (transmit.create(id,
++                                ieee1905_1::eMessageType::BACKHAUL_STA_CAPABILITY_QUERY_MESSAGE)) {
++                son_actions::send_cmdu_to_agent(agent->al_mac, transmit, database);
++            }
++            son_actions::send_topology_query_msg(agent->al_mac, transmit, database);
++            LOG(DEBUG) << "native_backhaul_roaming rediscovering backhaul radio agent=" << identity;
++            continue;
++        }
++        auto request = beerocks::message_com::create_vs_message<
++            beerocks_message::cACTION_CONTROL_BACKHAUL_SCAN_REQUEST>(transmit, id);
++        if (!request) {
++            continue;
++        }
++        std::vector<beerocks_message::sBackhaulRoamingTopologyEntry> peers;
++        for (const auto &peer : database.get_all_connected_agents()) {
++            auto parent = peer->backhaul.parent_agent.lock();
++            for (const auto &radio : peer->radios) {
++                for (const auto &bss : radio.second->bsses) {
++                    if (!bss.second->enabled || !bss.second->backhaul) {
++                        continue;
++                    }
++                    beerocks_message::sBackhaulRoamingTopologyEntry entry{};
++                    entry.bssid  = bss.second->bssid;
++                    entry.agent  = peer->al_mac;
++                    entry.parent = parent ? parent->al_mac : beerocks::net::network_utils::ZERO_MAC;
++                    entry.station = peer->backhaul.backhaul_interface;
++                    entry.gateway = peer->is_gateway;
++                    peers.push_back(entry);
++                }
++            }
++        }
++        if (peers.empty() || peers.size() > 48 || !request->alloc_topology(peers.size())) {
++            continue;
++        }
++        for (size_t index = 0; index < peers.size(); ++index) {
++            auto entry = request->topology(index);
++            if (!std::get<0>(entry)) {
++                return;
++            }
++            std::get<1>(entry) = peers[index];
++        }
++        request->sequence()       = ++sequence;
++        observation.sequence      = sequence;
++        observation.requested_ms  = now_ms;
++        observation.next_query_ms = now_ms + 5000;
++        observation.radio = tlvf::mac_to_string(agent->backhaul.wireless_backhaul_radio->radio_uid);
++        observation.station = tlvf::mac_to_string(agent->backhaul.backhaul_interface);
++        if (!son_actions::send_cmdu_to_agent(agent->al_mac, transmit, database,
++                                             observation.radio)) {
++            observation.requested_ms = -1;
++        }
++    }
++}
++
++void BackhaulRoamingTask::handle_response(std::string source,
++                                          std::shared_ptr<beerocks::beerocks_header> header)
++{
++    if (header->action_op() != beerocks_message::ACTION_CONTROL_BACKHAUL_SCAN_RESPONSE) {
++        return;
++    }
++    auto found = observations.find(source);
++    if (found == observations.end()) {
++        return;
++    }
++    auto response = header->addClass<beerocks_message::cACTION_CONTROL_BACKHAUL_SCAN_RESPONSE>();
++    auto &observation = found->second;
++    const auto now_ms = roaming_now_ms();
++    if (!response || observation.requested_ms < 0 || now_ms - observation.requested_ms > 4000 ||
++        response->sequence() != observation.sequence ||
++        tlvf::mac_to_string(header->actionhdr()->radio_mac()) != observation.radio ||
++        tlvf::mac_to_string(response->station()) != observation.station) {
++        return;
++    }
++    observation.requested_ms = -1;
++    observation.observed_ms  = -1;
++    observation.candidates.clear();
++    if (!response->valid() || response->entries_size() > 64) {
++        policy.observe(source, observation.parent_bssid, "", now_ms);
++        return;
++    }
++    observation.parent_bssid                  = tlvf::mac_to_string(response->current_bssid());
++    observation.completed_steering_mid        = response->completed_steering_mid();
++    observation.completed_steering_generation = response->completed_steering_generation();
++    observation.completed_steering_target =
++        tlvf::mac_to_string(response->completed_steering_target());
++    auto current_bss = database.get_bss(response->current_bssid());
++    if (!current_bss || !current_bss->backhaul) {
++        return;
++    }
++    const auto current_channel = database.get_radio_wifi_channel(current_bss->radio.radio_uid);
++    bool current_found         = false;
++    for (size_t index = 0; index < response->entries_size(); ++index) {
++        auto entry = response->entries(index);
++        if (!std::get<0>(entry)) {
++            return;
++        }
++        const auto &measured = std::get<1>(entry);
++        if (measured.channel != current_channel.get_channel() || measured.rssi < -127 ||
++            measured.rssi >= 0) {
++            continue;
++        }
++        if (measured.bssid == response->current_bssid()) {
++            observation.rssi = measured.rssi;
++            current_found    = true;
++            continue;
++        }
++        auto bss    = database.get_bss(measured.bssid);
++        auto parent = database.get_agent_by_bssid(measured.bssid);
++        if (!bss || !parent || !bss->backhaul || !bss->enabled || bss->ssid != current_bss->ssid ||
++            bss->radio.operating_class != current_bss->radio.operating_class ||
++            database.get_radio_wifi_channel(bss->radio.radio_uid).get_channel() !=
++                measured.channel) {
++            continue;
++        }
++        observation.candidates.push_back({tlvf::mac_to_string(measured.bssid),
++                                          tlvf::mac_to_string(parent->al_mac), measured.rssi,
++                                          measured.channel});
++    }
++    if (!current_found) {
++        return;
++    }
++    observation.observed_ms = now_ms;
++    const auto nodes        = topology(now_ms);
++    const auto candidate =
++        BackhaulRoamingPolicy::select(nodes, source, observation.candidates, now_ms);
++    const bool ready = policy.observe(source, observation.parent_bssid, candidate.bssid, now_ms);
++    LOG(DEBUG) << "native_backhaul_roaming observation agent=" << source
++               << " parent=" << observation.parent_bssid << " rssi=" << observation.rssi
++               << " eligible=" << candidate.bssid << " candidate_rssi=" << candidate.rssi;
++    if (!ready || !moving_agent.empty() || candidate.bssid.empty()) {
++        return;
++    }
++    if (!issue_steering(source, candidate.bssid, now_ms)) {
++        policy.completed(source, candidate.bssid, false, now_ms);
++    }
++}
++
++bool BackhaulRoamingTask::issue_steering(const std::string &source, const std::string &target,
++                                         int64_t now_ms)
++{
++    auto &observation = observations[source];
++    auto bss          = database.get_bss(tlvf::mac_from_string(target));
++    if (!bss || !transmit.create(++steering_mid,
++                                 ieee1905_1::eMessageType::BACKHAUL_STEERING_REQUEST_MESSAGE)) {
++        return false;
++    }
++    auto steering = transmit.addClass<wfa_map::tlvBackhaulSteeringRequest>();
++    if (!steering) {
++        return false;
++    }
++    steering->backhaul_station_mac() = tlvf::mac_from_string(observation.station);
++    steering->target_bssid()         = tlvf::mac_from_string(target);
++    steering->target_channel_number() =
++        database.get_radio_wifi_channel(bss->radio.radio_uid).get_channel();
++    steering->operating_class() = bss->radio.operating_class;
++    if (!son_actions::send_cmdu_to_agent(tlvf::mac_from_string(source), transmit, database)) {
++        return false;
++    }
++    if (moving_agent.empty()) {
++        moving_original              = observation.parent_bssid;
++        moving_completion_generation = observation.completed_steering_generation;
++        moving_first_ms              = now_ms;
++        reservation                  = BackhaulRoamingReservation{};
++    }
++    moving_agent          = source;
++    moving_station        = observation.station;
++    moving_radio          = observation.radio;
++    moving_target         = target;
++    moving_started_ms     = now_ms;
++    moving_topology_ms    = now_ms;
++    moving_timeout_logged = false;
++    reservation.sent(now_ms);
++    steering_acknowledged = false;
++    LOG(INFO) << "native_backhaul_roaming request agent=" << source << " station=" << moving_station
++              << " old=" << observation.parent_bssid << " target=" << moving_target
++              << " old_rssi=" << observation.rssi << " attempt=" << reservation.attempts
++              << " mid=" << steering_mid;
++    return true;
++}
++
++bool BackhaulRoamingTask::handle_ieee1905_1_msg(const sMacAddr &source,
++                                                ieee1905_1::CmduMessageRx &message)
++{
++    if (message.getMessageType() != ieee1905_1::eMessageType::BACKHAUL_STEERING_RESPONSE_MESSAGE ||
++        tlvf::mac_to_string(source) != moving_agent || message.getMessageId() != steering_mid) {
++        return false;
++    }
++    auto response = message.getClass<wfa_map::tlvBackhaulSteeringResponse>();
++    if (!response || tlvf::mac_to_string(response->target_bssid()) != moving_target ||
++        tlvf::mac_to_string(response->backhaul_station_mac()) != moving_station) {
++        return false;
++    }
++    if (response->result_code() != wfa_map::tlvBackhaulSteeringResponse::eResultCode::SUCCESS) {
++        LOG(WARNING) << "native_backhaul_roaming response rejected agent=" << moving_agent
++                     << "; retaining reservation for late native completion";
++    } else {
++        steering_acknowledged                    = true;
++        observations[moving_agent].next_query_ms = 0;
++        son_actions::send_topology_query_msg(source, transmit, database);
++    }
++    return true;
++}
++
++void BackhaulRoamingTask::complete(bool success, int64_t now_ms)
++{
++    LOG(INFO) << "native_backhaul_roaming complete agent=" << moving_agent
++              << " target=" << moving_target << " verified=" << success
++              << " elapsed_ms=" << now_ms - moving_first_ms
++              << " response_seen=" << steering_acknowledged;
++    policy.completed(moving_agent, moving_target, success, now_ms);
++    moving_agent.clear();
++    moving_station.clear();
++    moving_target.clear();
++    steering_acknowledged = false;
++}
++
++}
+--- a/controller/src/beerocks/master/tasks/backhaul_roaming_task.h
++++ b/controller/src/beerocks/master/tasks/backhaul_roaming_task.h
+@@ -0,0 +1,60 @@
++#ifndef BACKHAUL_ROAMING_TASK_H
++#define BACKHAUL_ROAMING_TASK_H
++
++#include "../db/db.h"
++#include "backhaul_roaming_policy.h"
++#include "task.h"
++
++namespace son {
++
++class BackhaulRoamingTask : public task {
++public:
++    BackhaulRoamingTask(db &database, ieee1905_1::CmduMessageTx &transmit);
++    bool handle_ieee1905_1_msg(const sMacAddr &source, ieee1905_1::CmduMessageRx &message) override;
++
++private:
++    void work() override;
++    void handle_response(std::string source,
++                         std::shared_ptr<beerocks::beerocks_header> header) override;
++    BackhaulRoamingPolicy::Nodes topology(int64_t now_ms);
++    void complete(bool success, int64_t now_ms);
++    bool issue_steering(const std::string &source, const std::string &target, int64_t now_ms);
++
++    struct Observation {
++        uint32_t sequence     = 0;
++        int64_t requested_ms  = -1;
++        int64_t next_query_ms = 0;
++        int64_t observed_ms   = -1;
++        std::string radio;
++        std::string station;
++        std::string parent_bssid;
++        uint16_t completed_steering_mid        = 0;
++        uint32_t completed_steering_generation = 0;
++        std::string completed_steering_target;
++        int rssi = -128;
++        std::vector<BackhaulRoamingCandidate> candidates;
++    };
++
++    db &database;
++    ieee1905_1::CmduMessageTx &transmit;
++    std::map<std::string, Observation> observations;
++    BackhaulRoamingPolicy policy;
++    uint32_t sequence     = 0;
++    uint16_t steering_mid = 32768;
++    std::string moving_agent;
++    std::string moving_station;
++    std::string moving_radio;
++    std::string moving_target;
++    std::string moving_original;
++    uint32_t moving_completion_generation = 0;
++    int64_t moving_started_ms             = 0;
++    int64_t moving_first_ms               = 0;
++    int64_t moving_topology_ms            = 0;
++    BackhaulRoamingReservation reservation;
++    bool moving_timeout_logged = false;
++    bool steering_acknowledged = false;
++};
++
++}
++
++#endif
+--- a/controller/src/beerocks/master/tasks/backhaul_roaming_policy.h
++++ b/controller/src/beerocks/master/tasks/backhaul_roaming_policy.h
+@@ -0,0 +1,190 @@
++#ifndef BACKHAUL_ROAMING_POLICY_H
++#define BACKHAUL_ROAMING_POLICY_H
++
++#include <algorithm>
++#include <cstdint>
++#include <map>
++#include <set>
++#include <string>
++#include <vector>
++
++namespace son {
++
++struct BackhaulRoamingNode {
++    std::string parent;
++    bool gateway        = false;
++    bool connected      = false;
++    int rssi            = -128;
++    int64_t observed_ms = -1;
++};
++
++struct BackhaulRoamingCandidate {
++    std::string bssid;
++    std::string parent;
++    int rssi    = -128;
++    int channel = 0;
++};
++
++struct BackhaulRoamingReservation {
++    int attempts         = 0;
++    int64_t requested_ms = 0;
++
++    static bool settled(const std::string &target, const std::string &actual,
++                        uint16_t requested_mid, uint16_t completed_mid,
++                        const std::string &completed_target, uint32_t previous_generation,
++                        uint32_t completed_generation)
++    {
++        return actual == target || (requested_mid == completed_mid && completed_target == target &&
++                                    previous_generation != completed_generation);
++    }
++
++    void sent(int64_t now_ms)
++    {
++        requested_ms = now_ms;
++        ++attempts;
++    }
++
++    bool timed_out(int64_t now_ms) const { return attempts > 0 && now_ms - requested_ms >= 15000; }
++
++    bool retry_due(int64_t now_ms) const
++    {
++        return attempts > 0 && attempts < 3 && now_ms - requested_ms >= 35000;
++    }
++};
++
++class BackhaulRoamingPolicy {
++public:
++    using Nodes = std::map<std::string, BackhaulRoamingNode>;
++
++    static bool path(const Nodes &nodes, const std::string &start, const std::string &excluded,
++                     int64_t now_ms, int &bottleneck, int &hops)
++    {
++        std::set<std::string> visited;
++        auto current = start;
++        bottleneck   = 0;
++        hops         = 0;
++        while (!current.empty() && visited.size() < 32) {
++            if (current == excluded || !visited.insert(current).second) {
++                return false;
++            }
++            auto found = nodes.find(current);
++            if (found == nodes.end() || !found->second.connected) {
++                return false;
++            }
++            const auto &node = found->second;
++            if (node.gateway) {
++                return true;
++            }
++            if (node.observed_ms < 0 || now_ms < node.observed_ms ||
++                now_ms - node.observed_ms > 15000 || node.rssi < -127 || node.rssi >= 0) {
++                return false;
++            }
++            bottleneck = std::min(bottleneck, node.rssi);
++            ++hops;
++            current = node.parent;
++        }
++        return false;
++    }
++
++    static BackhaulRoamingCandidate select(const Nodes &nodes, const std::string &agent,
++                                           const std::vector<BackhaulRoamingCandidate> &candidates,
++                                           int64_t now_ms)
++    {
++        BackhaulRoamingCandidate selected;
++        auto current       = nodes.find(agent);
++        int old_bottleneck = 0;
++        int old_hops       = 0;
++        if (current == nodes.end() || !path(nodes, agent, "", now_ms, old_bottleneck, old_hops)) {
++            return selected;
++        }
++        int best_bottleneck = -128;
++        for (const auto &candidate : candidates) {
++            if (candidate.parent == current->second.parent || candidate.rssi < -80 ||
++                candidate.rssi >= 0 || candidate.rssi - current->second.rssi < 6) {
++                continue;
++            }
++            int parent_bottleneck = 0;
++            int parent_hops       = 0;
++            if (!path(nodes, candidate.parent, agent, now_ms, parent_bottleneck, parent_hops)) {
++                continue;
++            }
++            const int new_bottleneck = std::min(candidate.rssi, parent_bottleneck);
++            if (new_bottleneck < old_bottleneck ||
++                (parent_hops + 1 > old_hops && new_bottleneck <= old_bottleneck)) {
++                continue;
++            }
++            if (selected.bssid.empty() || new_bottleneck > best_bottleneck ||
++                (new_bottleneck == best_bottleneck && candidate.rssi > selected.rssi) ||
++                (new_bottleneck == best_bottleneck && candidate.rssi == selected.rssi &&
++                 candidate.bssid < selected.bssid)) {
++                selected        = candidate;
++                best_bottleneck = new_bottleneck;
++            }
++        }
++        return selected;
++    }
++
++    bool observe(const std::string &agent, const std::string &current_bssid,
++                 const std::string &candidate, int64_t now_ms)
++    {
++        auto &state = states[agent];
++        if (state.current != current_bssid) {
++            state                = State{};
++            state.current        = current_bssid;
++            state.retry_after_ms = now_ms + 10000;
++        }
++        if (candidate.empty()) {
++            state.candidate.clear();
++            state.samples = 0;
++            return false;
++        }
++        if (candidate != state.candidate || now_ms - state.last_ms > 12000) {
++            state.candidate = candidate;
++            state.since_ms  = now_ms;
++            state.samples   = 0;
++        }
++        state.last_ms = now_ms;
++        ++state.samples;
++        return state.samples >= 2 && now_ms - state.since_ms >= 4000 &&
++               now_ms >= state.retry_after_ms &&
++               (state.failed_candidate != candidate || state.failures < 3);
++    }
++
++    void completed(const std::string &agent, const std::string &target, bool success,
++                   int64_t now_ms)
++    {
++        auto &state = states[agent];
++        if (success) {
++            state.current  = target;
++            state.failures = 0;
++            state.failed_candidate.clear();
++            state.retry_after_ms = now_ms + 20000;
++        } else {
++            if (state.failed_candidate != target) {
++                state.failures = 0;
++            }
++            state.failed_candidate = target;
++            ++state.failures;
++            state.retry_after_ms = now_ms + std::min(60000, 20000 * state.failures);
++        }
++        state.candidate.clear();
++        state.samples = 0;
++    }
++
++private:
++    struct State {
++        std::string current;
++        std::string candidate;
++        std::string failed_candidate;
++        int64_t since_ms       = 0;
++        int64_t last_ms        = 0;
++        int64_t retry_after_ms = 0;
++        int samples            = 0;
++        int failures           = 0;
++    };
++    std::map<std::string, State> states;
++};
++
++}
++
++#endif
