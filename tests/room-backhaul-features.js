@@ -100,6 +100,15 @@ async function run(options) {
   }
 
   async function native() {
+    if (flavor === 'prpl') {
+      const result = await execute('ssh', [options.host, 'lxc exec ' + options.vm +
+        ' -- python3 /tmp/backhaul-native-probe.py'], {timeout: 25000, maxBuffer: 1048576});
+      const nodes = Object.fromEntries(Object.entries(JSON.parse(result.stdout)).map(([role, value]) =>
+        [role, {...value, ...interfaceState(value.raw)}]));
+      const owners = Object.fromEntries(Object.entries(nodes).map(([role, value]) => [value.apBssid, role]));
+      return {nodes, parents: Object.fromEntries(Object.entries(nodes).filter(([role]) => role !== 'gateway')
+        .map(([role, value]) => [role, owners[value.parentBssid] || null]))};
+    }
     const readings = await Promise.all(Object.entries(containers).map(async ([role, container]) => {
       const script = 'iw dev wifi1.1 info; iw dev wifi1.3 link 2>/dev/null; ping -I brlan0 -q -c 1 -W 1 10.0.0.1 >/dev/null 2>&1; printf "\\nPROBE_EXIT=%s\\n" "$?"; printf "FRONTHAUL_APS=%s\\n" "$(iw dev | grep -Ec \"ssid (private_ssid|iot_ssid)$\")"';
       try {

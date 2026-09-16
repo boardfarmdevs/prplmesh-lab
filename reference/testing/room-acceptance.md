@@ -23,6 +23,14 @@ all-online checkpoint is not applicable. Require actual native branches,
 parent handover, isolation, initial/return kernel client ownership, unchanged
 native process identities, ten-client return and default twenty restoration.
 Each script half allows 35 s and each native convergence/recovery gate 60 s.
+Copy `tests/room-feature-guest-audit.py` and `tests/backhaul-native-probe.py`
+to `/tmp/` inside the lab VM before running the geometry harness. prpl's
+extender bridges are deliberately Layer-2-only: connectivity is checked by
+an ARP request/reply over each actual wireless backhaul, not by an ICMP ping
+with an unrelated management address. The probe records its transport and
+validates the replying gateway IP and receiving bridge MAC. It neither assigns
+addresses nor selects parents. Client-room traffic checks still use real IP
+traffic from the associated clients.
 Hardware observers may select `--renderer vulkan`; both views are fullscreen.
 Aggregate the disjoint 22+3 reports, verifying all 25 catalog IDs exactly once.
 
