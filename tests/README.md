@@ -14,7 +14,7 @@ node tests/viewer-room-convergence-browser-test.js
 node tests/viewer-steering-resume-browser-test.js
 node tests/pane-divider-browser-test.js
 PYTHONPATH=demo:wmediumd/configurator:optimizer:demo/tests python3 -m unittest test_room_layout test_server test_world_switch
-(cd controller-ui && go test -race ./...)
+(cd controller-ui && bash prepare-web-assets.sh && go test -race ./...)
 ```
 
 Steering protection tests `test_steering_safety.py` and
