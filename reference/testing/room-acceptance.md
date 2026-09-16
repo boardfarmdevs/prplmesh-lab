@@ -38,6 +38,14 @@ The existing native reconnect grace period is unchanged. Parser regressions
 cover malformed rows, bounds, SSIDs and the no-exceptions native build.
 Live recovery qualification remains a release gate, not implied by compilation.
 
+Received band scans now bracket the native dump with identity checks in the
+same namespace worker, avoiding three redundant LXD exec round trips per scan.
+The dump uses the client's own iw binary/mount namespace, preserving timestamp
+format and receiver identity. Existing two-second freshness, world/association
+guards, passive scan correlation and steering exclusion remain unchanged.
+Compare scan duration and publication age in the retained telemetry; a passing
+source regression does not substitute for the live band-room retry.
+
 Capture the two browser pages sequentially, bringing each to the foreground,
 then return focus to the room before controls/playback. Concurrent background
 captures stalled the headless software renderer. Preserve those observer errors

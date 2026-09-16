@@ -128,7 +128,9 @@ def scanner(raw=None, after=None, clock_step=0):
     wall = iter([STAMP, STAMP + timedelta(seconds=0.1 + clock_step)])
     native = NativeBandScanner(command, boottime=lambda: next(boot), clock=lambda: next(wall))
     native._scan = Mock(return_value=(raw if raw is not None else block() + block(TARGET, "5180"),
-                                     {"started_boottime": 100, "completed_boottime": 100.1, "scan_id": 1}))
+                                     {"started_boottime": 100, "completed_boottime": 100.1, "scan_id": 1,
+                                      "before": dict(line.split("=", 1) for line in status.splitlines()),
+                                      "after": dict(line.split("=", 1) for line in (after if after is not None else status).splitlines())}))
     return native, commands
 
 
@@ -143,8 +145,20 @@ def test_native_scan_uses_received_timestamps_and_keeps_owner():
     assert result["source"] == "client_nl80211_received_scan"
     assert result["samples"][TARGET]["observed_at"] == "2026-09-13T00:00:00.050Z"
     assert result["elapsed_ms"] == 100
-    assert len(commands) == 2
+    assert not commands
     native._scan.assert_called_once_with("prpl-client-01", STATION, CURRENT, "private_ssid", [2437, 5180])
+
+
+def test_native_scan_batches_status_and_dump_in_one_namespace_worker():
+    import json
+    command = Mock(side_effect=[json.dumps({"pid": 1234}),
+                                json.dumps({"raw_scan": "BSS dump", "scan_id": 7})])
+    native = NativeBandScanner(command)
+    raw, metadata = native._scan("prpl-client-01", STATION, CURRENT, "private_ssid", [2437, 5180])
+    assert raw == "BSS dump" and metadata == {"scan_id": 7}
+    assert command.call_count == 2
+    assert command.call_args_list[0].args == ("lxc", "query", "/1.0/instances/prpl-client-01/state")
+    assert command.call_args_list[1].args[:5] == ("nsenter", "--target", "1234", "--net", "--")
 
 
 @pytest.mark.parametrize("options", [{"after": "wpa_state=DISCONNECTED"}, {"raw": block(TARGET, "5180")},
