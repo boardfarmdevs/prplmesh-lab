@@ -80,6 +80,7 @@ class PrplMeshObserver:
         *,
         fetcher=None,
         candidate_provider=None,
+        ownership_observer=None,
         current_link_fallback=None,
         trust_api_metric_timestamp: bool = True,
         max_current_metric_age_seconds=None,
@@ -91,6 +92,7 @@ class PrplMeshObserver:
         self.base_url = base_url.rstrip("/")
         self.fetcher = fetcher or _fetch
         self.candidate_provider = candidate_provider
+        self.ownership_observer = ownership_observer
         self.current_link_fallback = current_link_fallback
         self.trust_api_metric_timestamp = trust_api_metric_timestamp
         self.max_current_metric_age_seconds = max_current_metric_age_seconds
@@ -186,6 +188,9 @@ class PrplMeshObserver:
                     ),
                 )
             )
+        self.last_raw = {"sample_started_at": sampled_at, "topology": topology}
+        if self.ownership_observer is not None:
+            self.ownership_observer(sorted_clients(clients), self.last_raw)
         normalized_clients = self._refresh_current(clients) if refresh_current else sorted_clients(clients)
         candidates: list[CandidateObservation] = []
         for client in normalized_clients:
@@ -223,11 +228,7 @@ class PrplMeshObserver:
             provider_raw = getattr(self.candidate_provider, "last_raw", None)
 
         observed_at = format_time(self.clock())
-        self.last_raw = {
-            "sample_started_at": sampled_at,
-            "sampled_at": observed_at,
-            "topology": topology,
-        }
+        self.last_raw["sampled_at"] = observed_at
         if provider_raw is not None:
             self.last_raw["candidate_transactions"] = provider_raw
         snapshot = Snapshot(

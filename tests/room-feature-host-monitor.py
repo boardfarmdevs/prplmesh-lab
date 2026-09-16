@@ -107,6 +107,9 @@ def main(argv=None):
             "per_cpu_busy_percent": {name: cpu_busy(values, previous.get(name))
                                      for name, values in counters.items() if name != "cpu"},
             "cpu_frequency_khz": frequencies,
+            "intel_pstate_no_turbo": read("/sys/devices/system/cpu/intel_pstate/no_turbo"),
+            "rapl_power_limits_uw": {path: read(path) for path in glob.glob(
+                "/sys/class/powercap/intel-rapl:*/constraint_*_power_limit_uw")},
             "available_memory_kib": int(memory["MemAvailable"].split()[0]),
             "temperatures_celsius": temperatures,
             "package_throttle_count": read("/sys/devices/system/cpu/cpu0/thermal_throttle/package_throttle_count"),

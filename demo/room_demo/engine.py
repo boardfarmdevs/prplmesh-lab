@@ -278,6 +278,9 @@ class RoomEngine:
             return copy.deepcopy(self._final_documents)
         return self._call("recorded_documents")
 
+    def stop_traffic(self) -> None:
+        self._session.stop_traffic()
+
     def close(self) -> bool:
         with self._close_lock:
             return self._close()

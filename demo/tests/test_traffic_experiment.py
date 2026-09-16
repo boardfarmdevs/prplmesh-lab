@@ -1,11 +1,18 @@
 import copy
+import json
+import signal
+import subprocess
+import time
+from contextlib import contextmanager, nullcontext
+from io import StringIO
 from threading import Event, RLock
 from types import SimpleNamespace
 from unittest.mock import Mock, patch
 
 import pytest
 
-from room_demo.traffic_experiment import TrafficCancelled, TrafficExperiment, namespace_ping, packet_counts, phase_at
+from room_demo.traffic_experiment import (TrafficCancelled, TrafficExperiment, UDP_PORT, namespace_ping,
+                                          namespace_udp, packet_counts, phase_at, udp_endpoint_record)
 from wmdcfg.traffic_profile import validate_traffic
 
 
@@ -14,6 +21,329 @@ PHASE = {"role": "client", "start_ms": 5000, "end_ms": 10000,
 WORLD = {"roles": {"client": "station"}, "generations": [{"present": {"client": True}}],
          "duration_ms": 30000,
          "traffic_experiment": {"schema": "easymesh.room-traffic.v1", "phases": [PHASE]}}
+UDP_PHASE = {"role": "client", "start_ms": 5000, "end_ms": 10000,
+             "mode": "udp", "offered_mbps": 8, "payload_bytes": 1200}
+
+
+def udp_output(sender, *, legacy=False):
+    summary = {"sender": sender, "bytes": 12000 if sender else 9600, "packets": 10,
+               "seconds": 2, "bits_per_second": 48000 if sender else 38400}
+    if not sender:
+        summary.update(lost_packets=2, lost_percent=20)
+    return {"start": {"test_start": {"protocol": "UDP", "num_streams": 1, "reverse": 0}},
+            "intervals": [{"sum": {**summary, "start": 0, "end": 2, "omitted": False}}],
+            "end": ({"sum": {**summary, "bytes": 999999, "bits_per_second": 999999}}
+                    if legacy else {"sum_sent" if sender else "sum_received": summary})}
+
+
+@pytest.mark.parametrize("legacy", [True, False])
+def test_udp_uses_each_endpoint_measurements_in_39_and_312_formats(legacy):
+    sender = udp_endpoint_record(json.dumps(udp_output(True, legacy=legacy)), True)
+    receiver = udp_endpoint_record(json.dumps(udp_output(False, legacy=legacy)), False)
+    assert sender["status"] == receiver["status"] == "complete"
+    assert sender["bits_per_second"] == 48000
+    assert receiver["goodput_bits_per_second"] == 38400
+    assert receiver["lost_packets"] == 2 and receiver["loss_percent"] == 20
+    assert receiver["bytes"] == 9600
+    assert sender["source"] != receiver["source"]
+
+
+@pytest.mark.parametrize("change", [
+    {"bits_per_second": None}, {"bits_per_second": float("nan")}, {"bytes": True},
+    {"seconds": 0}, {"packets": -1}, {"sender": True}, {"lost_packets": 11},
+    {"lost_percent": 110}, {"lost_percent": 0},
+    {"bits_per_second": 8000000},
+])
+def test_udp_invalid_receiver_records_never_become_zero_or_offered_goodput(change):
+    output = udp_output(False)
+    output["end"]["sum_received"].update(change)
+    record = udp_endpoint_record(json.dumps(output), False)
+    assert record["status"] == "invalid"
+    assert record["goodput_bits_per_second"] is None and record["loss_percent"] is None
+
+
+def test_udp_missing_truncated_partial_and_zero_loss_records_are_explicit():
+    assert udp_endpoint_record("", False)["status"] == "missing"
+    assert udp_endpoint_record('{"end":', False)["status"] == "invalid"
+    output = udp_output(False)
+    output["error"] = "interrupted"
+    assert udp_endpoint_record(json.dumps(output), False)["status"] == "partial"
+    output.pop("error")
+    output["end"]["sum_received"].update(lost_packets=0, lost_percent=0, bytes=0, bits_per_second=0)
+    record = udp_endpoint_record(json.dumps(output), False)
+    assert record["status"] == "complete" and record["loss_percent"] == record["goodput_bits_per_second"] == 0
+    output["start"]["test_start"]["protocol"] = "TCP"
+    assert udp_endpoint_record(json.dumps(output), False)["status"] == "invalid"
+
+
+@pytest.fixture
+def udp_runtime(monkeypatch):
+    from room_demo import traffic_experiment as module
+    state = SimpleNamespace(calls=[], processes=[], rules=[], closed=[], clock=100.0, legacy=False,
+                            route="wlan0", source="192.168.77.2", target="192.168.77.1", bridge="br-lan",
+                            addresses=None, fail=None, registered=[], launched=[], report=None)
+    monkeypatch.setattr(module, "os", SimpleNamespace(**vars(module.os)))
+    monkeypatch.setattr(module, "time", SimpleNamespace(**vars(module.time)))
+    monkeypatch.setattr(module, "tempfile", SimpleNamespace(TemporaryFile=lambda **_kwargs: StringIO()))
+    monkeypatch.setattr(module.time, "monotonic", lambda: state.clock)
+    monkeypatch.setattr(module.time, "sleep", lambda seconds: setattr(state, "clock", state.clock + seconds))
+    monkeypatch.setattr(module.os, "stat", lambda _path: SimpleNamespace(st_ino=1))
+    monkeypatch.setattr(module.os, "fstat", lambda descriptor: SimpleNamespace(st_ino=descriptor))
+    monkeypatch.setattr(module.os, "open", lambda path, *_args: 9 if "/42/" in path else 10 if "/43/" in path else 11)
+    monkeypatch.setattr(module.os, "close", state.closed.append)
+    monkeypatch.setattr(module.fcntl, "flock", Mock())
+
+    def execute(arguments, **options):
+        state.calls.append((arguments, options))
+        if state.fail:
+            state.fail(arguments)
+        descriptor = None
+        if arguments[0] == "nsenter":
+            descriptor = int(arguments[1].rsplit("/", 1)[1])
+            assert options["pass_fds"] == (descriptor,)
+            arguments = arguments[3:]
+        output, returncode = "", 0
+        if arguments[0] == "lxc":
+            output = json.dumps({"status": "Running", "pid": 43 if "controller" in arguments[-1]
+                                 or "bpibroadband" in arguments[-1] else 42})
+        elif arguments[0] == "ip" and "address" in arguments:
+            output = json.dumps(state.addresses if state.addresses is not None and descriptor == 9 else
+                                [{"ifname": "wlan0" if descriptor == 9 else state.bridge,
+                                  "addr_info": [{"family": "inet", "scope": "global",
+                                                 "local": state.source if descriptor == 9 else state.target}]}])
+        elif arguments[0] == "ip":
+            output = json.dumps([{"dev": state.route}])
+        elif arguments[0] == "iperf3":
+            output = "iperf3 3.9" if state.legacy else "iperf3 3.12 --bind-dev"
+        elif arguments[0] == "ss" and "-lntp" in arguments:
+            output = f'LISTEN 0 1 {state.target}:{UDP_PORT} *:* users:(("iperf3",pid={state.processes[0].pid},fd=3))'
+        elif arguments[0] == "iptables-legacy":
+            operation = arguments[3]
+            rule = (descriptor, *arguments[4:])
+            if operation == "-I":
+                state.rules.append(rule)
+            elif operation == "-D":
+                state.rules.remove(rule)
+            elif operation == "-C":
+                returncode = 0 if rule in state.rules else 1
+            else:
+                pytest.fail("unexpected firewall operation")
+        return SimpleNamespace(stdout=output, stderr="", returncode=returncode)
+
+    def launch(arguments, **options):
+        state.launched.append(arguments)
+        if state.fail:
+            state.fail(arguments)
+        process = Mock(pid=100 + len(state.processes), returncode=None)
+        process.poll.side_effect = lambda: process.returncode
+        process.wait.side_effect = lambda **_kwargs: setattr(process, "returncode", 130 if process.returncode is None else process.returncode)
+        options["stdout"].write(json.dumps(udp_output("-c" in arguments, legacy=state.legacy)))
+        options["stdout"].flush()
+        state.processes.append(process)
+        if len(state.processes) == 2:
+            for child in state.processes:
+                child.returncode = 0
+        assert options["pass_fds"] == ((9,) if "-c" in arguments else (10,))
+        assert options["start_new_session"] is True
+        return process
+
+    def signal_process(process_pid, _signum):
+        next(process for process in state.processes if process.pid == process_pid).returncode = 130
+
+    monkeypatch.setattr(module.subprocess, "run", execute)
+    monkeypatch.setattr(module.subprocess, "Popen", launch)
+    monkeypatch.setattr(module.os, "killpg", signal_process)
+    return state
+
+
+def run_udp(state, *, admit=nullcontext, running=None):
+    return namespace_udp("wlan-client" if state.bridge == "brlan0" else "prpl-client-01", state.target,
+                         UDP_PHASE, 5000, admit=admit, register=state.registered.append,
+                         running=running or (lambda value: setattr(state, "report", copy.deepcopy(value))))
+
+
+@pytest.mark.parametrize("legacy", [False, True])
+@pytest.mark.parametrize("rdk", [False, True])
+def test_udp_pins_both_namespaces_bounds_processes_and_cleans_only_owned_rules(udp_runtime, legacy, rdk):
+    state = udp_runtime
+    state.legacy = legacy
+    if rdk:
+        state.bridge, state.source, state.target = "brlan0", "10.0.0.2", "10.0.0.1"
+    result = run_udp(state)
+    assert result["state"] == "completed"
+    assert result["sender"]["bits_per_second"] == 48000
+    assert result["receiver"]["goodput_bits_per_second"] == 38400
+    assert state.report["receiver"]["status"] == "missing"
+    assert len(state.processes) == len(state.registered) == 2
+    sender = state.launched[1]
+    assert sender[sender.index("-b") + 1] == "8000000"
+    assert sender[sender.index("-B") + 1] == state.source
+    assert sender[sender.index("-c") + 1] == state.target
+    assert 1 <= int(sender[sender.index("-t") + 1]) <= 4
+    assert sender[sender.index("-P") + 1] == "1"
+    assert "--bind-dev" in sender if not legacy else "--bind-dev" not in sender
+    insertions = [arguments for arguments, _options in state.calls if "-I" in arguments]
+    deletions = [arguments for arguments, _options in state.calls if "-D" in arguments]
+    assert len(insertions) == len(deletions) == 2 * (legacy + rdk)
+    assert not state.rules and sorted(state.closed) == [9, 10, 11]
+    for arguments in insertions:
+        assert arguments[arguments.index("-s") + 1] == state.source + "/32"
+        assert arguments[arguments.index("-d") + 1] == state.target + "/32"
+        assert arguments[arguments.index("--dport") + 1] == str(UDP_PORT)
+        assert "--comment" in arguments
+        if "OUTPUT" in arguments:
+            assert arguments[-5:] == ["!", "-o", "wlan0", "-j", "REJECT"]
+        else:
+            assert arguments[-4:] == ["-i", "brlan0", "-j", "ACCEPT"]
+
+
+@pytest.mark.parametrize("route", ["lo", "eth0", "eth1"])
+def test_udp_rejects_management_and_loopback_routes_before_any_mutation(udp_runtime, route):
+    udp_runtime.route = route
+    result = run_udp(udp_runtime)
+    assert result["state"] == "failed" and "bypass" in result["error"]
+    assert not udp_runtime.launched and not udp_runtime.rules
+
+
+def test_udp_refuses_private_address_on_gateway_management_interface(udp_runtime):
+    udp_runtime.bridge = "eth0"
+    result = run_udp(udp_runtime)
+    assert result["state"] == "failed" and "LAN bridge" in result["error"]
+    assert not udp_runtime.launched
+
+
+def test_udp_refuses_client_local_gateway_target(udp_runtime):
+    udp_runtime.source = udp_runtime.target
+    result = run_udp(udp_runtime)
+    assert result["state"] == "failed" and "nonlocal" in result["error"]
+    assert not udp_runtime.launched
+
+
+@pytest.mark.parametrize("failure", ["second-rule", "sender-launch", "cancel-after-server"])
+def test_udp_partial_setup_failure_reaps_and_removes_scoped_allowances(udp_runtime, failure):
+    state = udp_runtime
+    state.bridge, state.source, state.target = "brlan0", "10.0.0.2", "10.0.0.1"
+    def fail(arguments):
+        if failure == "second-rule" and "-I" in arguments and "udp" in arguments:
+            raise subprocess.CalledProcessError(1, arguments)
+        if failure == "sender-launch" and "-c" in arguments:
+            raise OSError("cannot launch client")
+        if failure == "cancel-after-server" and "-lntp" in arguments:
+            raise TrafficCancelled("playback generation revoked")
+    state.fail = fail
+    result = run_udp(state)
+    assert result["state"] == ("cancelled" if failure.startswith("cancel") else "failed")
+    assert result["receiver"]["status"] == ("missing" if failure == "second-rule" else "partial")
+    if failure != "second-rule":
+        assert result["receiver"]["goodput_bits_per_second"] == 38400
+    assert not state.rules and sorted(state.closed) == [9, 10, 11]
+    assert all(process.returncode is not None for process in state.processes)
+
+
+def test_udp_revoked_admission_starts_no_commands(udp_runtime):
+    def admit():
+        raise TrafficCancelled("revoked")
+    assert run_udp(udp_runtime, admit=admit)["state"] == "cancelled"
+    assert not udp_runtime.calls and not udp_runtime.launched
+
+
+@pytest.mark.parametrize("inserted", [False, True])
+def test_udp_cancellation_around_rule_insertion_has_no_false_cleanup_failure(udp_runtime, inserted):
+    state = udp_runtime
+    state.bridge, state.source, state.target = "brlan0", "10.0.0.2", "10.0.0.1"
+    revoked = False
+    @contextmanager
+    def admit():
+        if revoked:
+            raise TrafficCancelled("revoked")
+        yield
+    def fail(arguments):
+        nonlocal revoked
+        if "-I" in arguments:
+            revoked = True
+            if not inserted:
+                raise TrafficCancelled("revoked before insertion")
+    state.fail = fail
+    result = run_udp(state, admit=admit)
+    assert result["state"] == "cancelled" and "cleanup_errors" not in result
+    assert not state.rules and not state.launched
+    assert sum("-D" in arguments for arguments, _options in state.calls) == int(inserted)
+
+
+def test_udp_failed_rule_cleanup_is_explicit_and_disables_later_udp_runs(udp_runtime):
+    state = udp_runtime
+    state.bridge, state.source, state.target = "brlan0", "10.0.0.2", "10.0.0.1"
+    def fail(arguments):
+        if "-D" in arguments:
+            raise subprocess.CalledProcessError(1, arguments)
+    state.fail = fail
+    result = run_udp(state)
+    assert result["state"] == "failed" and len(result["cleanup_errors"]) == 2
+    runner = Mock(return_value=result)
+    actor = TrafficExperiment(state.target, Mock(), udp_runner=runner)
+    job = {"key": ("room", 0, 0), "phase": UDP_PHASE, "container": "wlan-client", "deadline": state.clock + 5}
+    actor._udp_job(job, 0)
+    actor._udp_job(job, 0)
+    assert runner.call_count == 1
+    assert "operator cleanup required" in actor.snapshot()["error"]
+    actor.close()
+
+
+def test_udp_missing_binary_never_launches_traffic_or_firewall_rules(udp_runtime):
+    def fail(arguments):
+        if arguments[0] == "iperf3":
+            raise FileNotFoundError("iperf3")
+    udp_runtime.fail = fail
+    result = run_udp(udp_runtime)
+    assert result["state"] == "failed" and result["receiver"]["status"] == "missing"
+    assert not udp_runtime.launched and not udp_runtime.rules
+
+
+def test_udp_unowned_dedicated_port_is_never_reused_or_killed(udp_runtime, monkeypatch):
+    from room_demo import traffic_experiment as module
+    execute = module.subprocess.run
+    def command(arguments, **options):
+        if "-lntup" in arguments:
+            return SimpleNamespace(stdout="an unowned listener", stderr="", returncode=0)
+        return execute(arguments, **options)
+    monkeypatch.setattr(module.subprocess, "run", command)
+    result = run_udp(udp_runtime)
+    assert result["state"] == "failed" and "already occupied" in result["error"]
+    assert not udp_runtime.launched and not udp_runtime.rules
+
+
+def test_udp_cancelled_generation_has_explicit_endpoint_records_and_one_lazy_worker():
+    running, release, cancelled = Event(), Event(), Event()
+    calls = []
+    def runner(container, target, phase, remaining_ms, *, admit, register, running):
+        with admit():
+            calls.append(container)
+        running({})
+        assert release.wait(2)
+        with admit():
+            pytest.fail("cancelled generation admitted")
+    def publish(value):
+        if value["state"] == "running":
+            running.set()
+        if value["state"] == "cancelled":
+            cancelled.set()
+    actor = TrafficExperiment("192.168.77.1", publish, udp_runner=runner)
+    try:
+        assert actor._thread is None
+        actor.sync(("room", 1, 0), UDP_PHASE, "prpl-client-01", 5000)
+        assert running.wait(2)
+        worker = actor._thread
+        actor.sync(("room", 1, 0), UDP_PHASE, "prpl-client-01", 4000)
+        actor.sync(None)
+        release.set()
+        assert cancelled.wait(2)
+        result = actor.snapshot()["history"][-1]
+        assert result["state"] == "cancelled" and result["requested_offered_mbps"] == 8
+        assert result["sender"]["status"] == result["receiver"]["status"] == "missing"
+        assert len(calls) == 1 and actor._thread is worker
+    finally:
+        release.set()
+        actor.close()
 
 
 def test_ordinary_worlds_have_no_traffic_and_no_worker():
@@ -172,8 +502,73 @@ def test_traffic_cleanup_failure_cannot_skip_rf_restoration():
     session = SimpleNamespace(_lock=RLock(), _closing=False, _pause_playback=Mock(), _movements={},
                               _recording=None, _movement_threads={}, _playback_thread=None, _restored=False,
                               _traffic_experiment=actor, _client=client, restore=Mock(return_value=True))
+    session.stop_traffic = lambda: InteractiveMediumSession.stop_traffic(session)
     with pytest.raises(RuntimeError, match="failed to stop"):
         InteractiveMediumSession.close(session)
     session.restore.assert_called_once()
     client.close.assert_called_once()
     assert session._client is None
+
+
+def test_udp_shutdown_does_not_hide_cleanup_failure_as_cancellation():
+    actor = TrafficExperiment("192.168.77.1", Mock(), udp_runner=Mock(return_value={
+        "state": "failed", "cleanup_errors": ["owned firewall rule remains"]}))
+    actor._closed = True
+    actor._udp_job({"key": ("room", 1, 0), "phase": UDP_PHASE, "container": "prpl-client-01",
+                    "deadline": time.monotonic() + 10}, 0)
+    assert actor.snapshot()["state"] == "failed"
+    assert actor.snapshot()["cleanup_errors"] == ["owned firewall rule remains"]
+    assert actor._udp_cleanup_failed is True
+
+
+@pytest.mark.parametrize("operation", ["lease_expiry", "shutdown"])
+def test_real_session_lifecycle_revokes_and_joins_udp_worker(tmp_path, operation):
+    from test_interactions import FakeClient, LAYOUT, PLAN, WORLD as SESSION_WORLD
+    from room_demo.events import EventStore
+    from room_demo.interactions import InteractiveMediumSession
+    started, cancelled = Event(), Event()
+    processes = [Mock(pid=999998, returncode=None), Mock(pid=999999, returncode=None)]
+    for process in processes:
+        process.poll.side_effect = lambda child=process: child.returncode
+    def stop(process, _signum):
+        process.returncode = 130
+    def runner(container, target, phase, remaining_ms, *, admit, register, running):
+        try:
+            with admit():
+                for process in processes:
+                    register(process)
+            running({})
+            started.set()
+            while not cancelled.wait(0.01):
+                with admit():
+                    pass
+        finally:
+            for process in processes:
+                stop(process, signal.SIGINT)
+            cancelled.set()
+    actor = TrafficExperiment("192.168.77.1", Mock(), udp_runner=runner)
+    actor._signal = stop
+    world = {**copy.deepcopy(SESSION_WORLD), "golden_sha256": "test-world",
+             "traffic_experiment": {"schema": "easymesh.room-traffic.v1",
+                 "phases": [{**UDP_PHASE, "role": "sta_01", "start_ms": 0, "end_ms": 10000}]}}
+    store = EventStore("traffic-lifecycle", world, tmp_path / "events.jsonl", persist=False)
+    client = FakeClient("unused")
+    session = InteractiveMediumSession(store, world, LAYOUT, PLAN, "unused", traffic_experiment=actor,
+                                       client_factory=lambda _path: client)
+    try:
+        session.start()
+        lease = session.acquire("unit-test")
+        session.playback_control("play", token=lease["token"], expected_revision=session.snapshot()["revision"])
+        assert started.wait(2)
+        if operation == "lease_expiry":
+            session._lease["expires_monotonic"] = time.monotonic() - 1
+            snapshot = session.snapshot()
+            assert snapshot["lease"]["held"] is False and snapshot["playback"]["status"] == "paused"
+        else:
+            assert session.close() is True
+            assert not actor._thread.is_alive() and client.closed
+        assert cancelled.wait(2)
+        assert all(process.returncode == 130 for process in processes)
+    finally:
+        session.close()
+    assert actor.snapshot()["history"][-1]["state"] == "cancelled"

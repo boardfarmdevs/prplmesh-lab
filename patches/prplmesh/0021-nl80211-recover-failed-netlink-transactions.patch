@@ -1,0 +1,115 @@
+Subject: [PATCH] nl80211: recover poisoned netlink request sockets
+
+Keep sequence validation and failed-sample semantics. A receive error used to
+leave replies queued on the socket forever, causing all later interface and
+survey reads to fail. Reopen the request socket before the next transaction,
+bound blocking socket I/O, and size the nl80211 receive queue for multipart
+radio dumps. No retry, fake utilization or controller polling change.
+
+Upstream-Status: Pending
+
+diff --git a/common/beerocks/bwl/shared/netlink_socket.cpp b/common/beerocks/bwl/shared/netlink_socket.cpp
+index c5e6f48..997fd96 100644
+--- a/common/beerocks/bwl/shared/netlink_socket.cpp
++++ b/common/beerocks/bwl/shared/netlink_socket.cpp
+@@ -10,6 +10,7 @@
+ 
+ #include <netlink/msg.h>
+ #include <netlink/netlink.h>
++#include <sys/socket.h>
+ 
+ #include <easylogging++.h>
+ 
+@@ -34,6 +35,15 @@ bool netlink_socket::connect()
+         return false;
+     }
+ 
++    const timeval timeout{1, 0};
++    const int descriptor = nl_socket_get_fd(m_nl_socket.get());
++    if (setsockopt(descriptor, SOL_SOCKET, SO_RCVTIMEO, &timeout, sizeof(timeout)) != 0 ||
++        setsockopt(descriptor, SOL_SOCKET, SO_SNDTIMEO, &timeout, sizeof(timeout)) != 0) {
++        LOG(ERROR) << "Failed to bound netlink socket I/O";
++        close();
++        return false;
++    }
++
+     return true;
+ }
+ 
+@@ -41,6 +51,7 @@ void netlink_socket::close()
+ {
+     if (!m_nl_socket) {
+         LOG(ERROR) << "Cannot use unallocated socket!";
++        return;
+     }
+ 
+     // Terminate connection and close socket
+@@ -50,6 +61,15 @@ void netlink_socket::close()
+ bool netlink_socket::send_receive_msg(std::function<bool(struct nl_msg *msg)> msg_create,
+                                       std::function<void(struct nl_msg *msg)> msg_handle)
+ {
++    if (m_reconnect_required) {
++        close();
++        m_nl_socket.reset(nl_socket_alloc());
++        if (!connect()) {
++            return false;
++        }
++        m_reconnect_required = false;
++    }
++
+     if (!m_nl_socket) {
+         LOG(ERROR) << "Cannot use unallocated socket!";
+         return false;
+@@ -120,7 +140,9 @@ bool netlink_socket::send_receive_msg(std::function<bool(struct nl_msg *msg)> ms
+     // Send the netlink message
+     int rc = nl_send_auto_complete(m_nl_socket.get(), nl_message.get());
+     if (rc < 0) {
+-        LOG(ERROR) << "Failed to send netlink message! Error: " << rc;
++        LOG(ERROR) << "Failed to send netlink message: " << nl_geterror(rc)
++                   << "; reconnecting before the next transaction";
++        m_reconnect_required = true;
+         return false;
+     }
+ 
+@@ -135,12 +157,15 @@ bool netlink_socket::send_receive_msg(std::function<bool(struct nl_msg *msg)> ms
+     while (error > 0) {
+         int rc = nl_recvmsgs(m_nl_socket.get(), nl_callback.get());
+         if (rc < 0) {
+-            LOG(ERROR) << "Failed to receive netlink messages! Error: " << rc;
++            LOG(ERROR) << "Failed to receive netlink messages: " << nl_geterror(rc)
++                       << "; reconnecting before the next transaction";
++            m_reconnect_required = true;
+             return false;
+         }
+     }
+ 
+     // Return true on success and false otherwise
++    m_reconnect_required = error < 0;
+     return (0 == error);
+ }
+ 
+diff --git a/common/beerocks/bwl/shared/netlink_socket.h b/common/beerocks/bwl/shared/netlink_socket.h
+index 7795334..b7efdd6 100644
+--- a/common/beerocks/bwl/shared/netlink_socket.h
++++ b/common/beerocks/bwl/shared/netlink_socket.h
+@@ -105,6 +105,7 @@ private:
+      * Netlink protocol to use. Possible values are listed in <linux/netlink.h>
+      */
+     int m_protocol;
++    bool m_reconnect_required = false;
+ };
+ 
+ } // namespace bwl
+diff --git a/common/beerocks/bwl/shared/nl80211_socket.cpp b/common/beerocks/bwl/shared/nl80211_socket.cpp
+index 0f53458..4fc077b 100644
+--- a/common/beerocks/bwl/shared/nl80211_socket.cpp
++++ b/common/beerocks/bwl/shared/nl80211_socket.cpp
+@@ -17,7 +17,7 @@
+ /**
+  * Receive and transmit socket buffer size in bytes.
+  */
+-static constexpr int netlink_buffer_size = 8192;
++static constexpr int netlink_buffer_size = 256 * 1024;
+ 
+ /**
+  * Will cause the netlink port to be set to the port assigned to the netlink socket just before

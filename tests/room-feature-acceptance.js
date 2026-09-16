@@ -67,6 +67,27 @@ function trafficExperimentSummary(world, records) {
     const starts = reports.filter(value => value.state === 'running' && value.key?.[2] === index);
     const result = reports.flatMap(value => value.history || []).filter(value =>
       value.world_sha256 === world.golden_sha256 && value.key?.[2] === index).at(-1);
+    if (phase.mode === 'udp') {
+      const sender = result?.sender, receiver = result?.receiver;
+      const measured = (value, rate) => value?.status === 'complete' && value.returncode === 0 &&
+        Number.isFinite(value[rate]) && value[rate] >= 0 &&
+        Number.isInteger(value.bytes) && value.bytes >= 0 && Number.isInteger(value.packets) && value.packets >= 0 &&
+        Number.isFinite(value.seconds) && value.seconds > 0;
+      return {index, configured: phase, result: result || {state: 'missing'}, passed: starts.length === 1 &&
+        starts[0].mode === 'udp' && starts[0].role === phase.role &&
+        starts[0].requested_offered_mbps === phase.offered_mbps && starts[0].payload_bytes === phase.payload_bytes &&
+        same(starts[0].key, result?.key) && result?.role === phase.role && result.mode === 'udp' &&
+        result.source === 'bound_client_wlan0_udp_iperf3' && result.state === 'completed' &&
+        result.requested_offered_mbps === phase.offered_mbps && result.payload_bytes === phase.payload_bytes &&
+        result.source_interface === 'wlan0' && result.port === 55204 &&
+        measured(sender, 'bits_per_second') && measured(receiver, 'goodput_bits_per_second') &&
+        sender.source === 'iperf3_sender_json' && receiver.source === 'iperf3_receiver_json' &&
+        sender.bytes > 0 && receiver.bytes > 0 && sender.packets > 0 && receiver.packets > 0 &&
+        receiver.bytes <= sender.bytes && Number.isInteger(receiver.lost_packets) &&
+        receiver.lost_packets >= 0 && receiver.lost_packets <= receiver.packets &&
+        Number.isFinite(receiver.loss_percent) && receiver.loss_percent >= 0 && receiver.loss_percent <= 100 &&
+        Math.abs(receiver.loss_percent - 100 * receiver.lost_packets / receiver.packets) < 0.01};
+    }
     return {index, configured: phase, result, passed: starts.length === 1 &&
       starts[0].requested_packets_per_second === phase.packets_per_second &&
       starts[0].payload_bytes === phase.payload_bytes && result?.role === phase.role &&
@@ -77,7 +98,9 @@ function trafficExperimentSummary(world, records) {
   });
   return {passed: phases.every(phase => phase.passed) && reports.at(-1)?.state === 'off', phases,
     finalState: reports.at(-1)?.state || 'missing',
-    scope: 'bounded actual ICMP stimulus and replies; not utilization or throughput qualification'};
+    scope: world.traffic_experiment.phases.some(phase => phase.mode === 'udp')
+      ? 'bounded offered UDP, sender actual and receiver goodput/loss; native load and physical capacity remain separate'
+      : 'bounded actual ICMP stimulus and replies; not utilization or throughput qualification'};
 }
 
 function bandSteeringSummary(world, events, verifications) {

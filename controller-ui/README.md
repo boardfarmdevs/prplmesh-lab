@@ -86,6 +86,23 @@ For explicit non-BTM reports, add `method: "non-btm"`, `source_bssid` and
 `target_bssid` to a completed steering event. This annotates, never steers.
 The separate Controller icon does not add a sixth physical NBAPI mesh device.
 
+## AP load on hover
+
+Hover an extender or Agent-1 for native AP-reported BSS load: channel utilization
+as percent and raw 0–255, associated stations per BSS, band/channel and report
+receipt age. Interactive rooms collect reports passively; load-aware steering
+remains opt-in. No hover-triggered measurement or policy change occurs.
+Missing reports, collection errors and values older than five seconds show
+unavailable, not zero. Shared-radio utilization is not additive or physical
+capacity. Client-heard beacon BSS Load stays separate in the room RF inspector.
+The tooltip refreshes while stationary and works with Follow room disabled.
+
+Focused checks: `node tests/webui-rf-hover-test.js controller-ui/web/static/room-topology.js`
+from the repository root. The matching `webui-rf-hover-browser-test.js URL OUTPUT_PREFIX`
+checks live tooltips and browser-only stale/error fixtures without lab mutations.
+The older `webui-topology-layout-test.js` fading-trail source assertion fails
+on unchanged HEAD too; it is unrelated to RF hover and is not repaired here.
+
 ## Multiple networks and VLANs
 
 `config/networks-untagged.json` is the live accepted profile:

@@ -48,6 +48,13 @@ DEVICE_ROLES = {
 CANDIDATE_PRIORITY_WINDOW_SECONDS = 120
 
 
+def _received_scan_status(status, ap_roles, client_roles):
+    return {station: {**scan, "receiver_role": client_roles.get(station),
+                      "neighbors": [{**neighbor, "role": ap_roles.get(neighbor["bssid"])}
+                                    for neighbor in scan.get("neighbors", [])]}
+            for station, scan in status.items()}
+
+
 def _action_measurements_fresh(decision, snapshot, maximum_age, now):
     client = snapshot.client(decision.sta_mac)
     if client is not None and client.measurement_source == BAND_SCAN_SOURCE:
@@ -330,6 +337,7 @@ class LiveConductor:
         self.plan = plan
         self.manifest = manifest
         self._load_provider = None
+        self._load_error = None
         self.mode = mode
         self.repo_root = repo_root
         self.base_url = base_url
@@ -947,6 +955,29 @@ class LiveConductor:
                 )
             self._sleep(0.2)
 
+    def _start_rf_observation(self, required: bool) -> None:
+        if not (self.interactive or required):
+            return
+        try:
+            self._load_provider = NativeLoadProvider("prpl-controller", byte_counter_unit_bytes=1024)
+            self._load_error = None
+        except (OSError, RuntimeError, ValueError, subprocess.SubprocessError) as error:
+            self._load_error = str(error)
+            if required:
+                raise
+
+    def _observe_rf(self, snapshot, raw, required: bool):
+        if self._load_provider is not None:
+            try:
+                result = self._load_provider.enrich(snapshot, raw)
+                self._load_error = self._load_provider.error
+                return result
+            except (OSError, RuntimeError, ValueError, subprocess.SubprocessError) as error:
+                self._load_error = str(error)
+                if required:
+                    raise
+        return replace(snapshot, bss_loads=(), client_activity=())
+
     def _optimizer_worker(self) -> None:
         if not self._wait_for_run():
             return
@@ -967,8 +998,7 @@ class LiveConductor:
         if self.profiling:
             policy_config = replace(policy_config, require_complete_client_roster=False)
         policy = policy_for(policy_config) if policy_config.load_aware_enabled else ThresholdPolicy(policy_config)
-        if policy_config.load_aware_enabled:
-            self._load_provider = NativeLoadProvider("prpl-controller")
+        self._start_rf_observation(policy_config.load_aware_enabled)
         state = PolicyState()
         priority_role = None
         priority_until = 0.0
@@ -993,6 +1023,7 @@ class LiveConductor:
         )
         observer = PrplMeshObserver(
             self.base_url, candidate_provider=provider,
+            ownership_observer=self._load_provider.observe_owners if self._load_provider is not None else None,
             current_link_fallback=(lambda client: self._client_link_fallback(client, room_before))
             if self.interactive and self.room_state else None,
             max_current_metric_age_seconds=10,
@@ -1198,8 +1229,9 @@ class LiveConductor:
                                 for item in snapshot.clients
                             ))
                 prior = state
-                if self._load_provider is not None:
-                    snapshot = self._load_provider.enrich(snapshot, observer.last_raw)
+                rf_snapshot = self._observe_rf(snapshot, observer.last_raw, policy_config.load_aware_enabled)
+                if policy_config.load_aware_enabled:
+                    snapshot = rf_snapshot
                 band_profiles = {station: profile for station, profile in (room_after or {}).get("band_steering", {}).items()
                                  if received_scan_enabled(profile)}
                 snapshot = self._band_measurements.enrich(snapshot, band_profiles,
@@ -1338,11 +1370,13 @@ class LiveConductor:
                         "candidates": candidates,
                         "rf_observations": {
                             "schema": "easymesh.rf-inspection.v1",
-                            "enabled": policy_config.load_aware_enabled,
+                            "enabled": self._load_provider is not None,
+                            "policy_enabled": policy_config.load_aware_enabled,
+                            "error": self._load_error,
                             "maximum_age_seconds": policy.config.load_maximum_age_seconds,
                             "bss_loads": [{**asdict(row), "role": self._ap_role_by_bssid.get(row.bssid)}
-                                         for row in snapshot.bss_loads],
-                            "client_activity": [asdict(row) for row in snapshot.client_activity],
+                                         for row in rf_snapshot.bss_loads],
+                            "client_activity": [asdict(row) for row in rf_snapshot.client_activity],
                         },
                         "candidate_transactions": len(provider.last_raw),
                         "candidate_selection": provider.last_selection,
@@ -1371,7 +1405,8 @@ class LiveConductor:
                         "optimization_goal": ("safe_band_preference_and_best_eligible_ap"
                                               if any(not same_band_received(profile) for profile in band_profiles.values())
                                               else "best_eligible_same_network_band_ap"),
-                        "band_steering": self._band_measurements.status,
+                        "band_steering": _received_scan_status(
+                            self._band_measurements.status, self._ap_role_by_bssid, self._role_by_mac),
                         "minimum_target_gain_rcpi": policy.config.minimum_target_gain_rcpi,
                         "expected_online_clients": policy.config.expected_clients,
                         "partial_roster_progression": not policy.config.require_complete_client_roster,

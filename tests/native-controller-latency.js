@@ -164,15 +164,30 @@ async function startNativeTrace(args, directory, page) {
   });
   let stderr = '';
   let failure = null;
+  let closed = false;
+  let exitStatus = null;
   const filename = path.join(directory, 'native-events.jsonl');
+  const stderrFilename = path.join(directory, 'native-stderr.txt');
+  const diagnosticError = error => {
+    const status = exitStatus ? ` (code=${exitStatus.code}, signal=${exitStatus.signal})` : '';
+    const result = new Error(`${error.message}${status}\nNative trace ${args['native-stack']} on ${args.host}/${args.vm}` +
+      `\nNative stderr saved to ${stderrFilename}:\n${stderr.trim() || '(empty)'}`, {cause: error});
+    result.stderr = stderr;
+    result.code = exitStatus?.code;
+    result.signal = exitStatus?.signal;
+    return result;
+  };
   const descriptor = fs.openSync(filename, 'wx');
   const lines = createInterface({input: child.stdout});
   let readyResolve;
   let readyReject;
   const ready = new Promise((resolve, reject) => { readyResolve = resolve; readyReject = reject; });
-  const exited = new Promise(resolve => child.once('close', code => {
+  const exited = new Promise(resolve => child.once('close', (code, signal) => {
+    closed = true;
+    exitStatus = {code, signal};
     fs.closeSync(descriptor);
-    if (code !== 0) failure ||= new Error('Native trace exited ' + code);
+    fs.writeFileSync(stderrFilename, stderr);
+    if (code !== 0 || signal) failure ||= new Error('Native trace exited ' + (signal || code));
     if (!events.some(event => event.kind === 'ready')) readyReject(failure || new Error('Native trace never became ready'));
     resolve();
   }));
@@ -211,22 +226,24 @@ async function startNativeTrace(args, directory, page) {
     stopping = true;
     clearTimeout(calibrationTimer);
     await calibrationInFlight;
-    try {
-      await collectClocks();
-    } catch (error) { failure ||= error; }
+    if (!closed && events.some(event => event.kind === 'ready')) {
+      try {
+        await collectClocks();
+      } catch (error) { failure ||= error; }
+    }
     child.stdin.end();
     const timeout = setTimeout(() => { failure ||= new Error('Native trace shutdown timed out'); child.kill(); }, 10000);
     try { await exited; } finally { clearTimeout(timeout); }
     clocks.reference = now();
     fs.writeFileSync(path.join(directory, 'native-clocks.json'), JSON.stringify(clocks, null, 2) + '\n');
-    fs.writeFileSync(path.join(directory, 'native-stderr.txt'), stderr);
+    fs.writeFileSync(stderrFilename, stderr);
     const end = events.find(event => event.kind === 'end');
-    if (failure) throw failure;
+    if (failure) throw diagnosticError(failure);
     if (stderr.trim() || !end || end.lost !== 0 || end.records !== end.emitted ||
         end.records !== events.filter(event => ['commit', 'metric'].includes(event.kind)).length ||
         events.some(event => event.kind === 'metric' && (!event.associated ||
           !event.sta || !event.bssid || [event.sta, event.bssid].includes('00:00:00:00:00:00')))) {
-      throw new Error('Native trace incomplete or reported diagnostics');
+      throw diagnosticError(new Error('Native trace incomplete or reported diagnostics'));
     }
     return {events, clocks, identity: events.find(event => event.kind === 'identity'), capture: end};
   };
@@ -235,7 +252,7 @@ async function startNativeTrace(args, directory, page) {
     await collectClocks();
     scheduleCalibration();
   }
-  catch (error) { await stop().catch(() => {}); throw error; }
+  catch (error) { await stop().catch(() => {}); throw diagnosticError(error); }
   finally { clearTimeout(timer); }
   return {stop};
 }

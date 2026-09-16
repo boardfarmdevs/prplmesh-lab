@@ -3884,14 +3884,27 @@ async handleWebSocketMessage(data) {
                 ? `<br>Link: ${self.topologyBandLabel(incoming.band)} · ch ${Number(incoming.channel) > 0 ? incoming.channel : '?'}`
                 : '') + signal
             : '';
-          tooltip.style('display', 'block')
-          .html(`<b>${d.name || d.id}</b><br>AL MAC: ${d.id}${backhaul}`);
-          self.positionTooltip(event, tooltip);
+          self.topologyRFHoverEvent = event;
+          self.topologyRFHover = () => {
+            if (!this.isConnected) {
+              self.topologyRFHover = null;
+              tooltip.style('display', 'none');
+              return;
+            }
+            const html = `<b>${d.name || d.id}</b><br>AL MAC: ${d.id}${backhaul}` +
+              (self.roomLayout?.rfHTML(d) || '');
+            tooltip.style('display', 'block');
+            if (tooltip.html() !== html) tooltip.html(html);
+            self.positionTooltip(self.topologyRFHoverEvent, tooltip);
+          };
+          self.topologyRFHover();
         })
         .on('mousemove', function(event) {
+          self.topologyRFHoverEvent = event;
           self.positionTooltip(event, tooltip);
         })
         .on('mouseout', function() {
+          self.topologyRFHover = null;
           tooltip.style('display', 'none');
         });
 

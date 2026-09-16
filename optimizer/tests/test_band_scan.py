@@ -27,6 +27,14 @@ def block(bssid=CURRENT, frequency="2437", signal="-40.00", seen="100.050", ssid
 """
 
 
+def bss_load(stations=0, utilization=0, admission=0):
+    return f"""\tBSS Load:
+\t\t * station count: {stations}
+\t\t * channel utilisation: {utilization}/255
+\t\t * available admission capacity: {admission} [*32us]
+"""
+
+
 def parsed(raw):
     return parse_scan(raw, frequencies=[2437, 5180, 6135], started_boottime=100, finished_boottime=100.1)
 
@@ -38,6 +46,24 @@ def test_received_scan_preserves_direction_security_and_integer_or_decimal_frequ
     assert samples[TARGET]["frequency_mhz"] == 5180
     assert samples[TARGET]["key_management"] == ["PSK", "SAE"]
     assert samples[TARGET]["pmf_capable"] and samples[TARGET]["pmf_required"]
+    assert samples[TARGET]["advertised_bss_load"] == {"state": "unavailable"}
+
+
+def test_received_scan_preserves_advertised_bss_load_zero_and_nonzero():
+    samples = parsed(block() + bss_load() + block(TARGET) + bss_load(7, 193, 65535))
+    assert samples[CURRENT]["advertised_bss_load"] == {
+        "state": "available", "station_count": 0, "utilization": 0, "admission_capacity": 0}
+    assert samples[TARGET]["advertised_bss_load"] == {
+        "state": "available", "station_count": 7, "utilization": 193, "admission_capacity": 65535}
+
+
+@pytest.mark.parametrize("load", [
+    "\tBSS Load:\n\t\t * station count: 1\n",
+    bss_load(utilization=256), bss_load(stations=65536), bss_load(admission=65536),
+])
+def test_incomplete_or_out_of_range_advertised_bss_load_fails_closed(load):
+    with pytest.raises(ValueError):
+        parsed(block() + load)
 
 
 def test_scan_ignores_unrequested_frequencies_and_stale_cache():

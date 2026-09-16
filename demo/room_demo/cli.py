@@ -459,6 +459,11 @@ def _interactive(args) -> int:
         print(f"room-demo: interactive session failed: {error}", file=sys.stderr)
     finally:
         stop_event.set()
+        try:
+            interactions.stop_traffic()
+        except Exception as error:
+            outcome = "failed"
+            error_text = f"{error_text + '; ' if error_text else ''}traffic shutdown: {error}"
         if server_started:
             server.close()
         else:
