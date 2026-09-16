@@ -6,6 +6,28 @@ Run every advertised room sequentially within each lab; independent RDK and
 prpl runs may overlap across hosts. This is bounded feature testing, not a soak
 or intrinsic stack-speed ranking. A targeted `--world` run is not full coverage.
 
+## 0916 release recovery checks
+
+The fresh release run exposed a real Linux-platform backhaul recovery defect:
+after a sustained modeled outage, the native manager searched for the hardcoded
+`test_beerocks_ssid` with open security instead of the configured mesh network.
+Its credential strings also retained fixed-buffer NUL padding, so supplicant
+commands stopped before the closing SSID/passphrase quote. Initial setup hid
+both defects by establishing the wireless link before starting the manager.
+
+Patch 0023 reads configured backhaul credentials, rejects incomplete or oversized
+values and bounds strings at their first NUL. Provisioning derives the platform
+SSID/passphrase from the same supplicant template. The native rebuild and
+credential regression pass; live isolation/recovery and the complete 25-room
+campaign must pass before the repaired 0916 artifact is accepted. This is not
+an external reconnect workaround. The native scan-result stub and its fallback
+timings remain distinct limitations; this patch does not implement scan ranking.
+
+Capture the two browser pages sequentially, bringing each to the foreground,
+then return focus to the room before controls/playback. Concurrent background
+captures stalled the headless software renderer. Preserve those observer errors
+separately from native failures; keep physical audits ahead of screenshots.
+
 ## Current RF hardening checks
 
 [RF qualification](../radio/virtual-rf-assessment.md#september-15-reliability-and-priority-qualification)

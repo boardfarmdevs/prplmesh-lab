@@ -319,6 +319,7 @@ async function run(args) {
     args: ['--no-sandbox', '--ozone-platform=headless', '--enable-unsafe-swiftshader', '--use-gl=angle', '--use-angle=swiftshader',
       '--disable-background-timer-throttling', '--disable-renderer-backgrounding', '--disable-backgrounding-occluded-windows']});
   const context = await browser.newContext({viewport: {width: 1280, height: 900}});
+  context.setDefaultTimeout(45000);
   const labOrigins = new Set([args['room-url'], args['topology-url']].map(value => new URL(value).origin));
   report.browserNetwork = 'lab-origins-only';
   await context.route('**/*', route => {
@@ -511,11 +512,15 @@ async function run(args) {
       firstRosterSeconds: firstRoster, firstConvergenceSeconds: firstConvergence, samples, final: lastSample?.result};
   }
   async function screenshot(label) {
-    await Promise.all([room.screenshot({path: path.join(directory, activeRoom.id + '-' + label + '-room.png')}),
-      topology.screenshot({path: path.join(directory, activeRoom.id + '-' + label + '-topology.png')})]);
+    await room.bringToFront();
+    await room.screenshot({path: path.join(directory, activeRoom.id + '-' + label + '-room.png')});
+    await topology.bringToFront();
+    await topology.screenshot({path: path.join(directory, activeRoom.id + '-' + label + '-topology.png')});
+    await room.bringToFront();
     save(activeRoom.id + '-' + label + '.json', lastSample);
   }
   async function loadWorld(id) {
+    await room.bringToFront();
     await room.locator('#world').waitFor({state: 'visible'});
     const started = performance.now();
     const clickedAt = Date.now();

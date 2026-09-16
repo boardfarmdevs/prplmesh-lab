@@ -4,6 +4,14 @@ const fs = require('node:fs');
 const path = require('node:path');
 const {expectedFrame, evaluate, distribution, eventPerformance, viewAgreement, recordedEventKind, kernelClientAudit} = require('./room-feature-acceptance.js');
 const harnessSource = fs.readFileSync(path.join(__dirname, 'room-feature-acceptance.js'), 'utf8');
+assert.ok(harnessSource.includes('context.setDefaultTimeout(45000)'));
+assert.match(harnessSource, /async function loadWorld\(id\) \{\s*await room\.bringToFront\(\);/);
+const screenshotSource = harnessSource.slice(harnessSource.indexOf('  async function screenshot(label)'),
+  harnessSource.indexOf('  async function loadWorld(id)'));
+assert.match(screenshotSource, /await room\.bringToFront\(\);\s*await room\.screenshot/);
+assert.match(screenshotSource, /await topology\.bringToFront\(\);\s*await topology\.screenshot/);
+assert.doesNotMatch(screenshotSource, /Promise\.all/);
+assert.ok(screenshotSource.lastIndexOf('await room.bringToFront()') > screenshotSource.indexOf('await topology.screenshot'));
 assert.ok(harnessSource.includes("report.browserNetwork = 'lab-origins-only'"));
 assert.ok(harnessSource.includes("route.abort('blockedbyclient')"));
 assert.match(harnessSource, /activeRoom\.final = await settle\([^;]+;\s*activeRoom\.kernel = await auditKernel\(activeRoom\.final\.final\);\s*await screenshot\('final'\);/);

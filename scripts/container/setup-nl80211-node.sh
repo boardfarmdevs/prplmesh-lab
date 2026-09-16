@@ -45,6 +45,16 @@ rm -rf /tmp/beerocks /var/run/hostapd/* /var/run/ubus/ubus.sock
 rm -rf /var/run/wpa_supplicant/*
 mkdir -p /tmp/beerocks /var/run/hostapd /var/run/ubus /var/run/wpa_supplicant
 
+platform_db="$install/share/prplmesh_platform_db"
+backhaul_template="$project/manifests/wpa_backhaul.conf"
+backhaul_ssid=$(sed -n 's/^    ssid="\(.*\)"$/\1/p' "$backhaul_template")
+backhaul_passphrase=$(sed -n 's/^    psk="\(.*\)"$/\1/p' "$backhaul_template")
+test -n "$backhaul_ssid" && test -n "$backhaul_passphrase"
+grep -qx '    key_mgmt=WPA-PSK' "$backhaul_template"
+sed -i '/^backhaul_ssid=/d; /^backhaul_passphrase=/d; /^backhaul_security=/d' "$platform_db"
+printf 'backhaul_ssid=%s\nbackhaul_passphrase=%s\nbackhaul_security=WPA2-Personal\n' \
+    "$backhaul_ssid" "$backhaul_passphrase" >> "$platform_db"
+
 ip link show br-lan >/dev/null 2>&1 || ip link add br-lan type bridge
 ip link set br-lan address "$al_mac"
 if [ "$backhaul_mode" = wired ]; then
@@ -92,7 +102,6 @@ if [ "$backhaul_mode" = wireless ]; then
     # The 6.0.0 Linux platform maps a radio's supplicant path back to its AP
     # interface. Preserve a separate hwsim STA VIF and provide both lookup
     # keys until the corresponding native-platform patch is rebuilt.
-    platform_db="$install/share/prplmesh_platform_db"
     sed -i \
         's#^wpa_supplicant_ctrl_path_wlan2=.*#wpa_supplicant_ctrl_path_wlan2=/var/run/wpa_supplicant/wlan3#' \
         "$platform_db"
