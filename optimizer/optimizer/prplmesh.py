@@ -519,6 +519,9 @@ class PrplMeshCandidateProvider:
         self.progress({"phase": "collecting", "selected_clients": len(self.last_selected_sta_macs),
                        "candidate_comparisons": sum(len(items) for items in targets.values())})
         deadline = time.monotonic() + self.timeout_seconds
+        retry_delay = 2.0
+        retry_at = time.monotonic() + retry_delay
+        retries = 0
         expected = set(targets)
         metrics: dict[tuple[str, str], tuple[int, str]] = {}
         published = set()
@@ -550,6 +553,15 @@ class PrplMeshCandidateProvider:
                         self.result_ready(batch, set(), transaction)
             if expected.issubset(metrics):
                 break
+            if retries < 3 and retry_at <= time.monotonic() < deadline:
+                response = self._call(self.NETWORK, "UpdateUnassociatedStationsStats", {})
+                retries += 1
+                self.last_raw.append({"operation": "update_retry", "attempt": retries,
+                                      "missing": sorted(expected - set(metrics)),
+                                      "response": response,
+                                      "elapsed_ms": round((time.monotonic() - collection_started) * 1000, 3)})
+                retry_delay *= 2
+                retry_at = time.monotonic() + retry_delay
             time.sleep(min(0.1, max(0, deadline - time.monotonic())))
         missing = sorted(expected - set(metrics))
         if missing:

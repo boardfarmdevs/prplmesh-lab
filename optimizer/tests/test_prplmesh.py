@@ -574,6 +574,83 @@ def test_candidate_timeout_distinguishes_missing_from_unchanged_publication():
     assert provider.last_raw[-1]["freshness"][0]["baseline"] is None
 
 
+@pytest.fixture
+def retry_provider(monkeypatch):
+    elapsed = [0.0]
+    monkeypatch.setattr("optimizer.prplmesh.time.monotonic", lambda: elapsed[0])
+    monkeypatch.setattr("optimizer.prplmesh.time.sleep", lambda seconds: elapsed.__setitem__(0, elapsed[0] + seconds))
+    provider = _Provider()
+    provider.timeout_seconds = 30
+    observer = PrplMeshObserver(fetcher=lambda url: _topology(), candidate_provider=provider, clock=lambda: NOW)
+    return provider, observer, elapsed
+
+
+def test_lost_candidate_query_retries_without_reusing_stale_values(retry_provider):
+    provider, observer, elapsed = retry_provider
+    published = []
+    provider.result_ready = lambda measurements, rejected, transaction: published.extend(measurements)
+
+    def read(radio):
+        updates = sum(method == "UpdateUnassociatedStationsStats" for _, method, _ in provider.calls)
+        return {"02:00:00:10:01:00": (122, STAMP if updates >= 2 else METRIC_STAMP)}
+
+    provider._radio_metrics = read
+    snapshot = observer.observe()
+    assert 2 <= elapsed[0] < 2.3
+    assert len(snapshot.candidates) == len(published) == 1
+    assert snapshot.candidates[0].metric_observed_at == STAMP
+    retries = [entry for entry in provider.last_raw if entry["operation"] == "update_retry"]
+    assert len(retries) == 1
+    assert retries[0]["attempt"] == 1
+    assert retries[0]["missing"] == [("Device.WiFi.DataElements.Network.Device.2.Radio.2", "02:00:00:10:01:00")]
+    assert sum(method == "AddUnassociatedStation" for _, method, _ in provider.calls) == 1
+
+
+@pytest.mark.parametrize("timeout,expected_retries", [(1, 0), (5, 1), (30, 3), (120, 3)])
+def test_candidate_retry_budget_never_extends_deadline(retry_provider, timeout, expected_retries):
+    provider, observer, elapsed = retry_provider
+    provider.timeout_seconds = timeout
+    provider._radio_metrics = lambda radio: {"02:00:00:10:01:00": (122, METRIC_STAMP)}
+    with pytest.raises(CandidateMetricsUnavailable, match="incomplete"):
+        observer.observe()
+    assert elapsed[0] == pytest.approx(timeout)
+    assert sum(method == "UpdateUnassociatedStationsStats" for _, method, _ in provider.calls) == expected_retries + 1
+    assert provider.last_raw[-1]["freshness"][0]["last_read"] == (122, METRIC_STAMP)
+    assert not any(entry["operation"] == "published" for entry in provider.last_raw)
+
+
+def test_candidate_retry_stops_when_world_is_superseded(retry_provider):
+    provider, observer, elapsed = retry_provider
+    provider.generation_guard = lambda: elapsed[0] < 1.5
+    provider._radio_metrics = lambda radio: {}
+    with pytest.raises(CandidateSnapshotSuperseded):
+        observer.observe()
+    assert elapsed[0] < 2
+    assert sum(method == "UpdateUnassociatedStationsStats" for _, method, _ in provider.calls) == 1
+
+
+def test_candidate_retry_does_not_republish_partial_results(retry_provider):
+    provider, observer, elapsed = retry_provider
+    topology = _topology()
+    second_client = copy.deepcopy(topology["devices"][0]["radios"][0]["bsses"][0]["clients"][0])
+    second_client["id"] = "02:00:00:10:02:00"
+    topology["devices"][0]["radios"][0]["bsses"][0]["clients"].append(second_client)
+    observer = PrplMeshObserver(fetcher=lambda url: topology, candidate_provider=provider, clock=lambda: NOW)
+    published = []
+    provider.result_ready = lambda measurements, rejected, transaction: published.extend(measurements)
+
+    def read(radio):
+        updates = sum(method == "UpdateUnassociatedStationsStats" for _, method, _ in provider.calls)
+        return {"02:00:00:10:01:00": (122, STAMP if updates else METRIC_STAMP),
+                second_client["id"]: (118, STAMP if updates >= 2 else METRIC_STAMP)}
+
+    provider._radio_metrics = read
+    snapshot = observer.observe()
+    assert 2 <= elapsed[0] < 2.3
+    assert len(snapshot.candidates) == len(published) == 2
+    assert len({entry.sta_mac for entry in published}) == 2
+
+
 def test_zero_candidate_completes_only_after_native_timestamp_advances():
     provider = _Provider()
     def read(radio):

@@ -16,6 +16,15 @@ retain registrations and capability discovery. Regression tests cover device
 recreation, radio reordering and interrupted rediscovery. This fixes permanent
 `AddUnassociatedStation` failures against deleted paths, not native radio policy.
 
+A query sent during a backhaul outage can also be lost without any NBAPI path
+change. The collector retries the native update after 2, 4 and 8 additional
+seconds while measurements remain missing (at most three retries within the
+original timeout). It retains the original timestamp baseline, publishes each
+fresh result once and stops on world supersession. It does not substitute old
+metrics, extend the deadline or force a parent change. A retained isolation-room
+failure had two consecutive 30-second query timeouts despite restored traffic;
+the bounded live retry must qualify this repair before release.
+
 The topology adapter identifies the controller by native `Network.ControllerID`,
 not by a temporarily missing `BackhaulDeviceID`. Parentless/reconnecting agents
 remain agents with unknown uplinks, rather than creating extra controller icons.
