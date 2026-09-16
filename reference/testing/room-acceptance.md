@@ -23,10 +23,23 @@ campaign must pass before the repaired 0916 artifact is accepted. This is not
 an external reconnect workaround. The native scan-result stub and its fallback
 timings remain distinct limitations; this patch does not implement scan ranking.
 
+The reconnect retry also exposed a shared-PHY mismatch: a replacement native
+supplicant network could select a 2.4 GHz mesh BSS while its co-located AP
+remained on 5180 MHz. The backhaul template now restricts the supplicant globally
+to 5180 MHz, including networks created after startup. This preserves the lab's
+existing shared-radio channel; it does not pin the parent BSSID or bypass native
+recovery. Check actual interface frequencies as well as model convergence.
+
 Capture the two browser pages sequentially, bringing each to the foreground,
 then return focus to the room before controls/playback. Concurrent background
 captures stalled the headless software renderer. Preserve those observer errors
 separately from native failures; keep physical audits ahead of screenshots.
+
+For a Linux observer with render-device access, select `--renderer vulkan`
+to avoid CPU software-rendering stalls. The default remains SwiftShader.
+The harness records the actual WebGL renderer and rejects missing hardware or
+software fallback when Vulkan is requested. Give only the observer process
+the render-device group; do not change lab CPU limits or device permissions.
 
 ## Current RF hardening checks
 

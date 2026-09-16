@@ -10,6 +10,16 @@ ROOT = Path(__file__).resolve().parents[1]
 PATCH = (ROOT / "patches/prplmesh/0023-linux-backhaul-recovery-credentials.patch").read_text()
 
 
+def test_native_reconnect_keeps_the_shared_ap_radio_frequency():
+    template = (ROOT / "manifests/wpa_backhaul.conf").read_text()
+    global_config, network = template.split("network={", 1)
+    assert re.search(r"^freq_list=5180$", global_config, re.M)
+    assert "    frequency=5180\n" in network
+    assert "    scan_freq=5180\n" in network
+    setup = (ROOT / "scripts/container/setup-nl80211-node.sh").read_text()
+    assert 'install -m 0644 "$project/manifests/wpa_backhaul.conf"' in setup
+
+
 def test_provisioning_uses_the_supplicant_credentials_before_native_start():
     script = (ROOT / "scripts/container/setup-nl80211-node.sh").read_text()
     assert 'backhaul_template="$project/manifests/wpa_backhaul.conf"' in script

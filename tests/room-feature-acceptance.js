@@ -315,8 +315,13 @@ async function run(args) {
     convergenceCriterion: 'configured-steering-policy', strongestApReportedSeparately: true, temporaryActionLimit: 2000};
   const browserEnvironment = {...process.env};
   delete browserEnvironment.DISPLAY;
+  const renderer = args.renderer || 'swiftshader';
+  if (!['swiftshader', 'vulkan'].includes(renderer)) throw new Error('Unsupported --renderer');
+  const rendererArguments = renderer === 'vulkan' ?
+    ['--use-angle=vulkan', '--disable-software-rasterizer'] :
+    ['--use-angle=swiftshader', '--enable-unsafe-swiftshader'];
   const browser = await chromium.launch({headless: true, env: browserEnvironment, executablePath: process.env.CHROMIUM_PATH,
-    args: ['--no-sandbox', '--ozone-platform=headless', '--enable-unsafe-swiftshader', '--use-gl=angle', '--use-angle=swiftshader',
+    args: ['--no-sandbox', '--ozone-platform=headless', '--use-gl=angle', ...rendererArguments,
       '--disable-background-timer-throttling', '--disable-renderer-backgrounding', '--disable-backgrounding-occluded-windows']});
   const context = await browser.newContext({viewport: {width: 1280, height: 900}});
   context.setDefaultTimeout(45000);
@@ -329,6 +334,17 @@ async function run(args) {
   });
   const room = await context.newPage();
   const topology = await context.newPage();
+  report.renderer = {requested: renderer, actual: await room.evaluate(() => {
+    const context = document.createElement('canvas').getContext('webgl');
+    const extension = context?.getExtension('WEBGL_debug_renderer_info');
+    return extension ? context.getParameter(extension.UNMASKED_RENDERER_WEBGL) : null;
+  })};
+  save('renderer.json', report.renderer);
+  if (!report.renderer.actual || (renderer === 'vulkan' &&
+      /swiftshader|llvmpipe|software/i.test(report.renderer.actual))) {
+    await browser.close();
+    throw new Error('Requested renderer unavailable: ' + JSON.stringify(report.renderer));
+  }
   if (args['observer-cpus']) {
     try {
       if (!/^\d+(?:-\d+)?(?:,\d+(?:-\d+)?)*$/.test(args['observer-cpus'])) throw new Error('Invalid observer CPU list');
