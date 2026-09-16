@@ -6,6 +6,71 @@ Run every advertised room sequentially within each lab; independent RDK and
 prpl runs may overlap across hosts. This is bounded feature testing, not a soak
 or intrinsic stack-speed ranking. A targeted `--world` run is not full coverage.
 
+## 0916 release recovery checks
+
+Run 22 client-policy rooms with `tests/room-feature-acceptance.js` and three
+geometry rooms with `tests/room-backhaul-features.js --flavor prpl`. The latter
+deliberately isolates an upstream link while APs remain enabled: the client-only
+all-online checkpoint is not applicable. Require actual native branches,
+parent handover, isolation, initial/return kernel client ownership, unchanged
+native process identities, ten-client return and default twenty restoration.
+Each script half allows 35 s and each native convergence/recovery gate 60 s.
+Hardware observers may select `--renderer vulkan`; both views are fullscreen.
+Aggregate the disjoint 22+3 reports, verifying all 25 catalog IDs exactly once.
+
+The native baseline checker now matches radio IDs by band, not asynchronous
+registration order. Permutations pass; missing, duplicate and wrong radio or
+SSID identities still fail. The original order-dependent failure is retained.
+
+The fresh release run exposed a real Linux-platform backhaul recovery defect:
+after a sustained modeled outage, the native manager searched for the hardcoded
+`test_beerocks_ssid` with open security instead of the configured mesh network.
+Its credential strings also retained fixed-buffer NUL padding, so supplicant
+commands stopped before the closing SSID/passphrase quote. Initial setup hid
+both defects by establishing the wireless link before starting the manager.
+
+Patch 0023 reads configured backhaul credentials, rejects incomplete or oversized
+values and bounds strings at their first NUL. Provisioning derives the platform
+SSID/passphrase from the same supplicant template. The native rebuild and
+credential regression pass; live isolation/recovery and the complete 25-room
+campaign must pass before the repaired 0916 artifact is accepted. This is not
+an external reconnect workaround.
+
+The reconnect retry also exposed a shared-PHY mismatch: a replacement native
+supplicant network could select a 2.4 GHz mesh BSS while its co-located AP
+remained on 5180 MHz. The backhaul template now restricts the supplicant globally
+to 5180 MHz, including networks created after startup. This preserves the lab's
+existing shared-radio channel; it does not pin the parent BSSID or bypass native
+recovery. Check actual interface frequencies as well as model convergence.
+
+Patch 0024 replaces the Linux HAL's no-op scan trigger and empty scan-result
+stub with supplicant scans and parsed native BSSID/frequency/RSSI records.
+The native backhaul manager can rank received parents instead of repeatedly
+falling through empty scans to hidden-SSID recovery. Busy unfiltered scans
+wait for the existing native completion; other command failures still fail.
+The existing native reconnect grace period is unchanged. Parser regressions
+cover malformed rows, bounds, SSIDs and the no-exceptions native build.
+Live recovery qualification remains a release gate, not implied by compilation.
+
+Received band scans now bracket the native dump with identity checks in the
+same namespace worker, avoiding three redundant LXD exec round trips per scan.
+The dump uses the client's own iw binary/mount namespace, preserving timestamp
+format and receiver identity. Existing two-second freshness, world/association
+guards, passive scan correlation and steering exclusion remain unchanged.
+Compare scan duration and publication age in the retained telemetry; a passing
+source regression does not substitute for the live band-room retry.
+
+Capture the two browser pages sequentially, bringing each to the foreground,
+then return focus to the room before controls/playback. Concurrent background
+captures stalled the headless software renderer. Preserve those observer errors
+separately from native failures; keep physical audits ahead of screenshots.
+
+For a Linux observer with render-device access, select `--renderer vulkan`
+to avoid CPU software-rendering stalls. The default remains SwiftShader.
+The harness records the actual WebGL renderer and rejects missing hardware or
+software fallback when Vulkan is requested. Give only the observer process
+the render-device group; do not change lab CPU limits or device permissions.
+
 ## Current RF hardening checks
 
 [RF qualification](../radio/virtual-rf-assessment.md#september-15-reliability-and-priority-qualification)

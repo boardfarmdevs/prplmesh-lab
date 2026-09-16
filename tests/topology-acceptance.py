@@ -58,6 +58,19 @@ def parse_ap_stations(output):
     return {match.group(1).lower() for match in STATION.finditer(output)}
 
 
+def validate_radio_inventory(node, radios):
+    assert len(radios) == 3, (node, len(radios))
+    by_band = {radio["band"]: radio for radio in radios}
+    assert set(by_band) == set(AP_BASE_INTERFACE), (node, set(by_band))
+    for offset, band in enumerate(AP_BASE_INTERFACE):
+        radio = by_band[band]
+        expected_radio = f"02:00:00:00:{node * 3 + offset:02x}:00"
+        assert radio["id"] == expected_radio, (node, band, radio["id"], expected_radio)
+        assert {bss["ssid"] for bss in radio["bsses"]} == {
+            "private_ssid", "iot_ssid", "mesh_backhaul"
+        }
+
+
 def ap_stations(device, radio, bss, cache):
     node = device["name"]
     container = "prpl-controller" if node == "controller" else (
@@ -97,13 +110,7 @@ def main():
         device = by_name[name]
         expected_id = f"02:00:00:27:{node + 1:02x}:01"
         assert device["id"] == expected_id, (name, device["id"], expected_id)
-        assert len(device["radios"]) == 3, (name, len(device["radios"]))
-        for local_radio, radio in enumerate(device["radios"]):
-            expected_radio = f"02:00:00:00:{node * 3 + local_radio:02x}:00"
-            assert radio["id"] == expected_radio, (name, radio["id"], expected_radio)
-            assert {bss["ssid"] for bss in radio["bsses"]} == {
-                "private_ssid", "iot_ssid", "mesh_backhaul"
-            }
+        validate_radio_inventory(node, device["radios"])
         if node:
             parent = expected_parent(node, args.topology)
             expected_parent_id = f"02:00:00:27:{parent + 1:02x}:01"

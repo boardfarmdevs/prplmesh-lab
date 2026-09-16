@@ -100,8 +100,6 @@ The tooltip refreshes while stationary and works with Follow room disabled.
 Focused checks: `node tests/webui-rf-hover-test.js controller-ui/web/static/room-topology.js`
 from the repository root. The matching `webui-rf-hover-browser-test.js URL OUTPUT_PREFIX`
 checks live tooltips and browser-only stale/error fixtures without lab mutations.
-The older `webui-topology-layout-test.js` fading-trail source assertion fails
-on unchanged HEAD too; it is unrelated to RF hover and is not repaired here.
 
 ## Multiple networks and VLANs
 

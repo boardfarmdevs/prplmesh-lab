@@ -257,7 +257,11 @@ EOF"
         lxd waitready
         lxc storage show default >/dev/null 2>&1 || lxd init --auto --storage-backend dir </dev/null
     '
-    run bash /opt/prplmesh-lab/scripts/install-from-artifacts.sh
+    run bash /opt/prplmesh-lab/scripts/install-from-artifacts.sh --prepare-only
+    lxc restart "$NAME" --timeout 120
+    wait_agent
+    run bash /opt/prplmesh-lab/scripts/radio-lab.sh radio-pool
+    run bash /opt/prplmesh-lab/scripts/radio-lab.sh deploy
     run bash /opt/prplmesh-lab/controller-ui/install.sh
     run bash /opt/prplmesh-lab/deploy/guest/prepare-appliance.sh /opt/prplmesh-lab
     run rm -rf /opt/prplmesh-stage

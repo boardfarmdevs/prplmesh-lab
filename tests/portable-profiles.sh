@@ -22,9 +22,9 @@ check()
         -eq "$radios"
 }
 
-check 100 unified 100 120 prplmesh-0913
-check unified unified 100 120 prplmesh-0913
-test "$(prplmesh_thin_release_name)" = prplmesh-0913-thin
+check 100 unified 100 120 prplmesh-0916
+check unified unified 100 120 prplmesh-0916
+test "$(prplmesh_thin_release_name)" = prplmesh-0916-thin
 test "$(PRPLMESH_RELEASE_ID=0901 prplmesh_profile_release_name 100)" = prplmesh-0901
 test "$(PRPLMESH_RELEASE_ID=0901 prplmesh_thin_release_name)" = prplmesh-0901-thin
 for obsolete in 20 50 small medium stress; do

@@ -4,7 +4,7 @@ set -euo pipefail
 ROOT=$(cd "$(dirname "$0")/../.." && pwd)
 # shellcheck source=profile.sh
 source "$ROOT/deploy/lxd-vm/profile.sh"
-RELEASE_ID=${PRPLMESH_RELEASE_ID:-0913}
+RELEASE_ID=${PRPLMESH_RELEASE_ID:-0916}
 case "$RELEASE_ID" in
     [0-9][0-9][0-9][0-9]) ;;
     *) echo "invalid PRPLMESH_RELEASE_ID: $RELEASE_ID" >&2; exit 2 ;;

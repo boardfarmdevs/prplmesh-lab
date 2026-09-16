@@ -1,0 +1,85 @@
+Subject: [PATCH] nl80211: collect native backhaul scan results
+
+--- a/common/beerocks/bwl/nl80211/sta_wlan_hal_nl80211.cpp
++++ b/common/beerocks/bwl/nl80211/sta_wlan_hal_nl80211.cpp
+@@ -12,6 +12,9 @@
+ #include <bcl/network/network_utils.h>
+ 
+ #include <easylogging++.h>
++#include <array>
++#include <regex>
++#include <sstream>
+ 
+ namespace bwl {
+ namespace nl80211 {
+@@ -78,7 +81,10 @@
+     return true;
+ }
+ 
+-bool sta_wlan_hal_nl80211::initiate_scan() { return true; }
++bool sta_wlan_hal_nl80211::initiate_scan()
++{
++    return wpa_ctrl_send_msg("SCAN TYPE=ONLY");
++}
+ 
+ bool sta_wlan_hal_nl80211::scan_bss(const sMacAddr &bssid, uint8_t channel,
+                                     beerocks::eFreqType freq_type)
+@@ -104,7 +110,45 @@
+ int sta_wlan_hal_nl80211::get_scan_results(const std::string &ssid, std::vector<sScanResult> &list,
+                                            bool parse_vsie)
+ {
+-    return 0;
++    list.clear();
++    char *reply = nullptr;
++    if (!wpa_ctrl_send_msg("SCAN_RESULTS", &reply) || !reply) {
++        return 0;
++    }
++    static const std::regex mac_pattern("([0-9a-fA-F]{2}:){5}[0-9a-fA-F]{2}");
++    std::istringstream rows(reply);
++    std::string row;
++    while (list.size() < 256 && std::getline(rows, row)) {
++        std::istringstream columns(row);
++        std::array<std::string, 5> fields;
++        if (!std::getline(columns, fields[0], '\t') ||
++            !std::getline(columns, fields[1], '\t') ||
++            !std::getline(columns, fields[2], '\t') ||
++            !std::getline(columns, fields[3], '\t') ||
++            !std::getline(columns, fields[4]) || fields[4] != ssid ||
++            !std::regex_match(fields[0], mac_pattern) ||
++            fields[3].find("[ESS]") == std::string::npos) {
++            continue;
++        }
++        int frequency = 0;
++        int signal = 0;
++        std::istringstream frequency_field(fields[1]);
++        std::istringstream signal_field(fields[2]);
++        if (!(frequency_field >> frequency) || !frequency_field.eof() ||
++            !(signal_field >> signal) || !signal_field.eof() || signal < -127 || signal > 0) {
++            continue;
++        }
++        sScanResult result{};
++        result.bssid = tlvf::mac_from_string(fields[0]);
++        result.channel = son::wireless_utils::freq_to_channel(frequency);
++        result.freq_type = son::wireless_utils::which_freq_type(frequency);
++        result.rssi = signal;
++        if (result.channel && result.freq_type != beerocks::eFreqType::FREQ_AUTO &&
++            result.bssid != beerocks::net::network_utils::ZERO_MAC) {
++            list.push_back(result);
++        }
++    }
++    return static_cast<int>(list.size());
+ }
+ 
+ bool sta_wlan_hal_nl80211::connect(const std::string &ssid, const std::string &pass, WiFiSec sec,
+--- a/common/beerocks/bwl/nl80211/base_wlan_hal_nl80211.cpp
++++ b/common/beerocks/bwl/nl80211/base_wlan_hal_nl80211.cpp
+@@ -563,6 +563,9 @@
+         return false;
+     }
+ 
++    if (cmd == "SCAN TYPE=ONLY" && !strncmp(buffer, "FAIL-BUSY", 9)) {
++        return true;
++    }
+     if ((!strncmp(buffer, "FAIL", 4)) || (!strncmp(buffer, "UNKNOWN", 7))) {
+         LOG(DEBUG) << std::endl << "cmd failed: " << cmd;
+         LOG(WARNING) << std::endl << "reply: " << buffer;

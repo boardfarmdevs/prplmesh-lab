@@ -388,8 +388,10 @@ assert.match(visualizationSource, /staDragStarted/,
   'topology clients do not install a D3 drag interaction');
 assert.match(visualizationSource, /sta-steer-pulse/,
   'topology does not render the post-steer client pulse');
-assert.match(visualizationSource, /sta-steering-trail/,
-  'topology does not render the fading steering trail');
+assert.match(visualizationSource, /steeringCues\.draw\(/,
+  'topology does not invoke the shared steering-cue renderer');
+assert.match(require(path.join(path.dirname(path.resolve(process.argv[2])), 'steering-cues.js')).draw.toString(),
+  /sta-steering-trail/, 'the shared renderer omits the fading steering trail');
 assert.match(visualizationSource, /sta-steering-intent-path/,
   'topology does not render the pre-steer intent path');
 assert.doesNotMatch(visualizationSource, /sta-moving-client|\.delay\(1250\)|moveEffect \? 0 : 1/,
@@ -549,9 +551,12 @@ for (const [id, originalX, originalY] of beforeOptimize) {
 }
 for (const [index, node] of layoutNodes.entries()) {
   for (const other of layoutNodes.slice(index + 1)) {
-    assert.ok(Math.hypot(node.x - other.x, node.y - other.y) >=
-      controller.topologyNodeExtent(node) + controller.topologyNodeExtent(other) + 23.9,
-    'Optimize Layout kept overlapping fixed node groups');
+    for (const shape of controller.topologyNodeFootprint(node)) {
+      for (const peerShape of controller.topologyNodeFootprint(other)) {
+        assert.ok(Math.hypot(node.x + shape.x - other.x - peerShape.x, node.y + shape.y - other.y - peerShape.y) >=
+          shape.radius + peerShape.radius + 11.99, 'Optimize Layout kept overlapping visible node groups');
+      }
+    }
   }
 }
 assert.ok(layoutNodes.every(node => node.fx === node.x && node.fy === node.y),
@@ -567,7 +572,7 @@ assert.deepEqual(layoutNodes.map(node => [node.id, node.x, node.y]), separated,
   'repeated Optimize Layout drifts already separated positions');
 assert.match(visualizationSource, /topologyLandscapeLayout\(renderTopology.nodes, renderTopology.edges, width, height\)/,
   'fresh non-star graphs still use cramped native coordinates');
-assert.match(visualizationSource, /separateTopologyNodes\(renderTopology.nodes\)/,
+assert.match(visualizationSource, /tightenTopologyNodes\(renderTopology.nodes\)/,
   'topology refresh does not repair overlap after a client cohort grows');
 assert.doesNotMatch(visualizationSource, /starSignature|arrangeStar/,
   'a parent change discards the operator positions and reorders extenders');

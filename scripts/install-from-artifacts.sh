@@ -3,6 +3,11 @@ set -euo pipefail
 
 ROOT=$(cd "$(dirname "$0")/.." && pwd)
 BASE_ALIAS=${PRPL_BASE_IMAGE_ALIAS:-prpl-ubuntu-22.04-base}
+MODE=${1:-}
+case "$MODE" in
+    ''|--prepare-only) [ "$#" -le 1 ] || exit 2 ;;
+    *) echo "usage: $0 [--prepare-only]" >&2; exit 2 ;;
+esac
 
 "$ROOT/scripts/preflight.sh"
 (cd "$ROOT/artifacts" && sha256sum -c SHA256SUMS)
@@ -22,6 +27,10 @@ SOURCE_IMAGE=$BASE_ALIAS "$ROOT/scripts/build-runtime-image.sh"
 
 sudo env INSTALL_MODULE=1 "$ROOT/scripts/build-hwsim.sh"
 sudo depmod -a "$(uname -r)"
+if [ "$MODE" = --prepare-only ]; then
+    echo 'Runtime image and radio modules installed; reboot before provisioning the radio pool.'
+    exit 0
+fi
 sudo "$ROOT/scripts/radio-lab.sh" radio-pool
 sudo "$ROOT/scripts/radio-lab.sh" deploy
 

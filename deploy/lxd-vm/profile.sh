@@ -3,16 +3,16 @@
 prplmesh_profile_name() {
     case "${1:-unified}" in
         100|unified) printf 'unified\n' ;;
-        *) echo '0913 uses one appliance with capacity for 100 clients; select the active roster in the room viewer' >&2; return 2 ;;
+        *) echo '0916 uses one appliance with capacity for 100 clients; select the active roster in the room viewer' >&2; return 2 ;;
     esac
 }
 
 prplmesh_profile_release_name() {
-    printf 'prplmesh-%s\n' "${PRPLMESH_RELEASE_ID:-0913}"
+    printf 'prplmesh-%s\n' "${PRPLMESH_RELEASE_ID:-0916}"
 }
 
 prplmesh_thin_release_name() {
-    printf 'prplmesh-%s-thin\n' "${PRPLMESH_RELEASE_ID:-0913}"
+    printf 'prplmesh-%s-thin\n' "${PRPLMESH_RELEASE_ID:-0916}"
 }
 
 prplmesh_profile_clients() {
