@@ -29,3 +29,14 @@ def test_received_visibility_room_disables_only_fronthaul_then_recovers():
     for frame in frames.values():
         assert frame["present"]["gateway"]
         assert all(frame["present"][role] for role, kind in world["roles"].items() if kind == "station")
+
+
+def test_existing_traffic_rooms_offer_low_high_udp_with_off_intervals():
+    for name in ROOMS[:2]:
+        world = json.loads((ROOT / "golden" / f"{name}.world.json").read_text())
+        mobility = json.loads((ROOT / "mobility" / f"{name}.json").read_text())
+        profile = validate_traffic(world)
+        assert profile == mobility["traffic_experiment"]
+        assert [phase["mode"] for phase in profile["phases"]] == ["udp", "udp"]
+        assert [phase["offered_mbps"] for phase in profile["phases"]] == [1, 8]
+        assert [(phase["start_ms"], phase["end_ms"]) for phase in profile["phases"]] == [(5000, 10000), (10000, 23000)]

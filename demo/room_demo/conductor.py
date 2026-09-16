@@ -48,6 +48,13 @@ DEVICE_ROLES = {
 CANDIDATE_PRIORITY_WINDOW_SECONDS = 120
 
 
+def _received_scan_status(status, ap_roles, client_roles):
+    return {station: {**scan, "receiver_role": client_roles.get(station),
+                      "neighbors": [{**neighbor, "role": ap_roles.get(neighbor["bssid"])}
+                                    for neighbor in scan.get("neighbors", [])]}
+            for station, scan in status.items()}
+
+
 def _action_measurements_fresh(decision, snapshot, maximum_age, now):
     client = snapshot.client(decision.sta_mac)
     if client is not None and client.measurement_source == BAND_SCAN_SOURCE:
@@ -968,7 +975,7 @@ class LiveConductor:
             policy_config = replace(policy_config, require_complete_client_roster=False)
         policy = policy_for(policy_config) if policy_config.load_aware_enabled else ThresholdPolicy(policy_config)
         if policy_config.load_aware_enabled:
-            self._load_provider = NativeLoadProvider("prpl-controller")
+            self._load_provider = NativeLoadProvider("prpl-controller", byte_counter_unit_bytes=1024)
         state = PolicyState()
         priority_role = None
         priority_until = 0.0
@@ -993,6 +1000,7 @@ class LiveConductor:
         )
         observer = PrplMeshObserver(
             self.base_url, candidate_provider=provider,
+            ownership_observer=self._load_provider.observe_owners if self._load_provider is not None else None,
             current_link_fallback=(lambda client: self._client_link_fallback(client, room_before))
             if self.interactive and self.room_state else None,
             max_current_metric_age_seconds=10,
@@ -1371,7 +1379,8 @@ class LiveConductor:
                         "optimization_goal": ("safe_band_preference_and_best_eligible_ap"
                                               if any(not same_band_received(profile) for profile in band_profiles.values())
                                               else "best_eligible_same_network_band_ap"),
-                        "band_steering": self._band_measurements.status,
+                        "band_steering": _received_scan_status(
+                            self._band_measurements.status, self._ap_role_by_bssid, self._role_by_mac),
                         "minimum_target_gain_rcpi": policy.config.minimum_target_gain_rcpi,
                         "expected_online_clients": policy.config.expected_clients,
                         "partial_roster_progression": not policy.config.require_complete_client_roster,

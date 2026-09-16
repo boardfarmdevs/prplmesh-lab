@@ -80,12 +80,14 @@ class ControllerObserver:
         *,
         fetcher: JsonFetcher | None = None,
         candidate_provider: CandidateProvider | None = None,
+        ownership_observer: Callable | None = None,
         trust_api_metric_timestamp: bool = True,
         clock: Callable[[], datetime] | None = None,
     ) -> None:
         self.base_url = base_url.rstrip("/")
         self.fetcher = fetcher or _default_fetch
         self.candidate_provider = candidate_provider
+        self.ownership_observer = ownership_observer
         self.trust_api_metric_timestamp = trust_api_metric_timestamp
         self.clock = clock or (lambda: datetime.now(timezone.utc))
         self.sequence = 0
@@ -178,7 +180,11 @@ class ControllerObserver:
                     ),
                 )
             )
+        if len({client.sta_mac for client in clients}) != len(clients):
+            raise ValueError("duplicate client ownership")
         normalized_clients = sorted_clients(clients)
+        if self.ownership_observer is not None:
+            self.ownership_observer(normalized_clients, self.last_raw)
 
         candidates: list[CandidateObservation] = []
         for client in normalized_clients:

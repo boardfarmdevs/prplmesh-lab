@@ -1,6 +1,9 @@
 'use strict';
 const assert = require('node:assert/strict');
-const {offsetBounds, remoteTimeBounds, nativeObservations, cpuWindow} = require('./native-controller-latency.js');
+const fs = require('node:fs');
+const os = require('node:os');
+const path = require('node:path');
+const {offsetBounds, remoteTimeBounds, nativeObservations, cpuWindow, startNativeTrace} = require('./native-controller-latency.js');
 assert.deepEqual(offsetBounds([{before: 9, remote: 5, after: 11}], 10, 0), {lower: 4, upper: 6});
 assert.throws(() => offsetBounds([], 10), /missing/);
 assert.throws(() => offsetBounds([{before: 10, remote: 1, after: 12}, {before: 20, remote: 1, after: 22}], 10, 0), /Inconsistent/);
@@ -36,3 +39,52 @@ assert.deepEqual(cpuWindow([first, last]).nativeCpuPercentOneCore, {lower: 9.8, 
 assert.equal(cpuWindow([first, {...last, native: {...last.native, start: 'restarted'}}]).nativeCpuPercentOneCore, null);
 assert.equal(cpuWindow([first, {...last, processes: []}]).browserCpuPercentOneCore, null);
 console.log('PASS: observer CPU windows retain process identity and scheduler-tick uncertainty');
+
+async function testStartupDiagnostics() {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'native-trace-diagnostics-'));
+  const previousPath = process.env.PATH;
+  try {
+    process.env.PATH = directory;
+    const scenarios = [
+      {name: 'unsupported', stderr: 'ValueError: unsupported native binary SHA256: 737ab07f89fec1aabcc861bd90ddafda931be2e3e1a108cc7352ea2c3ecd994c; qualify a new probe profile', code: 1},
+      {name: 'bcc', stderr: 'ModuleNotFoundError: No module named bcc', code: 1},
+      {name: 'attach', stderr: 'Failed to attach BPF to uprobe', code: 1},
+      {name: 'connection', stderr: 'ssh: connect to host unavailable: Connection refused', code: 255},
+      {name: 'empty', stderr: '', code: 0},
+      {name: 'signal', stderr: 'interrupted receiver', code: null, signal: 'SIGTERM'}
+    ];
+    for (const scenario of scenarios) {
+      const output = path.join(directory, scenario.name);
+      fs.mkdirSync(output);
+      fs.writeFileSync(path.join(directory, 'ssh'), '#!' + process.execPath + '\n' +
+        `process.stderr.write(${JSON.stringify(scenario.stderr)}, () => {` +
+        (scenario.signal ? `process.kill(process.pid, '${scenario.signal}');` : `process.exit(${scenario.code});`) + '});\n', {mode: 0o755});
+      let browserReads = 0;
+      await assert.rejects(startNativeTrace({'native-stack': 'prpl', host: 'fakehost', vm: 'fakevm', seconds: 5}, output,
+        {evaluate: async () => { browserReads++; return 0; }}), error => {
+        assert.ok(error.message.includes(scenario.stderr || '(empty)'));
+        assert.match(error.message, /prpl on fakehost\/fakevm/);
+        assert.ok(error.message.includes(path.join(output, 'native-stderr.txt')));
+        assert.equal(error.code, scenario.code);
+        assert.equal(error.signal, scenario.signal || null);
+        assert.equal(error.stderr, scenario.stderr);
+        assert.equal(fs.readFileSync(path.join(output, 'native-stderr.txt'), 'utf8'), scenario.stderr);
+        assert.equal(browserReads, 0);
+        return true;
+      });
+    }
+    fs.unlinkSync(path.join(directory, 'ssh'));
+    const output = path.join(directory, 'spawn');
+    fs.mkdirSync(output);
+    await assert.rejects(startNativeTrace({'native-stack': 'rdk', host: 'fakehost', vm: 'fakevm', seconds: 5}, output, {}),
+      /spawn ssh ENOENT/);
+    assert.equal(fs.readFileSync(path.join(output, 'native-stderr.txt'), 'utf8'), '');
+    console.log('PASS: startup errors preserve remote stderr, target, exit code, signal and evidence without clock waits');
+  } finally {
+    if (previousPath === undefined) delete process.env.PATH;
+    else process.env.PATH = previousPath;
+    fs.rmSync(directory, {recursive: true, force: true});
+  }
+}
+
+testStartupDiagnostics().catch(error => { console.error(error); process.exitCode = 1; });

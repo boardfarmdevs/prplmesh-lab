@@ -78,8 +78,9 @@ package throttle time in 40 s. A 150 s non-turbo load sample peaked at 65°C
 with **zero additional throttle time**. Turbo is now disabled on rev140,
 not rev150. Peak performance is reduced; compare only runs with the same
 power profile. A trial RAPL cap was overwritten by the thermal governor and
-was not retained. Check airflow, vents and fan operation physically before
-claiming the hardware issue fixed. No usable fan-RPM sensor was exposed.
+was not retained. The operator confirms normal fan operation; vent clearance
+and heatsink condition remain unverified. Do not claim a hardware repair.
+No usable fan-RPM sensor was exposed.
 
 `tests/room-feature-host-monitor.py` records the active turbo setting, readable
 RAPL limits, temperatures and throttle deltas. Run it on the physical host;

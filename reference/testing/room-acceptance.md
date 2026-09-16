@@ -8,19 +8,231 @@ or intrinsic stack-speed ranking. A targeted `--world` run is not full coverage.
 
 ## Current RF hardening checks
 
-The September 15 [RF qualification](../radio/virtual-rf-assessment.md#september-15-reliability-and-priority-qualification)
-supersedes the cooling/native-load blockers below. RDK and prpl complete the
-different-channel UDP/BTM and fresh-settling controls with the identified
-priority profile. The targeted follow-up selects `traffic-low-high-off`,
-`traffic-quieter-ap`, `received-same-band-roam`, `band-upgrade-24-5` and
-`large-room-extender-evacuation`; inspect initial/play/final convergence,
-independent native ownership/traffic, unchanged process identities and restoration.
-This is five of 25 advertised rooms, not full-catalog coverage. Evidence:
-`/home/rev/work/rf-reliability-0913/evidence/` on rev150.
-Physical cooling inspection remains outstanding; the software mitigation does
-not establish hardware repair or intrinsic cross-stack performance.
+[RF qualification](../radio/virtual-rf-assessment.md#september-15-reliability-and-priority-qualification)
+records non-turbo/priority profiles. Earlier evidence on rev150 remains under
+`/home/rev/work/rf-demand-0913/evidence/` and
+`/home/rev/work/rf-reliability-0913/evidence/`; cooling mitigation is not repair.
+
+The earlier six-room campaigns and four UDP cancellation cases pass, but
+**RDK's historical native qualification is not clean:** two controller exits
+during restoration remain recorded. Symbolized evidence identifies the
+topology/disassociation `dm_sta_t` UAF; patch 0193's contract/build and bounded
+disconnect/reconnect pass. ASan churn was stopped. Neither later repairs nor
+the checks below retroactively qualify those failures.
+
+### RDK threshold and query qualification
+
+September 15, rev140 `rdkeasymesh-0913`: **OneWifi 0029 / EasyMesh 0194**
+pass with unchanged native identities and successful policy/survey restoration.
+UAF patch 0193 remains installed.
+
+| Check | Result |
+| --- | --- |
+| Policy receipt/ACK; periodic isolation | Pass: 120 s interval, 128/255 threshold, six-second quiet control |
+| Rising 32 → 224 / falling 224 → 32 | Pass: 3.568 / 3.119 s; one target-radio event per crossing |
+| AP queries, 2.4 / 5 / 6 GHz | Pass: 10.321 / 6.967 / 11.423 ms; matching MID/BSSID |
+| Periodic interval zero | Crossings pass: 2.677 / 2.922 s; no plateau repeats |
+| Threshold zero; overlapping queries | Unsolicited reporting stops; three queries return fixture value 224 |
+| Controller API, single / three BSSIDs | Native replies: 14.987 / 9.928 ms |
+| Invalid API requests | Four rejected without native transmission |
+| Periodic/restart audit | Five devices report; leaf recovers 1.607 s after restart returns; controller unchanged |
+| Default readiness | Pass: 20 clients, six mesh nodes, 100-client pool; paused/unleased |
+
+Query timings measure agent receipt → controller capture; threshold timings
+include provider restart/delta warm-up. Independent one-second sampling continues
+with reporting off. Fixtures do not measure physical congestion.
+
+Evidence: `/home/rev/work/rf14-0913/evidence/` on rev150:
+`rdk-rf14-implemented-5/`, `rdk-rf14-restart-final/` and retained failures.
+From the RDK guest's `gen/`:
+
+```sh
+sudo env PYTHONPATH=optimizer:wmediumd/configurator python3 tests/rdk-reporting-policy-acceptance.py \
+  --live --extended --root "$PWD" --output /tmp/rdk-rf14-new
+```
+
+POST `/api/v1/ap_metrics_query` accepts `{AlMac, BSSIDs}` (1–24 BSSIDs).
+**HTTP 202 means submitted**, not completed.
+`tests/native-ap-metrics-test.py NATIVE_SOURCE ONEWIFI_SOURCE` checks parser
+bounds, handoff, timer-zero/idempotence, thresholds and RBUS validation.
+Clean native objects after header changes; deploy matching binaries/libraries.
+No full-catalog, soak or ASan claim.
 
 ## Preparation
+
+### Native retry counters and AP inspection
+
+September 15 bounded follow-up, evidence on rev150:
+`/home/rev/work/rf-counters-0915/evidence/`. Four eight-second downlink trials
+per stack pass; 250-ms impairment/recovery pulses avoid prolonged disconnects.
+Compare native 1905 counters with AP `iw` counters and sequenced UDP endpoints.
+
+| Trial | RDK retries / TX failures | prpl retries / TX failures |
+| --- | --- | --- |
+| Strong baseline | 0 / 0 | 0 / 0 |
+| Data loss | 1240 / 63 | 866 / 46 |
+| Reverse ACK loss | 1228 / 63 | 823 / 45 |
+| Recovery | 0 / 0 | 0 / 0 |
+
+Native and driver retry/failure deltas agree exactly. ACK-loss trials deliver
+all 3200 datagrams: TX failure does not prove data loss. RDK uses octets,
+prpl KiB; reset/wrap/malformed and direction checks are deterministic tests.
+RX corruption is not qualified. prpl patch 0022 fixes missing TX/RX mappings.
+The harness drains native sampling for two seconds before comparing reports;
+that wait is not measured convergence. Earlier failures remain retained.
+
+Deploy CMake-installed prpl libraries, not build-tree files: RUNPATH differs.
+After native restarts, verify per-agent reporting intervals and restore the
+client roster before starting the room.
+
+From RDK `gen/` or prpl root, substitute `prpl` for the second stack:
+
+```sh
+sudo env PYTHONPATH=optimizer:wmediumd/configurator python3 tests/native-retry-counter-acceptance.py \
+  --stack rdk --output /tmp/retry-qualification-new --yes-change-lab
+```
+
+AP-inspector tests distinguish local reports from client-heard advertisements,
+per-neighbor age, missing/zero/stale data and world replacement. Local AP load
+still requires an explicit load-policy session; ordinary rooms do not enable
+one. Browser component checks use live observations; full WebGL rendering is
+unavailable on this test host. No new policy, soak or full-catalog claim.
+
+### Demand and lifecycle follow-up
+
+Evidence directory on rev150: `/home/rev/work/rf-demand-0913/evidence/`.
+Run each stack serially; the two hosts may run in parallel.
+
+1. Retain non-turbo/priority profiles, resources and native timers.
+2. Check leaf restart, owned-rule restoration and watcher reconnect outside
+   measured runs; preserve unrelated firewall rules.
+3. Repeat different-channel UDP/BTM three times. Separate submission,
+   association and native evidence timing from the mandatory 20-second
+   post-verification observation window.
+4. Check UDP low/high/off, same-channel no-steer, both endpoints and four
+   cancellation paths; leave no traffic/firewall leftovers.
+5. Check received-link, cross-band and extender-loss rooms with both views and
+   native ownership audits. Restore the paused default twenty-client room
+   and hundred-client pool.
+
+No soak or physical-capacity claim follows from these tests. Retain failures
+and mark unavailable instrumentation explicitly rather than fabricating timings.
+
+### Demand and lifecycle results
+
+Both `*-rooms-udp-and-regressions/report.json` files pass all six rooms,
+initial/play/checkpoint/final gates, independent native audits, unchanged
+native/container/medium identities and default-world restoration. This does
+not erase the separate failed RDK load-control restorations.
+
+| Bounded observation | RDK | prpl |
+| --- | --- | --- |
+| Leaf restart command / rule present after return | 3.017 / 0.269 s | 12.791 / 0.155 s |
+| Watcher kill/reconnect | 5.030 s | 5.030 s |
+| Low/high/off sender actual, Mbit/s | 1.001 / 7.999 | 1.001 / 7.999 |
+| Low/high/off receiver goodput, Mbit/s | 1.001 / 7.998 | 1.001 / 7.974 |
+| Receiver loss in completed low/high phases | 0% | 0% |
+| Pause / source-offline cancellation | 0.291 / 0.597 s | 0.250 / 0.269 s |
+| Lease-release / world-change cancellation | 0.289 / 2.016 s | 0.026 / 1.039 s |
+
+Native load timing uses only the two passing RDK guarded runs and the three
+prpl repeats plus its passing identity-guard follow-up:
+
+| Timing boundary | RDK | prpl |
+| --- | --- | --- |
+| Submission call | 89–108 ms | 437–803 ms |
+| Target association verification after submission | 0.920–2.175 s | 0.225–0.451 s |
+| First fresh target serving sample after verification | 5.491–13.049 s | 1.761–1.945 s |
+| First fresh candidate set | 7.535–10.138 s | 0.667–1.352 s |
+| First fresh target/source load | 4.723–4.748 / 2.236–4.724 s | 0.668–1.353 / 0.668–2.158 s |
+| Complete coherent serving/candidate/load/activity snapshot | 10.139–15.592 s | 2.965–3.215 s |
+| Observer / nested candidate query p95 | 2628 / 2402 ms | 573 / 519 ms |
+| Load enrichment / policy evaluation p95 | 1.946 / 1.161 ms | 0.727 / 0.284 ms |
+
+These are first sampled evidence bounds, not native arrival times. The
+mandatory 20-second observation gate is retained and is not convergence latency.
+Do not add nested candidate time to observer time. Native report cadence,
+load-hold/dwell policy and host profiles differ; this is not a stack-speed ranking.
+RDK post-steer freshness remains variable and requires further diagnosis:
+these results do not establish instant measurement availability.
+
+The third guarded pre-fix RDK trial loses its controller and fails readiness
+with missing channel reports. Preserve that failure despite patch 0193 and
+subsequent successful agent/policy recovery. Both default rooms ultimately
+recover with twenty clients, hundred-client pools and no experiment leftovers;
+priority persistence remains enabled and outer-VM autostart disabled.
+
+Restart classification is eventual, not a pre-network barrier. Disabled
+reconnects do not restore rules; unrelated nftables tables survive. Native
+startup is separate: prpl requires its leaf wrapper; RDK needed its existing
+metrics-policy replay after the direct restart. Neither recovery belongs in
+a steering timing window.
+
+UDP uses existing namespaces and two owned processes. Actual measurement
+windows were about three and eleven seconds, not the full scheduled phases.
+All four cancellation cases leave no owned iperf3 processes. World-change
+latency includes applying the replacement world. Cancelled endpoint JSON was
+unusable and remains explicitly unavailable, not zero traffic/loss. Live lease
+expiry, shutdown cancellation and nonzero-loss accuracy are not demonstrated
+by these cases; their code paths have unit coverage.
+
+Both explicit native-load negative runs pass on unchanged channels, with no
+load-directed action. Sampled serving utilization stays within 0–119/255 RDK
+and 9–117/255 prpl: this proves acceptable-load suppression, not same-channel
+exclusion under overload. Initial signal-directed roams remain allowed.
+The temporary load-policy service override is removed afterward.
+
+Native-to-view probes use exact deployed-binary hashes and instruction/DWARF
+validation; unknown binaries fail closed. Selected upper clock-bound p95:
+
+| Native RCPI store to Chromium presentation | RDK | prpl |
+| --- | --- | --- |
+| Room | 463 ms; two native samples | 599 ms; eight native samples |
+| Topology | 106 ms; eight clients in one frame | 495 ms; ten native samples |
+
+Room captures emit/receive 70/70 RDK and 352/352 prpl native events; topology
+captures 138/138 and 673/673, with zero lost events. Small cohorts, shared
+presentation frames, separate workloads and a colocated headless observer
+preclude a stack ranking or population tail claim. This excludes RF generation,
+complete handovers/animations and a physical display.
+
+Room-campaign host sensors peak at 63°C on non-turbo RDK and 85.5°C on prpl.
+RDK's package throttle counter does not increase; the prpl counter is
+unavailable. RDK takes 96.047 s to regain default-room readiness after the
+negative-control service-profile restoration. This maintenance recovery is
+recorded separately from post-steer freshness and is not instantaneous startup.
+
+### Post-steer ownership and metric freshness
+
+The common early-owner hook is deployed and measured. The unchanged-mode prpl
+control completes coherent post-verification evidence in **2.926 s**; the
+focused follow-up completes in **2.212 s**. Register
+`observer.ownership_observer = provider.observe_owners` after constructing the
+load provider, before measured cycles or client filtering. The observer sends
+the complete, unambiguous native-controller roster before fallback/publisher
+and candidate work; asynchronous metric publishers do not own this state.
+
+Preserve target traffic baselines received after observed ownership, including
+first-seen sources. Reset changed source/BSSID ownership, provenance and
+radio/channel context; reject ambiguous ownership, observed leave/return and
+intervals crossing transport changes. Keep original native timestamps and the
+strict activity-interval start after ownership/context and verification floors.
+prpl's whole-second native publication guard remains mandatory. Missing/stale
+data is unavailable, never idle or refreshed by reading a cache.
+
+Production room collection already uses single-flight `StreamingCandidateProvider`;
+CLI/native benchmarks still collect directly. Blocking-sweep costs cannot be
+assigned to production streaming. Hook tests cover both modes without extra
+sweeps/native queries. Any later CLI/benchmark streamer reuse is a separately
+labeled measurement-mode change, retaining serialized native commands.
+
+The prpl six-room campaign, owner handoff, two traffic-room regressions and
+lifecycle follow-ups pass with preserved identities. RDK patch 0193 addresses
+the separately symbolized station lifetime race; its old failed trials remain
+failed evidence. Detailed RDK timing/source attribution belongs in the RDK
+acceptance reference, not a cross-stack latency claim.
+
+### General preparation
 
 1. Reserve the lab. Save initial room/service configuration, native/container/
    medium identities and source revisions. No other operator lease or RF writer

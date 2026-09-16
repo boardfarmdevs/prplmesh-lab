@@ -29,7 +29,8 @@ def main():
     provider = None
     snapshot = None
     try:
-        provider = NativeLoadProvider(controller)
+        provider = NativeLoadProvider(controller, byte_counter_unit_bytes=1024)
+        observer.ownership_observer = provider.observe_owners
         started = time.monotonic()
         with (args.output / "samples.jsonl").open("w") as stream:
             while time.monotonic() - started < args.seconds:

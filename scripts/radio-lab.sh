@@ -433,6 +433,9 @@ start_kernel_medium()
 
 start_medium()
 {
+    if [ "${WMEDIUMD_PRIORITY_QUEUES:-0}" = 0 ]; then
+        configure_control_priority
+    fi
     case "$MEDIUM_BACKEND" in
         userspace) start_userspace_medium ;;
         kernel) start_kernel_medium ;;
@@ -638,7 +641,11 @@ parent_backhaul_bssid()
 configure_control_priority()
 {
     case "${WMEDIUMD_PRIORITY_QUEUES:-0}" in
-        0) return ;;
+        0)
+            if [ -f /var/lib/wmdcfg-control-priority/prplmesh.json ]; then
+                python3 "$ROOT/wmediumd/configurator/wmdcfg/control_priority.py" --stack prplmesh --disable
+            fi
+            return ;;
         1) ;;
         *) echo "WMEDIUMD_PRIORITY_QUEUES must be 0 or 1" >&2; return 1 ;;
     esac
@@ -647,6 +654,9 @@ configure_control_priority()
         return 1
     }
     python3 "$ROOT/wmediumd/configurator/wmdcfg/control_priority.py" --stack prplmesh --enable "$@"
+    if [ -f /etc/systemd/system/wmdcfg-control-priority.service ]; then
+        systemctl start wmdcfg-control-priority.service
+    fi
 }
 
 start_agent()

@@ -2181,6 +2181,10 @@ class InteractiveMediumSession:
             )
             return restored
 
+    def stop_traffic(self) -> None:
+        if self._traffic_experiment is not None:
+            self._traffic_experiment.close()
+
     def close(self) -> bool:
         with self._lock:
             self._closing = True
@@ -2196,8 +2200,7 @@ class InteractiveMediumSession:
             thread.join(timeout=2)
         restored = self._restored
         try:
-            if self._traffic_experiment is not None:
-                self._traffic_experiment.close()
+            self.stop_traffic()
         finally:
             with self._lock:
                 if self._client is not None:

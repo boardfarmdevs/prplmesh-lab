@@ -2,14 +2,14 @@
 
 [Radio reference](README.md) · [Neighbor-room design](../proposals/neighbor-rooms/design.md)
 
-**Status: Phases 0–2 checkpointed; Phase 3 implemented with qualification gates still open.**
+**Status: Phases 0–2 and the bounded Phase 3 profile are qualified; Phase 4 is partially implemented.**
 See [operation, supported profile and acceptance](#124-implemented-phases-12-survey-and-native-bss-load).
 The supported model remains legacy-rate, 20 MHz. The Phase 3 visibility profile
 is opt-in and conservative, not calibrated physical capacity or full DCF.
 The measurements originated on `codex/0908-clean`; the shared assessment is
 maintained on `codex/0913-clean`. Keep both copies synchronized, not separate backlogs.
 
-Evidence extends through 2026-09-11 Pacific / 2026-09-12 UTC. Phases 1–2 deploy
+Evidence extends through September 15, 2026 UTC. Phases 1–2 deploy
 the module, daemon and native providers, testing fixed fields, traffic, retunes,
 failure and recovery. No soak or physical-capacity qualification was run.
 
@@ -197,7 +197,7 @@ does not imply autonomous optimization.
 | BSS station count / clients | Native AP Metrics TLV | Native AP Metrics TLV | Distinct BSS count, not radio airtime; same freshness/identity checks as load |
 | Advertised BSS Load / raw 0–255 | Actual hostapd beacon/scan field | Actual hostapd beacon/scan field | Keep presence/raw byte; field fixture is not congestion; not the inspector's AP-report value |
 | Packet activity / packets per second | Native STA counter deltas | Native STA counter deltas | ClientActivityObservation: source, interval and epoch; not offered demand |
-| Bytes/packets/retries/errors | HAL/native station reporting | BWL/native station reporting | Field-specific width, reset, units and retry semantics need qualification; no invented zero |
+| Bytes/packets/retries/errors | HAL/native station reporting; octets | BWL/native station reporting; KiB normalized to octets; patch 0022 maps TX failures/RX drops | Bounded data-loss/lost-ACK qualification; AP-relative direction; RX drops are not undecodable RF frames |
 | RX PHY metadata / modeled legacy rate | Patched medium → hwsim | Same common path | Selected-rate fix exists; reported rate is not qualified HT/VHT/HE capacity |
 | Backhaul RCPI / hop count | Native parent/link records | Native parent/link records | Signal plus conservative hop guard; no measured backhaul-capacity estimate |
 | Noise / dBm | Fixed model reference; provider omits unsupported noise | HAL placeholders are not qualified observations | Unavailable; do not infer independently measured noise from SNR |
@@ -265,9 +265,11 @@ stale or unsupported values must not become valid zero (§12.4).
 ### 4.2 RDK native reporting path is implemented
 
 The HAL channel-stat and hostapd-survey callbacks consume the common provider.
-OneWifi translation and native AP reports are exercised; the complete
-query/periodic/threshold policy matrix is not. Shared-wiphy frequency/context
-mapping must retain separate logical radios and units.
+OneWifi patch 0029 evaluates per-radio utilization crossings with independent
+one-second sampling; interval zero disables periodic reports, not sampling.
+Native patch 0194 handles bounded AP queries, preserves MID/BSSID correlation
+and exposes asynchronous controller submission. See [qualification](../testing/room-acceptance.md#rdk-threshold-and-query-qualification).
+Shared-wiphy contexts retain separate logical radios and units.
 
 ### 4.3 prpl native monitor now actually consumes survey data
 
@@ -481,8 +483,8 @@ without a bound.
 | IDs | Source boundary and follow-up |
 | --- | --- |
 | R01–R02 | `recipes-ccsp/hal/rdk-wifi-hal/`: channel-stat and hostapd-survey paths implemented; preserve unavailable/zero and BSS-load timer recovery |
-| R03–R04 | OneWifi/libwebconfig and unified-wifi-mesh: periodic AP reports exercised; complete query/threshold/policy-change timing and persistence qualification |
-| R05 | HAL/native station metrics: audit counter widths, bitrate units and reception provenance |
+| R03–R04 | Native threshold sampling/events and AP-query dispatch/correlation implemented; bounded qualification and restart evidence below |
+| R05 | Native station byte/packet counters and units qualify against endpoint traffic; controlled retry/error and rate provenance remain |
 | R06 | Scan/channel control: neighbor-load presence, actual retunes, shared VAPs and backhaul continuity |
 | R07–R08 | `gen/optimizer/`, demo and packaging: guarded load policy implemented; general channel control and compatible artifact qualification remain separate |
 
@@ -496,8 +498,8 @@ merely to make a demonstration pass.
 | IDs | Source boundary and follow-up |
 | --- | --- |
 | P01, P03–P04 | `patches/prplmesh/`: current-channel survey consumption, scan override removal and associated-stat refresh implemented |
-| P02 | BWL monitor: noise placeholders and ESP no-op are not qualified; audit counter/rate/SNR semantics |
-| P05–P06 | Periodic AP reports/NBAPI exercised; threshold/time semantics and full UI availability propagation remain open |
+| P02 | BWL station counters qualify after Profile 2 KiB-to-octet normalization; noise, ESP, retry/error and rate semantics remain unqualified |
+| P05–P06 | Periodic, explicit-query, upward/downward threshold and restart behavior pass; preserve native timestamps and availability in UI consumers |
 | P07–P08 | Scoped external policy and build/service integration implemented; channel planning and new artifact qualification remain separate |
 
 Keep BSSID, band-radio and scan-cache identities distinct. Native AP-report
@@ -582,8 +584,8 @@ not calendar commitments. Unsupported capabilities stay explicit.
 | 0: Truthfulness — implemented | Capability/validity contract, reproducible survey/source audits, regression fixtures rejecting stubs/placeholders/rates; no RF behavior change | C01 baseline, R01 audit, P01-P03 audit | S-M | Passed on both labs; see Phase 0 acceptance below |
 | 1: Reporting-only — implemented | Explicit fixed BSS Load test; native beacon/scan/report round-trip; availability and unit fixes | C09, R02-R04, P03-P06 | S-M | F1 field tests pass on both stacks; no congestion claim |
 | 2: Modeled airtime — implemented | C02-C04; declared legacy20 surrogate, occupancy/wait separation, both HAL paths | Common plus R01-R04/P01-P05 | M-L | Idle/load/channel controls pass within one declared contention domain |
-| 3: Credible contention | Visibility-aware scheduling, reverse ACK/receiver outcomes, interference power tests, truthful PHY metadata/service time | C05-C07, R05/P02 | L | Same-channel spatial reuse and asymmetric-link tests pass; no transport-error masking |
-| 4: Load-aware policy — scoped implementation | Native load/activity, hop guard and reasons; demand/capacity and neighbor actors remain future work | C08-C10, R06-R07/P05-P07 | M-L | Separate two-client native BTM qualifies on both stacks; default signal policy unchanged |
+| 3: Credible contention — bounded profile qualified | Visibility reservations, reverse ACK/receiver outcomes and legacy-rate metadata/service time; independent interference power remains open | C05-C07, R05/P02 | L | Two-flow reuse and asymmetric ACK tests pass without transport-error masking; not full DCF |
+| 4: Load-aware policy — partial | Native load/activity, traffic counters, owner epochs, hop guard and reasons implemented; demand/capacity and neighbor/backhaul actors remain future work | C08-C10, R06-R07/P05-P07 | M-L | Separate two-client native BTM qualifies on both stacks; default signal policy unchanged |
 | 5: Advanced RF | Calibrated HT/VHT/HE/EHT models, correlated fading, width/overlap, non-Wi-Fi energy; kernel-backend parity as separately justified | Common/platform specialists | L | Per-feature conformance and physical-reference comparison |
 
 Phases 1–2 pass reporting/native-traffic gates; section 12.5 qualifies legacy
@@ -1086,52 +1088,22 @@ and physical calibration remain open. Evidence:
 
 ### 12.7 RF increments and short qualification
 
-These five items are implemented in both `codex/0913-clean` trees and deployed
-to RDK/rev140 and prplMesh/rev150. September 15, 2026 UTC short tests cover the
-four additions and seven representative regressions, not all 25 catalog rooms
-or a soak. No native stack, kernel/module or VM is replaced.
+These additions are implemented in both `codex/0913-clean` trees and deployed
+to RDK/rev140 and prplMesh/rev150. September 15 short tests cover representative
+rooms, not the complete catalog or a soak.
 
-1. **Support and provenance:** §3.2 maintains the RF data-element matrix and
-   manifest contract. Runs save `rf-capabilities.json` and publish
-   `rf.capabilities`; implementation, activation and qualification remain
-   distinct. Repository hashes do not prove loaded HAL/source equality.
-2. **Target explanations:** load decisions retain deterministic per-BSSID
-   assessments after the existing signal/eligibility gates. Reasons distinguish
-   missing, non-native or stale load, identity/epoch mismatch, same radio/channel,
-   unknown/additional backhaul hop, report skew, busy target, insufficient load
-   advantage and unsafe signal. Other eligible targets are marked lower ranked.
-   Thresholds, ranking, one-client load batches and hysteresis are unchanged.
-3. **Selected-device inspector:** expand RF inspector in the room sidebar.
-   Four fixed-height views separate native observations, configured stimulus,
-   optimizer decisions and traffic. The explicit load-policy session supplies
-   existing observations, not a second UI poller. Preserve raw utilization,
-   valid zero, source, transport, age and epoch. AP windows remain unknown;
-   client deltas retain their interval. Never sum shared-BSS load or fill gaps
-   from geometry.
-4. **Bounded traffic:** `traffic-low-high-off` and `traffic-quieter-ap` use
-   one existing client at a time. The VM needs `iputils-ping` and `util-linux`;
-   both VM preparation paths now include them. The schedule requests 10 packets/s at 5–10 s,
-   200 packets/s at 10–23 s, and no experimental traffic outside those phases.
-   ICMP payload is 1200 bytes; reply/transmit counts come from actual ping
-   summaries, not the configured rate. The destination is the session's private
-   IPv4 lab gateway and the source is explicitly bound to `wlan0` in a pinned
-   client network namespace. One lazy worker owns bounded processes, has
-   generation-checked launch admission, and cancels/reaps them on pause, lease
-   loss, world switch, source offline, faults or shutdown. Nothing changes
-   offlined pool-client behavior. Schema limits: four non-overlapping phases,
-   at most 20 s each, within the first 60 s, 1–200 packets/s and 64–1200 bytes.
-   Ordinary beacons/probes still run during “off”; ping replies are not general
-   application goodput. Failures/unknown counts are explicit.
-5. **Received same-band opt-in:** a client profile may add
-   `"measurement_mode": "received_same_band"` with exactly one allowed band.
-   It reuses the existing bounded passive-scan collector, security/frequency
-   checks and AP→client RCPI for both serving and candidate observations.
-   No HAL-matrix fallback, native 802.11k claim or band-preference upgrade is
-   introduced. Ordinary single-band profiles stay on their previous path.
-   Received clients use a two-second age budget, one-second hold requiring
-   another fresh scan and three-second dwell; signal thresholds/gain and normal
-   cooldown/backoff remain policy choices. Up to four explicitly profiled
-   clients remain the limit. Missing serving reception fails closed.
+| Addition | Implemented boundary |
+| --- | --- |
+| Support/provenance | §3.2 plus `rf-capabilities.json`; implementation, activation and qualification remain separate |
+| Target explanations | Deterministic per-BSSID exclusions for freshness, identity, channel, hop, load and signal; policy thresholds unchanged |
+| RF inspector | Fixed native/stimulus/decision/traffic views reuse session observations; no UI polling or geometry fallback |
+| Bounded traffic | One pinned WLAN namespace; measured iperf3 sender/receiver results; pause, lease, world, offline, fault and shutdown cleanup |
+| Received same-band signal | Opt-in passive AP→client scans with exact BSSID/frequency/security, two-second age and fail-closed availability |
+
+Traffic profiles permit four non-overlapping phases in 60 seconds: UDP
+0.1–12 Mbit/s or bounded ICMP. Requested rate is not measured demand. Received
+signal does not claim reciprocal STA→AP reception, native 802.11k, HAL fallback
+or a band upgrade; ordinary profiles retain their prior path.
 
 #### Operator preparation and short acceptance
 
@@ -1160,7 +1132,7 @@ reach the native threshold, record no overload rather than relaxing policy.
 
 | Room | Short checks in room and topology |
 | --- | --- |
-| `traffic-low-high-off` / 30 s | Ten clients; stable geometry; actual low/high/off process lifecycle, transmitted/reply summaries, native load/age and separate modeled activity; no required signal-policy roam |
+| `traffic-low-high-off` / 30 s | Ten clients; low/high/off UDP lifecycle, measured sender/receiver goodput and loss, native load/age and separate modeled activity; no required signal-policy roam |
 | `traffic-quieter-ap` / 30 s | Ten clients; safe no-action on default same channel; prepared positive run must pass all native load/signal/hop gates and verify any actual BSSID/traffic change |
 | `received-same-band-roam` / 30 s | Ten clients; profiled station gateway → Ext-1 at 16 s checkpoint → gateway after return; stay 5 GHz, fresh received scans and independent native ownership checks |
 | `received-discovery-recovery` / 36 s | Ext-1 fronthaul absent at 12 s checkpoint, restored at 24 s; absent target ineligible, missing serving sample not fabricated, fresh rediscovery and eventual ownership/traffic recovery |
@@ -1172,10 +1144,8 @@ Run `node tests/viewer-rf-inspector-test.js` for inspector contracts.
 
 #### September 15 reliability and priority qualification
 
-The earlier eleven-room baseline remains in
-`/home/rev/work/rf-next-0913/evidence-20260915/`. Current hardening evidence is
-`/home/rev/work/rf-reliability-0913/evidence/` on rev150. Keep failed attempts;
-the targeted follow-up is not a new full-catalog or soak qualification.
+Hardening evidence: `/home/rev/work/rf-reliability-0913/evidence/` on rev150.
+Keep failed attempts; targeted checks are not full-catalog or soak qualification.
 
 **Reporting repairs**
 
@@ -1192,14 +1162,17 @@ the targeted follow-up is not a new full-catalog or soak qualification.
   **30/30 BSSes**, including controller/Ext-1 5 GHz, and passes.
 - **RDK channel reports:** patch 0188 admits authoritative operating-channel
   updates while an onboarded radio temporarily handles candidate measurements.
-  The positive test restores channel 6 in **5.49 s**, with unchanged agent PID
-  and untouched 5/6 GHz channels.
+  Patch 0190 resets the initial-report latch on accepted autoconfig renew, so
+  unchanged radios republish after a controller restart clears its channel rows.
+  The native fail-before/pass-after test covers rejected/busy renewals. Live
+  renewal recovered all **30 BSS channels in 12.46 s**, agents unchanged;
+  this maintenance timing is not post-steer latency.
 - **rev140:** the reversible non-turbo profile avoids observed throttling.
   See [physical-host cooling](../observability/monitoring.md#thermally-constrained-physical-hosts).
-  Physical airflow/fan inspection remains necessary; reduced clock ceilings
+  Fan operation is confirmed; airflow remains unverified. Reduced clock ceilings
   must be disclosed in performance comparisons.
 
-**Next single RF feature: bounded access-category admission**
+**Implemented opt-in: bounded access-category admission**
 
 Opt-in `wmediumd -Q` / `WMEDIUMD_PRIORITY_QUEUES=1` retains one active frame
 per transmitter/frequency and FIFO within each actual 802.11 access category.
@@ -1224,37 +1197,72 @@ From the shared root (`gen/` for RDK; repository root for prpl):
 sudo install -d /etc/systemd/system/LAB.service.d
 sudo install -m 0644 wmediumd/priority-queues.conf \
   /etc/systemd/system/LAB.service.d/30-priority-queues.conf
+sudo bash wmediumd/install-control-priority.sh STACK
 sudo systemctl daemon-reload
 ```
 
-Replace `LAB` with `easymesh-lab` or `prplmesh-lab`. During maintenance,
+Use `LAB=easymesh-lab` / `STACK=rdk` or `LAB=prplmesh-lab` / `STACK=prplmesh`.
+During maintenance,
 stop the room service, then run RDK's `wmediumd/wmediumd-up.sh up` or prpl's
 `scripts/radio-lab.sh restart-medium` with `WMEDIUMD_PRIORITY_QUEUES=1`;
-restart the room afterward. Normal lab startup reapplies classification;
-after a direct container restart, re-run the helper with `--enable`.
+restart the room afterward. [Lifecycle persistence](../../wmediumd/control-priority.md)
+restores classification after container restarts without polling. Native
+AP startup remains the platform wrapper's responsibility.
 The live RF manifest advertises admission only when enabled.
 
-Rollback: stop the room, run `sudo python3 wmediumd/configurator/wmdcfg/control_priority.py
---stack STACK --disable` (`rdk` or `prplmesh`), remove that drop-in, reload
-systemd, restart the medium with the variable set to `0`, then restart the room.
+Rollback: disable classification/subscription as described in the lifecycle
+guide; remove the priority drop-in and recover with
+`WMEDIUMD_PRIORITY_QUEUES=0`.
 
 **Measured short controls**
 
-| Different-channel UDP/BTM | RDK | prpl |
+| Low/high/off UDP, offered 1 then 8 Mbit/s | RDK | prpl |
 | --- | --- | --- |
-| Result | PASS | PASS |
-| Verified BTM / fresh settling | 0.98 / 22.39 s | 0.57 / 20.05 s |
-| Receiver goodput, two flows | 7.47 / 7.18 Mbit/s | 11.99 / 10.91 Mbit/s |
+| Measured receiver goodput, Mbit/s | 1.001 / 7.998 | 1.001 / 7.974 |
+| Receiver loss in these samples | 0% | 0% |
 
-Verification starts after submission, not at client movement.
+These endpoint records measure delivered traffic, not physical capacity.
+Restart, cancellation, load/BTM and browser measurements are in the
+[bounded follow-up](../testing/room-acceptance.md#demand-and-lifecycle-results).
 
-RDK's delayed ACK previously took **9.58 s**; two post-steer ACKs captured
-under the corrected load took **3.93–12.38 ms**, and candidate responses
-**3.88–4.56 ms**. These small samples are not percentile guarantees.
-Neither freshness deadlines nor policy thresholds changed. Both drivers verify
-native channel/client restoration. All five load/play/topology rooms and native
-audits pass on both labs, without native restarts during these runs. Records:
-`rdk-rooms-verified/` and `prpl-rooms-verified/`; both default rooms are restored.
+Verification starts after submission. The mandatory 20-second observation
+window is **not measured convergence or metrics delay**. First sampled fresh
+serving/candidate/load/activity evidence and observer/policy costs are separate;
+missing milestones remain unavailable. Tests reject native/container/medium
+identity changes even if services recover. Native reporting cadence and policy
+thresholds remain unchanged.
 
-Keep this opt-in profile identified in every result. Next: qualify controlled
-offered load versus receiver goodput before adding new utilization-based policy.
+#### September 15 reassessment and next order
+
+Earlier lifecycle, byte-rate and RF14 threshold/query results remain in
+[bounded acceptance](../testing/room-acceptance.md#rdk-threshold-and-query-qualification).
+They are not performance guarantees or a full-catalog qualification.
+
+Symbolized evidence confirms a cross-thread `dm_sta_t` use-after-free between topology
+encoding and disassociation deletion. Patch **0193** shares the topology mutex
+and unlocks before dispatch. Its contract, Yocto build and one live disconnect/
+reconnect pass; extended ASan churn was intentionally stopped. A dedicated
+data-model mutex with immutable snapshots remains the stronger design.
+
+The current counter/inspection work remains observation-only:
+
+- **Retry/error counters:** four eight-second downlink trials cover baseline,
+  pulsed data loss, lost ACKs and recovery. Compare native 1905 counters with
+  AP driver counters and sequenced UDP delivery. prpl patch 0022 fixes omitted
+  TX-failure/RX-drop mappings. Missing/malformed/reset deltas stay unavailable;
+  wrap and independent directions have deterministic tests. RX corruption
+  remains unqualified; lost ACKs can cause TX failures despite delivered data.
+- **AP inspector:** local AP Metrics and client-heard BSS Load have separate
+  sections. AP selection includes advertisements heard by its clients and
+  advertisements of that AP. Each shows BSSID/channel, receiver/source, scan
+  identity and per-observation age. Two-second scan freshness is not replaced
+  by a newer batch timestamp. Stale byte/retry/error rates are hidden.
+
+Next:
+
+1. **Add backhaul path evidence:** join native backhaul RCPI, radio load and
+   traffic into explanations before target ranking consumes it.
+2. **Separate noise/interference/CCA:** version received power, noise and sensed
+   undecodable energy; this is the next foundational model change.
+
+Modern PHY/aggregation, ESP and full collision/DCF calibration remain later.

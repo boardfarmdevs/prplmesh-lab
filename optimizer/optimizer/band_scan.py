@@ -68,6 +68,22 @@ def parse_scan(text, *, frequencies, started_boottime, finished_boottime):
         if bssid in observed:
             raise ValueError("scan contains a duplicate BSSID")
         security = re.search(r"(?m)^\s+\* Authentication suites: ([^\r\n]+)$", block)
+        load_heading = re.search(r"(?m)^\s+BSS Load:\s*$", block)
+        load_fields = {
+            "station_count": re.search(r"(?m)^\s+\* station count:\s*(\d+)\s*$", block),
+            "utilization": re.search(r"(?m)^\s+\* channel utilisation:\s*(\d+)/255\s*$", block),
+            "admission_capacity": re.search(
+                r"(?m)^\s+\* available admission capacity:\s*(\d+)\s+\[\*32us\]\s*$", block),
+        }
+        if load_heading and not all(load_fields.values()):
+            raise ValueError("scan BSS Load element is incomplete")
+        advertised_load = {"state": "unavailable"}
+        if load_heading:
+            advertised_load = {"state": "available", **{
+                name: int(match[1]) for name, match in load_fields.items()}}
+            if (advertised_load["station_count"] > 65535 or advertised_load["utilization"] > 255
+                    or advertised_load["admission_capacity"] > 65535):
+                raise ValueError("scan BSS Load element is outside its wire range")
         observed[bssid] = {
             "bssid": bssid, "frequency_mhz": frequency_mhz,
             "band": frequency_band(frequency_mhz), "ssid": ssid[1],
@@ -76,6 +92,7 @@ def parse_scan(text, *, frequencies, started_boottime, finished_boottime):
             "key_management": security[1].split() if security else [],
             "pmf_capable": "MFP-capable" in block,
             "pmf_required": "MFP-required" in block,
+            "advertised_bss_load": advertised_load,
         }
     return observed
 

@@ -1,5 +1,8 @@
 # wmediumd configurator
 
+For opt-in IEEE 1905 bridge classification across direct LXC restarts, see
+[control-priority persistence](../control-priority.md).
+
 This Python package turns auditable scenario source into live atomic wmediumd
 updates. It discovers the prplMesh LXD inventory, freezes role-to-radio
 bindings, compiles deterministic event plans, reads back every generation, and

@@ -1,0 +1,26 @@
+--- a/common/beerocks/bwl/nl80211/mon_wlan_hal_nl80211.cpp
++++ b/common/beerocks/bwl/nl80211/mon_wlan_hal_nl80211.cpp
+@@ -156,6 +156,7 @@
+     stats_policy[NL80211_STA_INFO_PLINK_STATE]   = {NLA_U8, 0, 0};
+     stats_policy[NL80211_STA_INFO_TX_RETRIES]    = {NLA_U32, 0, 0};
+     stats_policy[NL80211_STA_INFO_TX_FAILED]     = {NLA_U32, 0, 0};
++    stats_policy[NL80211_STA_INFO_RX_DROP_MISC]  = {NLA_U64, 0, 0};
+     stats_policy[NL80211_STA_INFO_STA_FLAGS]  = {NLA_UNSPEC, sizeof(struct nl80211_sta_flag_update),
+                                                 0};
+     stats_policy[NL80211_STA_INFO_LOCAL_PM]   = {NLA_U32, 0, 0};
+@@ -300,6 +301,15 @@
+                 sta_stats.retrans_count = nla_get_u32(sinfo[NL80211_STA_INFO_TX_RETRIES]);
+             }
+ 
++            if (sinfo[NL80211_STA_INFO_TX_FAILED]) {
++                calc_curr_traffic(nla_get_u32(sinfo[NL80211_STA_INFO_TX_FAILED]),
++                                  sta_stats.tx_errors_cnt, sta_stats.tx_errors);
++            }
++            if (sinfo[NL80211_STA_INFO_RX_DROP_MISC]) {
++                calc_curr_traffic(nla_get_u64(sinfo[NL80211_STA_INFO_RX_DROP_MISC]),
++                                  sta_stats.rx_errors_cnt, sta_stats.rx_errors);
++            }
++
+             return true;
+         },
+         vap_iface_name);

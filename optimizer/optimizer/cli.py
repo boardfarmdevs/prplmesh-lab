@@ -81,7 +81,10 @@ def _live(args, mode: str) -> int:
         if config is not None and config.load_aware_enabled:
             if args.candidate_provider != "controller":
                 raise SystemExit("load-aware live mode requires --candidate-provider controller")
-            provider = NativeLoadProvider("prpl-controller" if args.backend == "prplmesh" else "bpibroadband")
+            provider = NativeLoadProvider(
+                "prpl-controller" if args.backend == "prplmesh" else "bpibroadband",
+                byte_counter_unit_bytes=1024 if args.backend == "prplmesh" else 1,
+            )
         return _live_run(args, mode, provider)
     finally:
         if provider is not None:
@@ -111,6 +114,7 @@ def _live_run(args, mode: str, load_provider=None) -> int:
     observer = observer_type(
         base_url,
         candidate_provider=candidate_provider,
+        ownership_observer=load_provider.observe_owners if load_provider is not None else None,
         trust_api_metric_timestamp=args.trust_api_metric_timestamp,
     )
     journal = Journal(args.journal)
