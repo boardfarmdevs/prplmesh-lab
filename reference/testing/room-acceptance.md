@@ -20,8 +20,7 @@ values and bounds strings at their first NUL. Provisioning derives the platform
 SSID/passphrase from the same supplicant template. The native rebuild and
 credential regression pass; live isolation/recovery and the complete 25-room
 campaign must pass before the repaired 0916 artifact is accepted. This is not
-an external reconnect workaround. The native scan-result stub and its fallback
-timings remain distinct limitations; this patch does not implement scan ranking.
+an external reconnect workaround.
 
 The reconnect retry also exposed a shared-PHY mismatch: a replacement native
 supplicant network could select a 2.4 GHz mesh BSS while its co-located AP
@@ -29,6 +28,15 @@ remained on 5180 MHz. The backhaul template now restricts the supplicant globall
 to 5180 MHz, including networks created after startup. This preserves the lab's
 existing shared-radio channel; it does not pin the parent BSSID or bypass native
 recovery. Check actual interface frequencies as well as model convergence.
+
+Patch 0024 replaces the Linux HAL's no-op scan trigger and empty scan-result
+stub with supplicant scans and parsed native BSSID/frequency/RSSI records.
+The native backhaul manager can rank received parents instead of repeatedly
+falling through empty scans to hidden-SSID recovery. Busy unfiltered scans
+wait for the existing native completion; other command failures still fail.
+The existing native reconnect grace period is unchanged. Parser regressions
+cover malformed rows, bounds, SSIDs and the no-exceptions native build.
+Live recovery qualification remains a release gate, not implied by compilation.
 
 Capture the two browser pages sequentially, bringing each to the foreground,
 then return focus to the room before controls/playback. Concurrent background
