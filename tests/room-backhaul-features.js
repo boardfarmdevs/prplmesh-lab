@@ -154,10 +154,10 @@ async function run(options) {
     await roomPage.bringToFront();
     if (await roomPage.evaluate(() => Boolean(document.fullscreenElement))) await roomPage.locator('#roomFullscreen').click();
     changed = true;
-    const applied = roomPage.waitForResponse(response => response.url().endsWith('/api/demo/world/apply') && response.request().method() === 'POST', {timeout: 60000});
-    if (id === 'default') await roomPage.locator('#defaultWorld').click();
-    else await roomPage.locator('#world').selectOption(id);
-    const response = await applied;
+    const [response] = await Promise.all([
+      roomPage.waitForResponse(response => response.url().endsWith('/api/demo/world/apply') && response.request().method() === 'POST', {timeout: 60000}),
+      id === 'default' ? roomPage.locator('#defaultWorld').click() : roomPage.locator('#world').selectOption(id),
+    ]);
     const result = await response.json();
     assert.ok(response.ok(), JSON.stringify(result));
     assert.equal(result.backhaul_rf_verified, true);
