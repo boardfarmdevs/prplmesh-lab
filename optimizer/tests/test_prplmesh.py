@@ -342,9 +342,68 @@ def test_radio_discovery_caches_inventory_and_capability_without_publishing_fail
     monkeypatch.setattr(provider, "_call", completed_read)
     assert len(provider._radio_objects()) == 2
     assert len(provider._radio_objects()) == 2
-    assert calls == [(provider.NETWORK, "_get", {"rel_path": "Device.*.", "depth": 2})] * 2 + [
-        (radio_one, "_describe", {"functions": True, "parameters": False, "objects": False})]
+    inventory_call = (provider.NETWORK, "_get", {"rel_path": "Device.*.", "depth": 2})
+    assert calls == [inventory_call, inventory_call,
+                     (radio_one, "_describe", {"functions": True, "parameters": False, "objects": False}),
+                     inventory_call]
     assert not provider.defer_registration_query
+
+
+@pytest.mark.parametrize("new_device,new_radio", [(7, 1), (2, 1)])
+def test_candidate_registration_follows_recreated_native_radio_paths(monkeypatch, new_device, new_radio):
+    provider = PrplMeshCandidateProvider(allow_simulated=True)
+    device_id = "02:00:00:27:02:01"
+    radio_id = "02:00:00:00:04:00"
+    old_device = provider.NETWORK + ".Device.2"
+    old_radio = old_device + ".Radio.2"
+    current_device = old_device
+    current_radio = old_radio
+    calls = []
+
+    def call(obj, method, payload):
+        calls.append((obj, method, payload))
+        if method == "_get":
+            return {current_device: {"ID": device_id}, current_radio: {"ID": radio_id}}
+        if method == "_describe":
+            return {"functions": {"AddUnassociatedStation": {"arguments": [
+                {"name": "defer_query", "type_name": "bool"}]}}}
+        assert obj == current_radio
+        return {"retval": ""}
+
+    monkeypatch.setattr(provider, "_call", call)
+    metadata = {"channel": 36, "opclass": 115, "device_id": device_id}
+    assert provider._radio_objects()[(device_id, radio_id)] == old_radio
+    provider._register_targets({(old_radio, "station"): []}, {old_radio: metadata})
+    provider._radio_objects()
+    assert provider.registered == {(old_radio, "station")}
+    assert sum(method == "_describe" for _, method, _ in calls) == 1
+    current_device = provider.NETWORK + f".Device.{new_device}"
+    current_radio = current_device + f".Radio.{new_radio}"
+    assert provider._radio_objects()[(device_id, radio_id)] == current_radio
+    assert not provider.registered and not provider.registration_channels
+    provider._register_targets({(current_radio, "station"): []}, {current_radio: metadata})
+    assert provider.registered == {(current_radio, "station")}
+    assert [obj for obj, method, _ in calls if method == "AddUnassociatedStation"] == [
+        old_radio, current_radio]
+
+
+def test_failed_rediscovery_cannot_reuse_old_registrations(monkeypatch):
+    provider = PrplMeshCandidateProvider()
+    provider.object_cache = {("agent", "radio"): "old-path"}
+    provider.registered = {("old-path", "station")}
+    provider.registration_channels = {"station": frozenset({(36, 115)})}
+    device = provider.NETWORK + ".Device.7"
+
+    def call(obj, method, payload):
+        if method == "_describe":
+            raise CandidateMetricsUnavailable("radio disappeared during rediscovery")
+        return {device: {"ID": "02:00:00:27:02:01"},
+                device + ".Radio.1": {"ID": "02:00:00:00:04:00"}}
+
+    monkeypatch.setattr(provider, "_call", call)
+    with pytest.raises(CandidateMetricsUnavailable, match="disappeared"):
+        provider._radio_objects()
+    assert not provider.object_cache and not provider.registered and not provider.registration_channels
 
 
 def test_orphaned_radio_does_not_leave_a_partial_inventory(monkeypatch):

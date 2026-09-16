@@ -8,6 +8,14 @@ or intrinsic stack-speed ranking. A targeted `--world` run is not full coverage.
 
 ## 0916 release recovery checks
 
+The candidate collector refreshes native device/radio paths before each collection.
+Agent reconnection can recreate NBAPI instances with new numbers even when the
+radio MACs are unchanged. A changed identity-to-path map invalidates candidate
+registrations before registering against the current objects; unchanged maps
+retain registrations and capability discovery. Regression tests cover device
+recreation, radio reordering and interrupted rediscovery. This fixes permanent
+`AddUnassociatedStation` failures against deleted paths, not native radio policy.
+
 Run 22 client-policy rooms with `tests/room-feature-acceptance.js` and three
 geometry rooms with `tests/room-backhaul-features.js --flavor prpl`. The latter
 deliberately isolates an upstream link while APs remain enabled: the client-only

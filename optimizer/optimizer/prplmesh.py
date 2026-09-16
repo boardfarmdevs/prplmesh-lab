@@ -319,8 +319,6 @@ class PrplMeshCandidateProvider:
         return _first_json(completed.stdout)
 
     def _radio_objects(self) -> dict[tuple[str, str], str]:
-        if self.object_cache:
-            return self.object_cache
         values = self._call(self.NETWORK, "_get", {"rel_path": "Device.*.", "depth": 2})
         device_pattern = re.escape(self.NETWORK) + r"\.Device\.\d+"
         device_ids = {
@@ -343,6 +341,11 @@ class PrplMeshCandidateProvider:
             discovered[(device_id, radio_id)] = radio
         if not discovered:
             raise CandidateMetricsUnavailable("NBAPI radio inventory is empty")
+        if discovered == self.object_cache:
+            return self.object_cache
+        self.object_cache.clear()
+        self.registered.clear()
+        self.registration_channels.clear()
         description = self._call(next(iter(discovered.values())), "_describe",
                                  {"functions": True, "parameters": False, "objects": False})
         arguments = description.get("functions", {}).get("AddUnassociatedStation", {}).get("arguments", [])
