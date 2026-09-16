@@ -16,6 +16,14 @@ retain registrations and capability discovery. Regression tests cover device
 recreation, radio reordering and interrupted rediscovery. This fixes permanent
 `AddUnassociatedStation` failures against deleted paths, not native radio policy.
 
+The topology adapter identifies the controller by native `Network.ControllerID`,
+not by a temporarily missing `BackhaulDeviceID`. Parentless/reconnecting agents
+remain agents with unknown uplinks, rather than creating extra controller icons.
+Missing controller identity is explicitly unavailable. This addresses transient
+seven/eight-node drawings observed during otherwise successful client roams.
+The room's fullscreen and sidebar authority labels also follow the current
+world's backhaul policy rather than the initial session profile.
+
 Run 22 client-policy rooms with `tests/room-feature-acceptance.js` and three
 geometry rooms with `tests/room-backhaul-features.js --flavor prpl`. The latter
 deliberately isolates an upstream link while APs remain enabled: the client-only
