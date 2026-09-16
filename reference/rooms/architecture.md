@@ -158,6 +158,13 @@ seconds, so the asynchronous HAL event cannot restart the native manager while
 its recovery scan is starting. A newly connected link receives 15 seconds to
 reestablish controller communication; this grace does not assert a rooted path.
 
+The agent's separate controller-connectivity task leaves discovery-wait only
+after positive contact from its known current controller newer than the latest
+backhaul link-up. Stale contact, an unknown controller and packets from another
+controller cannot qualify the link. This avoids reconnecting a healthy uplink
+merely because discovery events were missed while ordinary native controller
+traffic is arriving. Existing monitoring, heartbeat and loss deadlines remain.
+
 Native topology queries also reconcile unchanged client associations after a
 backhaul outage. An agent can correctly retain a client while the controller
 removes its device/BSS or marks that station disconnected; the old association

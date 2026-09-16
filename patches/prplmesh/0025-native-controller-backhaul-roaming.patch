@@ -573,6 +573,34 @@
 +}
 +
 +#endif
+--- a/agent/src/beerocks/slave/tasks/controller_connectivity_task.cpp
++++ b/agent/src/beerocks/slave/tasks/controller_connectivity_task.cpp
+@@ -91,6 +91,13 @@
+         break;
+     }
+     case eState::WAIT_FOR_CONTROLLER_DISCOVERY: {
++        auto db = AgentDB::get();
++        if (db->controller_info.bridge_mac != network_utils::ZERO_MAC &&
++            db->controller_info.last_controller_contact_time > m_backhaul_connected_time) {
++            LOG(INFO) << "Native controller contact confirms backhaul connectivity";
++            FSM_MOVE_STATE(CONTROLLER_MONITORING);
++            break;
++        }
+         if (check_controller_discovery_timeout()) {
+             LOG(DEBUG) << "Backhaul link does not provide Controller connectivity";
+             FSM_MOVE_STATE(CONNECTION_TIMEOUT);
+--- a/agent/src/beerocks/slave/son_slave_thread.cpp
++++ b/agent/src/beerocks/slave/son_slave_thread.cpp
+@@ -903,7 +903,8 @@
+         }
+ 
+         // Update controller last contact time
+-        if (db->controller_info.bridge_mac == src_mac) {
++        if (db->controller_info.bridge_mac != network_utils::ZERO_MAC &&
++            db->controller_info.bridge_mac == src_mac) {
+             db->controller_info.last_controller_contact_time = std::chrono::steady_clock::now();
+         }
+     }
 --- a/common/beerocks/bwl/include/bwl/sta_wlan_hal.h
 +++ b/common/beerocks/bwl/include/bwl/sta_wlan_hal.h
 @@ -50,6 +50,13 @@

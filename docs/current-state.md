@@ -10,7 +10,7 @@ monitor; use [operations](operations.md) for current service checks.
 | Canonical branch | `codex/0916-clean` |
 | Canonical checkout | `rev150:/home/rev/git/prplmesh-lab-0916-clean` |
 | Running qualification VM | `rev150:prplmesh-0916`; fresh build, not released |
-| Native runtime bundle | SHA-256 prefix `ffd4f3fd`; source recorded in qualification evidence |
+| Native runtime bundle | SHA-256 prefix `65a8ee22`; source recorded in qualification evidence |
 | Guest checkout | `/opt/prplmesh-lab` |
 | Native prplMesh | 6.0.0, `2e153c7e00cbcab6b8ee35082f494a364e23f018`, patches through 0025 |
 | Platform | Ubuntu 24.04 / Linux 7 radio host, userspace wmediumd |
@@ -52,6 +52,15 @@ ext3→ext2→ext1 handover, strict rosters/kernel ownership, traffic, both view
 unchanged native identities and Default restoration. Native scans, rooted safety
 and standard 1905 steering drive the moves, not external parent forcing.
 Fresh full **22+3 qualification remains pending** on this combined build.
+The latest strict run stopped after 12 client-room passes: the extender-loss
+room retained correct clients but failed continuous mesh connectivity. Native
+discovery-wait unnecessarily reconnected healthy uplinks despite fresh packets
+from the current controller. The localized repair requires positive contact
+after the latest link-up. Focused extender-loss now passes all 34 continuous
+mesh-connectivity samples; all three geometry rooms and Default restoration
+pass again, with both native handovers verified in 1.209 and 1.202 seconds.
+Fresh full qualification must still pass before release. Original failed
+results and native/AP/wire evidence remain retained.
 
 Explicit client departure now blocks old-age association recovery; only recorded
 infrastructure loss permits the fresh-query exception. Three bounded stationary

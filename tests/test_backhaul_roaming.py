@@ -18,6 +18,90 @@ def added_source(relative, include_context=False):
                      and not line.startswith("+++"))
 
 
+def test_native_reconnect_requires_positive_controller_contact_after_link_up(tmp_path):
+    compiler = shutil.which("g++")
+    if not compiler:
+        pytest.skip("g++ is required for native connectivity regression")
+    branch = added_source("agent/src/beerocks/slave/tasks/controller_connectivity_task.cpp")
+    receiver = added_source("agent/src/beerocks/slave/son_slave_thread.cpp", True)
+    contact = receiver[receiver.index("if (db->controller_info.bridge_mac !="):]
+    contact = contact[:contact.index("\n        }") + len("\n        }")]
+    source = r'''
+#include <cassert>
+#include <chrono>
+#include <sstream>
+using Clock = std::chrono::steady_clock;
+enum class State { WAIT_FOR_CONTROLLER_DISCOVERY, CONTROLLER_MONITORING, CONNECTION_TIMEOUT };
+struct Database {
+    struct Controller { int bridge_mac = 0; Clock::time_point last_controller_contact_time; } controller_info;
+} database;
+struct AgentDB {
+    struct SafeDB { Database *operator->() { return &database; } };
+    static SafeDB get() { return {}; }
+};
+namespace network_utils { constexpr int ZERO_MAC = 0; }
+#define LOG(level) std::ostringstream()
+#define FSM_MOVE_STATE(next) state = State::next
+void receive(int src_mac) {
+    auto db = AgentDB::get();
+CONTACT
+}
+void tick(State &state, Clock::time_point m_backhaul_connected_time, bool timeout) {
+    switch (state) {
+    case State::WAIT_FOR_CONTROLLER_DISCOVERY: {
+BRANCH
+        if (timeout) state = State::CONNECTION_TIMEOUT;
+        break;
+    }
+    default: break;
+    }
+}
+int main() {
+    const auto link_up = Clock::now();
+    const auto fresh = link_up + std::chrono::seconds(1);
+    auto state = State::WAIT_FOR_CONTROLLER_DISCOVERY;
+    database.controller_info = {0, fresh};
+    tick(state, link_up, true);
+    assert(state == State::CONNECTION_TIMEOUT);
+    state = State::WAIT_FOR_CONTROLLER_DISCOVERY;
+    database.controller_info = {1, link_up - std::chrono::seconds(1)};
+    tick(state, link_up, false);
+    assert(state == State::WAIT_FOR_CONTROLLER_DISCOVERY);
+    database.controller_info.last_controller_contact_time = link_up;
+    tick(state, link_up, true);
+    assert(state == State::CONNECTION_TIMEOUT);
+    state = State::WAIT_FOR_CONTROLLER_DISCOVERY;
+    database.controller_info.last_controller_contact_time = fresh;
+    tick(state, link_up, true);
+    assert(state == State::CONTROLLER_MONITORING);
+    tick(state, link_up, true);
+    assert(state == State::CONTROLLER_MONITORING);
+    state = State::WAIT_FOR_CONTROLLER_DISCOVERY;
+    tick(state, fresh + std::chrono::seconds(1), true);
+    assert(state == State::CONNECTION_TIMEOUT);
+    database.controller_info = {0, Clock::time_point{}};
+    receive(0);
+    assert(database.controller_info.last_controller_contact_time == Clock::time_point{});
+    database.controller_info.bridge_mac = 1;
+    receive(2);
+    assert(database.controller_info.last_controller_contact_time == Clock::time_point{});
+    state = State::WAIT_FOR_CONTROLLER_DISCOVERY;
+    tick(state, link_up, true);
+    assert(state == State::CONNECTION_TIMEOUT);
+    receive(1);
+    assert(database.controller_info.last_controller_contact_time > link_up);
+    state = State::WAIT_FOR_CONTROLLER_DISCOVERY;
+    tick(state, link_up, true);
+    assert(state == State::CONTROLLER_MONITORING);
+}
+'''.replace("BRANCH", branch).replace("CONTACT", contact)
+    program = tmp_path / "connectivity.cpp"
+    program.write_text(source)
+    binary = tmp_path / "connectivity"
+    subprocess.run([compiler, "-std=c++17", "-Wall", "-Wextra", "-Werror", str(program), "-o", str(binary)], check=True)
+    subprocess.run([str(binary)], check=True)
+
+
 def test_native_topology_query_recovery_requires_fresh_same_owner_proof(tmp_path):
     compiler = shutil.which("g++")
     if not compiler:
