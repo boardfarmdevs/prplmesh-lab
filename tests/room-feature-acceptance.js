@@ -662,8 +662,12 @@ async function run(args) {
       bindings = pool;
       save('bindings.json', bindings);
     }
-    const catalog = catalogResponse.worlds;
-    report.catalog = catalog;
+    report.catalog = catalogResponse.worlds;
+    const catalog = catalogResponse.worlds.filter(entry => entry.backhaul_rf !== 'geometry');
+    report.separateBackhaulRooms = catalogResponse.worlds.filter(entry => entry.backhaul_rf === 'geometry').map(entry => entry.id);
+    if ((args.world || []).some(id => report.separateBackhaulRooms.includes(id))) {
+      throw new Error('Geometry backhaul rooms require room-backhaul-features.js; client-only health gates are not applicable');
+    }
     eventTask = events();
     await room.goto(args['room-url']);
     await room.waitForFunction(() => window.__viewer && !document.querySelector('#world').disabled, null, {timeout: 60000});

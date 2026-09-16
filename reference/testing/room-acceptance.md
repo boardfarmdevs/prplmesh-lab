@@ -8,6 +8,20 @@ or intrinsic stack-speed ranking. A targeted `--world` run is not full coverage.
 
 ## 0916 release recovery checks
 
+Run 22 client-policy rooms with `tests/room-feature-acceptance.js` and three
+geometry rooms with `tests/room-backhaul-features.js --flavor prpl`. The latter
+deliberately isolates an upstream link while APs remain enabled: the client-only
+all-online checkpoint is not applicable. Require actual native branches,
+parent handover, isolation, initial/return kernel client ownership, unchanged
+native process identities, ten-client return and default twenty restoration.
+Each script half allows 35 s and each native convergence/recovery gate 60 s.
+Hardware observers may select `--renderer vulkan`; both views are fullscreen.
+Aggregate the disjoint 22+3 reports, verifying all 25 catalog IDs exactly once.
+
+The native baseline checker now matches radio IDs by band, not asynchronous
+registration order. Permutations pass; missing, duplicate and wrong radio or
+SSID identities still fail. The original order-dependent failure is retained.
+
 The fresh release run exposed a real Linux-platform backhaul recovery defect:
 after a sustained modeled outage, the native manager searched for the hardcoded
 `test_beerocks_ssid` with open security instead of the configured mesh network.
