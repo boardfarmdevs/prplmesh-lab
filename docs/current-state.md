@@ -10,9 +10,9 @@ monitor; use [operations](operations.md) for current service checks.
 | Canonical branch | `codex/0916-clean` |
 | Canonical checkout | `rev150:/home/rev/git/prplmesh-lab-0916-clean` |
 | Running qualification VM | `rev150:prplmesh-0916`; fresh build, not released |
-| Client-catalog / latest runtime source | `a9ee070` / `ccc97f4` |
+| Native runtime bundle | SHA-256 prefix `ffd4f3fd`; source recorded in qualification evidence |
 | Guest checkout | `/opt/prplmesh-lab` |
-| Native prplMesh | 6.0.0, `2e153c7e00cbcab6b8ee35082f494a364e23f018`, patches through 0024 |
+| Native prplMesh | 6.0.0, `2e153c7e00cbcab6b8ee35082f494a364e23f018`, patches through 0025 |
 | Platform | Ubuntu 24.04 / Linux 7 radio host, userspace wmediumd |
 | Fixed pool | 100 clients; five mesh containers / six logical roles |
 | Rollback | `prplmesh-0913` stopped; previous downloads retained |
@@ -52,6 +52,13 @@ ext3→ext2→ext1 handover, strict rosters/kernel ownership, traffic, both view
 unchanged native identities and Default restoration. Native scans, rooted safety
 and standard 1905 steering drive the moves, not external parent forcing.
 Fresh full **22+3 qualification remains pending** on this combined build.
+
+Explicit client departure now blocks old-age association recovery; only recorded
+infrastructure loss permits the fresh-query exception. Three bounded stationary
+transitions overlapping actual native BTM exchanges pass strict rosters, kernel
+ownership and restoration. The original silent-AP ghost was not reproduced;
+these passes do not establish its root-cause repair. Native/AP events and hwsim
+captures remain under `release-0916/evidence/prpl-native-roaming-pending-btm-{1,2,3}`.
 
 [Room acceptance](../reference/testing/room-acceptance.md#0916-release-recovery-checks)
 records source identities, recovered failures, retries and remaining gates.

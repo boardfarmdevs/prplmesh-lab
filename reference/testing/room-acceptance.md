@@ -454,6 +454,8 @@ sharing a lab host. Repeat `--world WORLD_ID` only for explicitly targeted
 runs; omit it to enumerate the live catalog. Use independent output directories,
 browsers and host samplers for simultaneous backends. Inspect the harness's
 nonzero exit and report; completing playback alone is not acceptance.
+Use `--fail-fast` to stop after the first failed room, preserving its evidence
+and still restoring Default20, releasing the lease and checking native identities.
 
 ## Evidence and restoration
 

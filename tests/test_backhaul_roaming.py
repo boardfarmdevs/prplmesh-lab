@@ -43,14 +43,29 @@ int main() {
     assert(tracker.consume(mid + 1, now) == absent);
     const auto proof = tracker.consume(mid, now);
     assert(proof == query && tracker.consume(mid, now) == absent);
-    assert(tracker.restores_same_owner(true, true, event, proof, now));
-    assert(!tracker.restores_same_owner(false, true, event, proof, now));
-    assert(!tracker.restores_same_owner(true, false, event, proof, now));
-    assert(!tracker.restores_same_owner(true, true, query, proof, now));
-    assert(!tracker.restores_same_owner(true, true, now, proof, now));
-    assert(!tracker.restores_same_owner(true, true, event, absent, now));
-    assert(!tracker.restores_same_owner(true, true, event, proof, event));
-    assert(!tracker.restores_same_owner(true, true, event, proof, now + std::chrono::seconds(5)));
+    assert(tracker.restores_same_owner(true, true, true, event, proof, now));
+    assert(!tracker.restores_same_owner(true, true, false, event, proof, now));
+    assert(!tracker.restores_same_owner(false, true, true, event, proof, now));
+    assert(!tracker.restores_same_owner(true, false, true, event, proof, now));
+    assert(!tracker.restores_same_owner(true, true, true, query, proof, now));
+    assert(!tracker.restores_same_owner(true, true, true, now, proof, now));
+    assert(!tracker.restores_same_owner(true, true, true, event, absent, now));
+    assert(!tracker.restores_same_owner(true, true, true, event, proof, event));
+    assert(!tracker.restores_same_owner(true, true, true, event, proof, now + std::chrono::seconds(5)));
+    son::AssociationRecoveryState authority;
+    assert(!authority.may_restore());
+    authority.infrastructure_lost();
+    assert(authority.may_restore());
+    authority.associated();
+    assert(!authority.may_restore());
+    authority.client_departed();
+    authority.infrastructure_lost();
+    assert(!authority.may_restore());
+    authority.associated();
+    authority.infrastructure_lost();
+    assert(authority.may_restore());
+    authority.client_departed();
+    assert(!authority.may_restore());
     tracker.sent(mid, query);
     assert(tracker.consume(mid, query + std::chrono::seconds(6)) == absent);
     tracker.sent(mid, query);
@@ -76,6 +91,12 @@ int main() {
     assert "src_mac == al_mac" in handler and "topology_queries.consume" in handler
     assert "station->parent_mac == tlvf::mac_to_string(connected.second)" in handler
     assert "station->state != beerocks::STATE_CONNECTED || station->dm_path.empty()" in handler
+    assert "station->association_recovery.may_restore()" in handler
+    assert "client->association_recovery.client_departed()" in handler
+    assert "client->association_recovery.associated()" in handler
+    database = added_source("controller/src/beerocks/master/db/db.cpp", True)
+    assert "station.association_recovery.infrastructure_lost()" in database
+    assert "entry.second->association_recovery.infrastructure_lost()" in database
     assert "association_times.at(connected.first) <= station->association_event_time &&" in handler
     assert "station->association_event_time = restored ? now : association_times.at(connected.first)" in handler
 

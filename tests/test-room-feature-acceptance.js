@@ -2,8 +2,15 @@
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
-const {expectedFrame, evaluate, distribution, eventPerformance, viewAgreement, recordedEventKind, kernelClientAudit} = require('./room-feature-acceptance.js');
+const {argumentsFrom, expectedFrame, evaluate, distribution, eventPerformance, viewAgreement, recordedEventKind, kernelClientAudit} = require('./room-feature-acceptance.js');
 const harnessSource = fs.readFileSync(path.join(__dirname, 'room-feature-acceptance.js'), 'utf8');
+const requiredArguments = ['--yes-act', '--flavor', 'prpl', '--host', 'lab-host', '--vm', 'lab-vm',
+  '--room-url', 'http://room/', '--topology-url', 'http://topology/', '--worlds', '/worlds', '--output', '/evidence'];
+assert.equal(argumentsFrom(requiredArguments)['fail-fast'], undefined);
+const failFastArguments = argumentsFrom([...requiredArguments, '--fail-fast', '--world', 'first', '--world', 'second']);
+assert.equal(failFastArguments['fail-fast'], true);
+assert.deepEqual(failFastArguments.world, ['first', 'second']);
+assert.match(harnessSource, /save\('report.json', report\);\s*}\s*if \(args\['fail-fast'\] && !activeRoom.passed\) \{\s*report.abortedAfterRoom = activeRoom.id;\s*break;/);
 assert.ok(harnessSource.includes('context.setDefaultTimeout(45000)'));
 assert.ok(harnessSource.includes("const renderer = args.renderer || 'swiftshader'"));
 assert.ok(harnessSource.includes("['--use-angle=vulkan', '--disable-software-rasterizer']"));

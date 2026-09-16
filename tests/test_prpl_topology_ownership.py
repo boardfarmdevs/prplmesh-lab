@@ -41,7 +41,7 @@ def test_native_topology_recovery_preserves_newer_ownership(tmp_path, removed_gu
         handler = "    }\n}\n\n" + handler
         for hunk in re.split(r"(?=^@@ )", patch, flags=re.MULTILINE):
             match = re.match(r"@@ -(\d+)", hunk)
-            if not match or not 811 <= int(match[1]) <= 900:
+            if not match or not 811 <= int(match[1]) <= 935:
                 continue
             lines = hunk.splitlines()[1:]
             previous = "\n".join(line[1:] for line in lines if line.startswith((" ", "-")))
@@ -287,6 +287,8 @@ int main() {
 '''.replace("OWNERSHIP", ownership).replace("REMOVAL", removal).replace("STATE_METHOD", state).replace("HANDLER", handler)
     if native_recovery:
         program = '#include "query.h"\nusing son::TopologyQueryTracker;\n' + program
+        program = program.replace("std::string dm_path, parent_mac;",
+                                  "std::string dm_path, parent_mac; son::AssociationRecoveryState association_recovery;")
         program = program.replace(
             "bool handle_associated_clients_tlv(ieee1905_1::CmduMessageRx &, Agent &);",
             "bool handle_associated_clients_tlv(ieee1905_1::CmduMessageRx &, Agent &, "
@@ -294,6 +296,7 @@ int main() {
         program = program.replace("    database.add_success = false;", r'''
     database.set_sta_state("11", beerocks::STATE_DISCONNECTED);
     station->dm_path.clear();
+    station->association_recovery.associated();
     station->association_event_time = Clock::now() - std::chrono::seconds(2);
     const auto fresh_query = Clock::now();
     ieee1905_1::CmduMessageRx recovery{std::make_shared<wfa_map::tlvAssociatedClients>()};
@@ -301,10 +304,14 @@ int main() {
     if (!task.handle_associated_clients_tlv(recovery, new_agent) ||
         station->state != beerocks::STATE_DISCONNECTED) return 1;
     if (!task.handle_associated_clients_tlv(recovery, new_agent, fresh_query) ||
+        station->state != beerocks::STATE_DISCONNECTED) return 1;
+    station->association_recovery.infrastructure_lost();
+    if (!task.handle_associated_clients_tlv(recovery, new_agent, fresh_query) ||
         station->state != beerocks::STATE_CONNECTED || station->dm_path.empty() ||
         station->association_event_time < fresh_query) return 1;
     if (!apply(old_agent, {{101, {{11, 1}}}}) || station->parent != new_bss) return 1;
     database.set_sta_state("11", beerocks::STATE_DISCONNECTED);
+    station->association_recovery.infrastructure_lost();
     if (!task.handle_associated_clients_tlv(recovery, new_agent, fresh_query) ||
         station->state != beerocks::STATE_DISCONNECTED) return 1;
     station->association_event_time = Clock::now() - std::chrono::seconds(2);
@@ -314,8 +321,18 @@ int main() {
         station->parent != new_bss || station->state != beerocks::STATE_CONNECTED) return 1;
     station->dm_path.clear();
     station->association_event_time = Clock::now() - std::chrono::seconds(2);
+    station->association_recovery.infrastructure_lost();
     if (!task.handle_associated_clients_tlv(recovery, new_agent, Clock::now()) ||
         station->dm_path.empty()) return 1;
+    database.set_sta_state("11", beerocks::STATE_DISCONNECTED);
+    station->dm_path.clear();
+    station->association_recovery.client_departed();
+    station->association_recovery.infrastructure_lost();
+    station->association_event_time = Clock::now() - std::chrono::seconds(2);
+    if (!task.handle_associated_clients_tlv(recovery, new_agent, Clock::now()) ||
+        station->state != beerocks::STATE_DISCONNECTED || !station->dm_path.empty()) return 1;
+    if (!apply(new_agent, {{201, {{11, 0}, {42, 20}}}}) ||
+        station->state != beerocks::STATE_CONNECTED || station->association_recovery.may_restore()) return 1;
     database.add_success = false;
 ''')
     cpp = tmp_path / "topology.cpp"

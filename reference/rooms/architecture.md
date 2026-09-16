@@ -164,7 +164,12 @@ removes its device/BSS or marks that station disconnected; the old association
 age must not permanently prevent same-owner restoration. Recovery requires a
 matching native query MID and source/AL identity, a one-shot response within
 five seconds, and a query sent after the station's last ownership event. Only
-the recorded BSSID can restore a disconnected or missing-data-model station.
+recorded native agent/radio/BSS loss authorizes recovery on the recorded BSSID.
+An explicit client departure or removal from a native associated-client snapshot
+blocks old-age recovery even if infrastructure is subsequently removed. Only a
+genuinely newer association clears that barrier: a fresh reply can still contain
+an old AP cache entry. Ordinary disconnects and missing paths alone do not grant
+recovery authority.
 Unsolicited, replayed, expired and pre-event responses cannot use this exception;
 association-age protection still rejects older cross-AP ownership. Successful
 restoration advances the ownership fence without synthetic disconnects or roams.
