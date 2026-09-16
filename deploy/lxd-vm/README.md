@@ -6,20 +6,20 @@ nested containers, hwsim/wmediumd, prplMesh services, and UIs within one VM.
 ## Use the universal appliance
 
 Use the selected release tar and adjacent checksum in an empty directory.
-The 0913 names below are template examples; use the actual downloaded release
+The 0916 names below are template examples; use the actual downloaded release
 name (packaging substitutes it in this guide):
 
 ```sh
-sha256sum -c prplmesh-0913-thin.tar.sha256
-tar -xf prplmesh-0913-thin.tar
-cd prplmesh-0913-thin
+sha256sum -c prplmesh-0916-thin.tar.sha256
+tar -xf prplmesh-0916-thin.tar
+cd prplmesh-0916-thin
 sha256sum -c SHA256SUMS
 sudo ./install-host.sh
 newgrp lxd
 PRPLMESH_UI_HOST_IP=192.168.2.150 ./import.sh
 ```
 
-0913 uses one appliance with capacity for **100 clients**. There is no import
+0916 uses one appliance with capacity for **100 clients**. There is no import
 size choice and no separate 20/50/100 VM. Rooms select the online subset:
 the default room uses 20 and `fifty-client-counter-roam` uses 50. Loading a room
 automatically applies RF and presence without recreating containers or radios.
@@ -69,9 +69,9 @@ image. It does not clone repositories or download runtime artifacts. Monitor
 it with the selected instance name:
 
 ```sh
-lxc console prplmesh-0913 --show-log
-lxc exec prplmesh-0913 -- journalctl -fu prplmesh-lab.service
-lxc exec prplmesh-0913 -- prplmesh-lab-start status
+lxc console prplmesh-0916 --show-log
+lxc exec prplmesh-0916 -- journalctl -fu prplmesh-lab.service
+lxc exec prplmesh-0916 -- prplmesh-lab-start status
 ```
 
 When ready, the wmediumd Console is on host port `8090`, the Controller UI is
@@ -85,9 +85,9 @@ automatic world loading, fixed-pool presence and RF recovery.
 Normal lifecycle is:
 
 ```sh
-lxc stop prplmesh-0913
-lxc start prplmesh-0913
-lxc config get prplmesh-0913 boot.autostart
+lxc stop prplmesh-0916
+lxc start prplmesh-0916
+lxc config get prplmesh-0916 boot.autostart
 ```
 
 Imported appliances default to `boot.autostart=false`. Manually starting the
@@ -96,7 +96,7 @@ The VM does not start automatically when the outer host reboots. Deleting it is
 destructive and must be explicit:
 
 ```sh
-lxc delete prplmesh-0913
+lxc delete prplmesh-0916
 ```
 
 ## Release engineering
@@ -119,14 +119,14 @@ Convert an accepted ready VM into the single universal release:
 PRPLMESH_RUNTIME_BASE_COMMIT=READY-COMMIT \
 PRPLMESH_VM_NAME=READY-VM \
 PRPLMESH_THIN_CONFIRM=READY-VM \
-  deploy/lxd-vm/package-thin.sh release/0913
-PRPLMESH_RELEASE_ID=0913 \
-  deploy/lxd-vm/package-release.sh release/0913/prplmesh-0913-thin
+  deploy/lxd-vm/package-thin.sh release/0916
+PRPLMESH_RELEASE_ID=0916 \
+  deploy/lxd-vm/package-release.sh release/0916/prplmesh-0916-thin
 ```
 
 Thin conversion removes provisioned nested instances from the source VM,
 retains the verified local runtime image and exact source, and exports a
-stopped instance-only backup. It emits `prplmesh-0913-thin.tar`, its adjacent
+stopped instance-only backup. It emits `prplmesh-0916-thin.tar`, its adjacent
 `.sha256`, schema-2 `release.json`, inner `SHA256SUMS`, and this README.
 The bundle also includes `RELEASE-NOTES.md` for the delivered checkpoint.
 ## Optional container management and metrics

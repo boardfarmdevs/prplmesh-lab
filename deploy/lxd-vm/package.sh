@@ -5,7 +5,7 @@ ROOT=$(cd "$(dirname "$0")/../.." && pwd)
 # shellcheck source=profile.sh
 source "$ROOT/deploy/lxd-vm/profile.sh"
 PROFILE=$(prplmesh_profile_name "${PRPLMESH_LAB_PROFILE:-unified}")
-RELEASE_ID=${PRPLMESH_RELEASE_ID:-0913}
+RELEASE_ID=${PRPLMESH_RELEASE_ID:-0916}
 CLIENTS=$(prplmesh_profile_clients "$PROFILE")
 RADIOS=$(prplmesh_profile_radios "$PROFILE")
 RELEASE_NAME=$(prplmesh_profile_release_name "$PROFILE")

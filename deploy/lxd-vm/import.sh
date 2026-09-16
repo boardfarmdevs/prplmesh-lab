@@ -17,7 +17,7 @@ while [ "$#" -gt 0 ]; do
     case "$1" in
         --monitoring) MONITORING=true; shift ;;
         --profile)
-            echo "Client sizing is selected by the room; 0913 always provides capacity for 100." >&2
+            echo "Client sizing is selected by the room; 0916 always provides capacity for 100." >&2
             exit 2
             ;;
         -h|--help) usage; exit 0 ;;
@@ -37,7 +37,7 @@ while [ "$#" -gt 0 ]; do
 done
 
 FIRST_BOOT_PROVISIONING=${LAB_FIRST_BOOT_PROVISIONING:-${LAB_FIRST_BOOT_PROVISION:-${LAB_PROFILE_SELECTABLE:-false}}}
-RELEASE_ID=${LAB_RELEASE_ID:-0913}
+RELEASE_ID=${LAB_RELEASE_ID:-0916}
 case "$RELEASE_ID" in
     [0-9][0-9][0-9][0-9]) ;;
     *) echo "invalid LAB_RELEASE_ID: $RELEASE_ID" >&2; exit 2 ;;

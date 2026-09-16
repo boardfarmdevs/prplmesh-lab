@@ -1,14 +1,14 @@
 # Current prplMesh lab
 
-Reviewed 14 September 2026. This is a deployment/release summary, not a live
+Reviewed 16 September 2026. This is a deployment/release summary, not a live
 health monitor. Use [operations](operations.md) to check runtime health.
 
 ## Identity
 
 | Item | Current value |
 | --- | --- |
-| Canonical branch | `codex/0913-clean` |
-| Canonical checkout | `rev150:/home/rev/git/prplmesh-lab-0913-clean` |
+| Canonical branch | `codex/0916-clean` |
+| Canonical checkout | `rev150:/home/rev/git/prplmesh-lab-0916-clean` |
 | Deployed VM | `rev150:prplmesh-0913`, accepted from the exact 0913 thin tar |
 | Packaged source | `9a2dd2d`, including RF-bound candidates and channel-aware registration reuse |
 | Guest checkout | `/opt/prplmesh-lab` |
@@ -22,6 +22,10 @@ has 120 permanent hwsim radios. Room presence does not resize the container pool
 Outer VM autostart is disabled; starting the VM starts its lab and room.
 
 ## Browser addresses
+
+The 0916 release is being rebuilt and qualified from the new canonical checkout.
+The 0913 VM is retained for rollback and may be stopped for build capacity.
+Its historical acceptance below does not qualify pending 0916 artifacts.
 
 0913 is deployed from the new canonical checkout. It uses one
 100-client-capacity appliance, a default room with 20 online, and the new
