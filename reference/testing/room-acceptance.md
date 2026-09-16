@@ -8,6 +8,28 @@ or intrinsic stack-speed ranking. A targeted `--world` run is not full coverage.
 
 ## 0916 release recovery checks
 
+The complete client-policy run passes **22/22** on `a9ee070`, with independent
+report validation, unchanged native identities and default twenty restoration.
+Two failed steering verifications in the stationary room recovered before its
+acceptance gate; retain them rather than reporting zero transient failures.
+Evidence is under `/home/rev/work/release-0916/evidence/prpl-clients-final/`.
+
+Native branch formation and isolation/recovery also pass on `ccc97f4`, including
+initial/return kernel ownership and default restoration. The latter's initial
+settlement was observed after 11.586 s; the retained prior attempt exhausted
+its 60-second gate. The repaired initial collection retried at 2.139 and 6.195 s
+and obtained fresh native results without a 30-second timeout.
+Evidence: `prpl-query-retry-backhaul-branch-formation/` and
+`prpl-query-retry-backhaul-isolation-recovery/`. This is a bounded recovery
+comparison, not a latency guarantee or full 25-room qualification.
+
+**Release remains held:** the newly added stronger-parent handover assertion
+fails while the original working uplink remains usable (11 dB versus 26 dB at
+the closer relay). The original room contract observed native parent choice;
+it did not promise proactive strongest-parent optimization. RDK exhibits the
+same distinction. No test exception, forced parent change or proactive native
+backhaul policy has been introduced to turn this into a passing result.
+
 The candidate collector refreshes native device/radio paths before each collection.
 Agent reconnection can recreate NBAPI instances with new numbers even when the
 radio MACs are unchanged. A changed identity-to-path map invalidates candidate
@@ -23,7 +45,9 @@ original timeout). It retains the original timestamp baseline, publishes each
 fresh result once and stops on world supersession. It does not substitute old
 metrics, extend the deadline or force a parent change. A retained isolation-room
 failure had two consecutive 30-second query timeouts despite restored traffic;
-the bounded live retry must qualify this repair before release.
+the bounded repaired branch/isolation run passes. Missing metrics during the
+intentional outage still time out honestly; retries cannot make an isolated
+agent reachable.
 
 The topology adapter identifies the controller by native `Network.ControllerID`,
 not by a temporarily missing `BackhaulDeviceID`. Parentless/reconnecting agents
@@ -378,7 +402,7 @@ At each initial, checkpoint and final settled boundary, the harness reads
 Every online client must match its native-model BSSID; every offline client
 must be disconnected. Missing observations fail. The independent audit's
 `elapsedMs` is recorded separately from convergence timing; it does not relax
-the 60/45/90-second policy bounds. Earlier reports checked only offline clients
+the 90/60/90-second policy bounds. Earlier reports checked only offline clients
 and selected live probes, not every online client's physical owner.
 Physical audits precede screenshots at all three boundaries. Their model
 timestamp and age at audit start are recorded: screenshot delays must not
@@ -410,12 +434,12 @@ node --check tests/room-feature-acceptance.js
 export PLAYWRIGHT_MODULE=/absolute/path/to/node_modules/playwright-core
 export CHROMIUM_PATH=/absolute/path/to/chromium/chrome
 node tests/room-feature-acceptance.js --yes-act --flavor prpl \
-  --host rev150 --vm prplmesh-0913 \
-  --room-url http://192.168.2.150:18891/ \
-  --topology-url http://192.168.2.150:8091/ \
+  --host rev150 --vm prplmesh-0916 \
+  --room-url http://192.168.2.150:19892/ \
+  --topology-url http://192.168.2.150:19891/ \
   --worlds /absolute/path/to/deployed-goldens \
   --output /absolute/path/to/new-results --native-audits 1 \
-  --initial-timeout 60 --checkpoint-timeout 45 --final-timeout 90
+  --initial-timeout 90 --checkpoint-timeout 60 --final-timeout 90
 node tests/room-feature-report.js /absolute/path/to/new-results \
   /absolute/path/to/deployed-goldens > audited-summary.json
 ```
@@ -475,137 +499,46 @@ Receiver queue draining is not calibrated physical capacity.
 
 ## Current qualification
 
-The 0913 catalog contains eighteen rooms: fourteen original scenarios, three
-dedicated band-steering rooms and `fifty-client-counter-roam`. It uses a fixed
-100-client pool, not separately sized VMs. Follow [current deployment status](../../docs/current-state.md)
-for release acceptance; earlier smaller-pool passes do not qualify 0913.
-See [band-steering qualification](../optimizer/band-steering.md#results) for the
-previous seventeen-room results and native receive-channel requirements.
-The table below is the earlier RF baseline, not coverage of the added rooms.
+The 0916 catalog contains **25 rooms**: 22 client-policy scenarios and three
+geometry-backhaul scenarios, using one fixed 100-client pool. Current bounded
+results and the release hold are recorded in the
+[0916 recovery checks](#0916-release-recovery-checks). Earlier catalog passes
+and imported artifacts do not qualify a new source/runtime or added scenarios.
+Follow [deployment status](../../docs/current-state.md) for published artifacts.
 
 ### 0913 fixed-pool acceptance
 
-The refreshed `prplmesh-0913-thin.tar` (source `9a2dd2d`, SHA-256 prefix
-`c294a503`) passes exact-tar fresh-import acceptance on rev150 on 14 September
-2026. First boot starts with zero nested instances and provisions 105, then
-passes the 100-client tri-band topology, representative private-5-GHz and
-IoT-6-GHz native BTM, and traffic from every client. This baseline is not an
-exhaustive all-client/all-band steering matrix.
-
-The imported VM passes all three bounded room checks: fifty-client counter-roam,
-5-to-6-GHz band upgrade and stationary ten-client room. The fifty-client room
-passes initially in **11.900 s** and finally in **12.363 s**. All **42/42 actions**
-verify, with no native response timeouts or unavailable candidate collections.
-Physical/native/rendered ownership, native identity preservation, event
-continuity and host sampling pass. Default twenty-client restoration passes
-in **25.736 s**, paused and unleased.
-
-The corresponding pre-export source catalog passes **18/18 rooms** at the
-unchanged 60/45/90-second limits and five-second stable holds. It records
-145 submissions, 144 verified successes and one failed traffic verification;
-the affected room nevertheless converges. An unchanged focused two-room
-follow-up passes 30/30 actions. See
-[RF-cache qualification and failure attribution](performance.md#0913-rf-cache-qualification)
-for the cache/registration repairs, timing outlier and retained failure. Do not
-replace a failed sample with the later successful rerun.
-
-Inner/outer monitoring is installed after sanitized export. Both authenticated
-Grafana dashboards and all 105 nested-container metrics pass; all twenty active
-clients pass traffic again after installation. An initial outer-dashboard
-probe returned 404 before asynchronous provisioning completed; the later
-readiness check passes without reinstalling or restarting services.
-
-Exact archive identity, bounded scope and checksummed evidence are recorded in
-`/home/rev/releases/0913/prpl-0913-acceptance.json` and
-`evidence/prpl-0913-final/`, mirrored on rev140 and rev150. The previous
-`aacc9f3` archive and its original records remain under `previous/prpl-aacc9f3/`.
-Raw source-catalog evidence remains on rev150 under
-`/home/rev/work/release-0913/evidence/prpl-channel-registration-qualification/`;
-the exact import is under `prpl-final-refresh-retry/`. The preceding import's
-host-ENOSPC failure is retained separately, not counted as a native steering
-failure. These are feature checks, not a soak qualification or a statistical
-performance guarantee.
+The previous prpl archive passed fresh-import baseline and three-room checks;
+its earlier 18-room catalog had one recovered traffic-verification failure.
+Historical provenance remains in `/home/rev/releases/0913/prpl-0913-acceptance.json`
+and `evidence/prpl-0913-final/`. See
+[RF-cache qualification](performance.md#0913-rf-cache-qualification)
+for measurements and separately attributed host-ENOSPC failures, not 0916 coverage.
 
 ### Pre-band RF baseline
 
-September 13, 2026 UTC, `codex/0908-clean`: the pre-band independent catalogs pass
-**14/14 on each stack**, including the unchanged five-second extender-loss
-departure gate. Every available room loads and plays at 1×, with initial,
-checkpoint and final policy convergence, fullscreen room/topology inspection,
-presence, directional RF and physical/native/rendered ownership.
-Native/container/medium identities remain unchanged within each final catalog;
-neither has browser errors or SSE gaps. Failed earlier attempts remain separate.
-
-The **60/45/90-second bounds and five-second stable hold** are unchanged.
-Native cadence, steering margins and VM resources are unchanged. Only the
-temporary test action cap rises to 2000, then returns to 100. prpl dependency
-repair/restarts occur before its final window, never to rescue a measured room.
-These are bounded feature tests, not a soak or intrinsic stack-speed ranking.
+September 13's 14/14 catalogs on each stack predate the new band, capacity and
+geometry rooms. Retain their original 60/45/90-second reports and failures;
+historical timings are neither current coverage nor intrinsic stack-speed rankings.
 
 ### Catalog performance
 
-| Observation | RDK / rev140 | prpl / rev150 |
-| --- | --- | --- |
-| UTC window | 03:35:19–04:02:21 | 05:06:14–05:29:21 |
-| Verified / submitted actions | 150 / 150 | 153 / 154 |
-| Failed / discarded / unmatched verifications | 0 / 0 / 0 | 0 / 1 / 0 |
-| Request → verification p50 / p95 / max, s | 1.674 / 5.722 / 7.145 | 0.981 / 1.149 / 1.224 |
-| Submission p50 / p95 / max, s | 0.061 / 0.076 / 0.105 | 0.473 / 0.531 / 0.559 |
-| RF application p50 / p95 / max, ms | 9.452 / 30.474 / 494.133 | 8.873 / 30.999 / 671.827 |
-| Candidate publication wait p50 / p95 / max, ms | 84.674 / 132.167 / 458.078 | 36.793 / 71.481 / 513.321 |
-| Unavailable collections / native HTTP 504s / busy rejections | 0 / 0 / 0 | 0 / 0 / 0 |
-| Superseded collections, separate cancellations | 13 | 10 |
-
-RDK candidate transactions p50/p95/max: **268.956 / 392.675 / 7740.489 ms**.
-prpl NBAPI operations: **147.582 / 178.927 / 270.810 ms**;
-complete collections: **943.476 / 992.680 / 1641.982 ms**.
-prpl's timestamp-resolution guard remains **490/515 ms p50/p95**;
-removing it without native request correlation would weaken freshness validity.
-These are different boundaries, not interchangeable stack execution times.
-Superseded collections are cancellations, not unavailable measurements or
-verified steers. No clean repeat establishes the cause of an uncaptured failure.
-One prpl verification is discarded after the next world commits a new epoch;
-it is counted separately, not as a successful or failed native steer.
-
-RDK includes agent **0185/0186**, OneWifi **0027/0028**, wmediumd **0026**
-and hwsim **0010**. prpl includes coherent adapter membership, HAL **0015**,
-wmediumd **0027**, hwsim **0010** and the ubus backport documented below.
-The common viewer applies playback clock/positions atomically. Native
-controllers, default steering policy and reporting intervals are unchanged.
-prpl cold candidate registration now uses at most four independent workers;
-warm cached registrations add no RPCs or worker pool.
+For each new campaign retain verified, failed, discarded and unmatched actions;
+submission, request-to-verification, RF application and candidate publication
+p50/p95/max; unavailable collections; and superseded generations. Different
+native/NBAPI transaction boundaries are not interchangeable. Cancellations are
+neither successful steers nor failed native measurements. Never omit timeouts
+or replace an earlier failure with a successful retry.
 
 ### Per-room convergence
 
-Initial/final **first policy convergence**, seconds from each settling gate,
-not the first movement. Near-zero final values mean already converged;
-the five-second continuous hold is additional.
-
-| Room: initial / final, s | RDK / rev140 | prpl / rev150 |
-| --- | --- | --- |
-| `home-a-stationary` | 0.03 / 0.01 | 0.02 / 0.01 |
-| `home-a-one-client-handover` | 13.15 / 7.13 | 8.08 / 0.01 |
-| `large-room-extender-evacuation` | 18.23 / 15.18 | 6.07 / 0.01 |
-| `large-room-perimeter-counter-roam` | 25.17 / 5.07 | 8.08 / 0.01 |
-| `home-a-asymmetric-link` | 33.39 / 2.03 | 11.15 / 0.01 |
-| `home-a-band-walk-small` | 17.18 / 11.19 | 8.08 / 4.04 |
-| `home-a-border-hover` | 22.24 / 17.25 | 5.07 / 0.01 |
-| `home-a-disappear-reappear` | 13.16 / 0.01 | 4.13 / 0.01 |
-| `home-a-extender-loss-recovery` | 9.10 / 0.01 | 4.10 / 0.01 |
-| `home-a-fast-transit` | 12.12 / 18.20 | 4.04 / 7.07 |
-| `home-a-flash-crowd` | 9.11 / 0.01 | 2.03 / 0.01 |
-| `home-a-private-client-room-walk` | 13.17 / 0.02 | 5.05 / 0.01 |
-| `home-a-slow-walk-ten` | 14.41 / 8.11 | 3.04 / 0.02 |
-| `home-b-slow-walk-ten` | 22.32 / 9.13 | 19.23 / 1.03 |
-
-- prpl: `home-a-asymmetric-link` retains 1 stronger same-band candidate(s) below the configured steering margin.
-- prpl: `home-a-slow-walk-ten` retains 1 stronger same-band candidate(s) below the configured steering margin.
-
-Absolute-strongest diagnostics remain separate from policy convergence.
-A policy pass does not claim every moving client always selects the absolute
-strongest AP. `room-final-readiness.py` uses the same fresh, complete policy
-gate and five-second hold; `--require-absolute-best` adds the stricter check.
-No target is forced to make acceptance pass.
+Report initial/checkpoint/final first policy convergence and the additional
+five-second continuously verified hold. A near-zero final time means the
+room was already settled, not an instantaneous roam. Preserve absolute-strongest
+diagnostics separately: a qualified policy pass does not require selecting the
+absolute strongest AP at every instant. `room-final-readiness.py` uses the same
+fresh, complete policy gate; `--require-absolute-best` adds the stricter check.
+Do not force a target to make acceptance pass.
 
 ### Native metrics → browser presentation
 

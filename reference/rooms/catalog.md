@@ -27,6 +27,18 @@ Watch actual ownership in both views, not just the simulated candidate line.
 | `home-a-private-client-room-walk` | 240 s | 20; default narrated walker with nineteen reference clients |
 | `home-a-slow-walk-ten` | 60 s | 20; ten walkers plus ten static clients |
 | `home-b-slow-walk-ten` | 60 s | 20; changed AP geometry; compare serving APs without assuming adaptive backhaul |
+| `backhaul-branch-formation` | 24 s | 10; geometry-driven backhaul; remote extenders lose direct gateway reachability and recover through relays |
+| `backhaul-parent-handover` | 24 s | 10; role 3 and a nearby client move between upper/lower relay regions; observe native parent choice |
+| `backhaul-isolation-recovery` | 24 s | 10; extender 4 loses upstream RF while its APs remain enabled, then returns |
+
+The geometry rooms pause at 12 s and return before the end. They change real
+AP-to-AP RF, not parent BSSID configuration. Verify actual `wlan3` ownership,
+both topology views and wireless-backhaul traffic; then verify recovery after
+return and after loading Default. Moving closer to a relay does not itself
+guarantee proactive native handover while the old uplink still works. The 0916
+release's added stronger-parent assertion remains an open qualification gate;
+it is not evidence that such a policy was already implemented. See the
+[release recovery checks](../testing/room-acceptance.md#0916-release-recovery-checks).
 
 **Quick demo:** One Client Handover. **Most visible population change:** Flash
 Crowd. **Most interesting guided roaming:** Perimeter Counter-Roam.
