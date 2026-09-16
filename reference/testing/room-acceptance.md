@@ -92,11 +92,11 @@ sudo env PYTHONPATH=optimizer:wmediumd/configurator python3 tests/native-retry-c
   --stack rdk --output /tmp/retry-qualification-new --yes-change-lab
 ```
 
-AP-inspector tests distinguish local reports from client-heard advertisements,
-per-neighbor age, missing/zero/stale data and world replacement. Local AP load
-still requires an explicit load-policy session; ordinary rooms do not enable
-one. Browser component checks use live observations; full WebGL rendering is
-unavailable on this test host. No new policy, soak or full-catalog claim.
+AP inspectors separate local reports from client-heard advertisements.
+Interactive rooms collect AP reports passively, without enabling load steering.
+Both live topology checks pass: five APs/30 BSSs, stationary hover, manual layout,
+stale/error handling and GET-only requests. Full room WebGL rendering remains
+unavailable on this test host. No soak or full-catalog claim.
 
 ### Demand and lifecycle follow-up
 

@@ -1017,6 +1017,24 @@ body {
   transition: top 0.1s ease-out, left 0.1s ease-out, opacity 0.2s ease-in-out;
 }
 
+.topology-rf {
+  margin-top: 8px;
+  padding-top: 6px;
+  border-top: 1px solid #ddd;
+  width: min(420px, 84vw);
+  font-size: 13px;
+}
+.topology-rf table { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; }
+.topology-rf th, .topology-rf td { padding: 4px 6px; text-align: left; vertical-align: top; }
+.topology-rf th { font-size: 11px; color: #555; border-bottom: 1px solid #ddd; }
+.topology-rf td { border-bottom: 1px solid #eee; }
+.topology-rf small { display: block; font-size: 10px; color: #555; line-height: 1.3; }
+.topology-rf td:nth-child(2) { min-width: 96px; }
+.topology-rf td:last-child { min-width: 76px; font-size: 11px; }
+.topology-rf .rf-utilization { display: block; height: 3px; margin-top: 2px; background: #ddd; border-radius: 2px; }
+.topology-rf .rf-utilization span { display: block; height: 100%; background: #8651a8; border-radius: 2px; }
+.topology-rf .rf-unavailable { color: #777; font-size: 11px; }
+
 /* ===== DEVICE MANAGEMENT ===== */
 
 .devices-container {

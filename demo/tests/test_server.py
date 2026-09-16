@@ -106,6 +106,27 @@ class ServerTests(unittest.TestCase):
         result["nodes"][0]["position"][0] = 999
         self.assertEqual(self.store.mesh_layout()["nodes"][0]["position"], [5, 5])
 
+    def test_mesh_layout_rf_projection_is_bounded_and_does_not_copy_client_activity(self):
+        self.test_mesh_layout_is_a_read_only_small_projection()
+        report = {"device_id": "mac-2", "bssid": "bss", "utilization": 0, "station_count": 0,
+                  "observed_at": "2026-09-15T20:00:00Z"}
+        self.store.emit("optimizer.evaluation", 0, {"rf_observations": {
+            "enabled": True, "policy_enabled": False, "maximum_age_seconds": 5,
+            "bss_loads": [report] * 200 + [{**report, "device_id": "other"}],
+            "client_activity": [{"large": "x" * 100000}]}})
+        projection = self.store.mesh_layout()
+        self.assertLess(len(json.dumps(projection)), 65536)
+        observed = projection["rf_observations"]
+        self.assertTrue(observed["enabled"])
+        self.assertFalse(observed["policy_enabled"])
+        self.assertEqual(len(observed["bss_loads"]), 96)
+        self.assertNotIn("client_activity", observed)
+        self.assertEqual(observed["bss_loads"][0]["utilization"], 0)
+        observed["bss_loads"][0]["utilization"] = 255
+        self.assertEqual(self.store.mesh_layout()["rf_observations"]["bss_loads"][0]["utilization"], 0)
+        self.store.emit("optimizer.measurement.unavailable", 0, {"status": "unavailable"})
+        self.assertEqual(self.store.mesh_layout()["rf_observations"]["bss_loads"], [])
+
     def setUp(self):
         temp = tempfile.TemporaryDirectory()
         self.addCleanup(temp.cleanup)

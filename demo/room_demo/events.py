@@ -438,7 +438,20 @@ class EventStore:
                     continue
                 nodes.append({"device_id": device.get("device_id"), "role": role,
                               "position": copy.deepcopy(position.get("authoritative_position"))})
+            observations = state["optimizer"].get("rf_observations") or {}
+            device_ids = {str(node["device_id"]).lower() for node in nodes}
+            fields = ("bssid", "device_id", "radio_id", "channel", "utilization", "station_count",
+                      "observed_at", "epoch", "source", "transport")
+            loads = [{key: row.get(key) for key in fields}
+                     for row in observations.get("bss_loads", [])
+                     if str(row.get("device_id", "")).lower() in device_ids][:96]
+            rf = {"enabled": observations.get("enabled") is True,
+                  "policy_enabled": observations.get("policy_enabled") is True,
+                  "error": str(observations.get("error") or "")[:256],
+                  "maximum_age_seconds": observations.get("maximum_age_seconds", 5),
+                  "bss_loads": copy.deepcopy(loads)}
             return {"schema": "easymesh.room-layout.v1", "run_id": self.run_id,
+                    "rf_observations": rf,
                     "world_epoch": state["world_epoch"], "sequence": state["sequence"],
                     "world": state["scenario"], "state": state["run_state"],
                     "observed_at": dt.datetime.now(dt.timezone.utc).isoformat(),

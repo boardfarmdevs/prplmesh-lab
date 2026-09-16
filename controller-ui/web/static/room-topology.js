@@ -173,6 +173,63 @@
     return result;
   }
 
+  const escapeHTML = value => String(value ?? '').replace(/[&<>"']/g, character =>
+    ({'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'}[character]));
+
+  function rfHTML(node, observations = {}, now = Date.now(), available = true) {
+    const expected = new Map();
+    for (const haul of node.haulTypes || []) {
+      if (/backhaul/i.test(haul.name || '') || haul.ssid === 'mesh_backhaul') continue;
+      for (const bss of haul.BSSList || []) expected.set(identity(bss.BSSID), {
+        bssid: bss.BSSID, ssid: bss.ssid || haul.ssid, band: bss.Band
+      });
+    }
+    const reports = new Map();
+    for (const row of observations.bss_loads || []) {
+      if (identity(row.device_id) !== identity(node.id) || !row.bssid) continue;
+      const key = identity(row.bssid), previous = reports.get(key);
+      if (!previous || Date.parse(row.observed_at) > Date.parse(previous.observed_at)) reports.set(key, row);
+      if (!expected.has(key)) expected.set(key, {bssid: row.bssid, ssid: 'BSS'});
+    }
+    if (!expected.size) return '';
+    const ageLimit = Number.isFinite(observations.maximum_age_seconds) && observations.maximum_age_seconds > 0
+      ? Math.min(5, observations.maximum_age_seconds) : 5;
+    const bands = {0: '2.4 GHz', 1: '5 GHz', 3: '6 GHz'};
+    const entries = [...expected.entries()].sort((left, right) =>
+      (Number(left[1].band ?? 99) - Number(right[1].band ?? 99)) || left[0].localeCompare(right[0]));
+    const rows = entries.slice(0, 12).map(([key, bss]) => {
+      const row = reports.get(key);
+      const age = row ? (now - Date.parse(row.observed_at)) / 1000 : NaN;
+      const fresh = available && observations.enabled === true && !observations.error &&
+        row?.source === 'native_ap_metrics' &&
+        ['ieee1905-ethernet', 'prpl-1905-broker', 'prpl-local-broker'].includes(row.transport) &&
+        Number.isFinite(age) && age >= 0 && age <= ageLimit;
+      const utilization = fresh && Number.isInteger(row.utilization) && row.utilization >= 0 && row.utilization <= 255
+        ? row.utilization : null;
+      const stations = fresh && Number.isInteger(row.station_count) && row.station_count >= 0 && row.station_count <= 65535
+        ? row.station_count : null;
+      const percent = utilization === null ? null : (utilization * 100 / 255).toFixed(1);
+      const name = bss.ssid === 'private_ssid' ? '"private"' : bss.ssid === 'iot_ssid' ? '"iot"' : bss.ssid;
+      const channel = Number.isInteger(row?.channel) && row.channel > 0 ? ' · ch ' + row.channel : '';
+      const label = escapeHTML(name) + '<small>' + escapeHTML(bands[bss.band] || 'Radio') + channel + '</small>';
+      const meter = percent === null ? '<span class="rf-unavailable">— unavailable</span>' :
+        '<b>' + percent + '%</b><small>' + utilization + '/255</small>' +
+        '<span class="rf-utilization"><span style="width:' + percent + '%"></span></span>';
+      const ageText = Number.isFinite(age) && age >= 0 ? age.toFixed(1) + ' s' + (fresh ? '' : ' · stale') : 'unknown';
+      return '<tr><td title="' + escapeHTML(bss.bssid + (row?.radio_id ? ' · radio ' + row.radio_id : '')) +
+        '">' + label + '</td><td>' + meter + '</td><td>' + (stations ?? '—') +
+        '</td><td>' + ageText + '</td></tr>';
+    }).join('');
+    const status = !available ? 'Room telemetry unavailable; values hidden.' : observations.error
+      ? 'Collection unavailable: ' + observations.error : observations.enabled !== true
+      ? 'Native AP metrics collector unavailable.' : 'Native AP metrics · report receipt age.';
+    return '<section class="topology-rf"><b>AP-reported BSS load</b><table>' +
+      '<thead><tr><th>BSS / radio</th><th>Channel use</th><th>STAs</th><th>Age</th></tr></thead><tbody>' +
+      rows + '</tbody></table><small>' + escapeHTML(status) + '</small>' +
+      '<small>Shared-radio utilization is not additive. Not a beacon capture or physical capacity.</small>' +
+      (entries.length > 12 ? '<small>Showing 12 of ' + entries.length + ' BSSs.</small>' : '') + '</section>';
+  }
+
   class Follower {
     constructor(controller) {
       this.controller = controller;
@@ -230,6 +287,7 @@
 
     async refresh() {
       if (document.hidden || this.controller.currentTab !== 'topology') return;
+      this.controller.topologyRFHover?.();
       if (!this.fresh(false)) { this.message('Room unavailable · positions retained'); this.roomName(false); }
       if (this.request || performance.now() < this.nextRequest) return;
       const request = new AbortController();
@@ -265,9 +323,14 @@
         this.message('Room unavailable · positions retained');
         this.roomName(false);
       } finally {
+        this.controller.topologyRFHover?.();
         clearTimeout(deadline);
         if (this.request === request) this.request = null;
       }
+    }
+
+    rfHTML(node) {
+      return rfHTML(node, this.snapshot?.rf_observations, Date.now(), this.fresh(false));
     }
 
     prepare(nodes) {
@@ -310,5 +373,5 @@
       document.removeEventListener('visibilitychange', this.visibility);
     }
   }
-  return {positions, compact, pack, Follower};
+  return {positions, compact, pack, Follower, rfHTML};
 });

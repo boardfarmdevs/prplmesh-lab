@@ -99,7 +99,8 @@
       const records = (observations.bss_loads || []).filter(row => row.role === input.selected || row.bssid === client?.connected_bssid);
       lines.push('LOCAL AP METRICS — reported by the AP');
       if (!records.length) lines.push(observations.enabled
-        ? 'Native AP load: — no matching fresh report' : 'Native AP load collector inactive; enable an explicit load-policy session.');
+        ? 'Native AP load: — no matching fresh report' : 'Native AP load collector unavailable; inspect room service status.');
+      if (observations.error) lines.push('AP load collection: ' + observations.error);
       for (const row of records) {
         lines.push('Radio ' + row.radio_id + ' · channel ' + row.channel,
           'BSSID ' + row.bssid,

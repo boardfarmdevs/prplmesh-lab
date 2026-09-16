@@ -12,7 +12,7 @@ assert.match(describe(input), /Associated stations: 0 · received/);
 assert.match(describe(input), /Sample window: unknown/);
 assert.match(describe({...input, now: now + 6000}), /Utilization \(0–255\): — unavailable\/stale/);
 assert.doesNotMatch(describe({...input, selected: 'other'}), /BSSID ap/);
-assert.match(describe({...input, optimizer: {}, world: {utilization: 255}}), /collector inactive/);
+assert.match(describe({...input, optimizer: {}, world: {utilization: 255}}), /collector unavailable/);
 const received = {...input, selected: 'client', optimizer: {client_decisions: [
   {role: 'client', sta_mac: 'client-mac', current_rcpi: 120,
     metric_observed_at: new Date(now - 100).toISOString(), measurement_source: 'client_nl80211_received_scan'}],
@@ -63,7 +63,7 @@ const neighboring = JSON.parse(JSON.stringify(apReceived));
 neighboring.optimizer.band_steering['client-mac'].serving_bssid = 'neighbor-zero';
 assert.match(describe(neighboring), /neighbor-missing · channel 44/);
 const noCollector = {...apReceived, optimizer: {...apReceived.optimizer, rf_observations: {enabled: false}}};
-assert.match(describe(noCollector), /collector inactive/);
+assert.match(describe(noCollector), /collector unavailable/);
 assert.match(describe(noCollector), /Advertised BSS Load: 0\/255/);
 const bounded = JSON.parse(JSON.stringify(apReceived));
 bounded.optimizer.band_steering['client-mac'].neighbors = Array.from({length: 30},

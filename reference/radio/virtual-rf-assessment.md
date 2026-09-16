@@ -1252,11 +1252,11 @@ The current counter/inspection work remains observation-only:
   TX-failure/RX-drop mappings. Missing/malformed/reset deltas stay unavailable;
   wrap and independent directions have deterministic tests. RX corruption
   remains unqualified; lost ACKs can cause TX failures despite delivered data.
-- **AP inspector:** local AP Metrics and client-heard BSS Load have separate
-  sections. AP selection includes advertisements heard by its clients and
-  advertisements of that AP. Each shows BSSID/channel, receiver/source, scan
-  identity and per-observation age. Two-second scan freshness is not replaced
-  by a newer batch timestamp. Stale byte/retry/error rates are hidden.
+- **AP inspection:** interactive rooms passively collect native reports, without
+  enabling load steering. Topology hover shows per-BSS utilization, station
+  counts and age. The room separately shows client-heard advertisements with
+  receiver/source, scan identity and two-second per-neighbor freshness.
+  Stale counters stay hidden; shared-radio utilization is not additive.
 
 Next:
 
