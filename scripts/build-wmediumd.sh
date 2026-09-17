@@ -39,6 +39,7 @@ PATCHES=(
     0029-wmediumd-bound-control-io-and-event-loop-fairness.patch
     0030-wmediumd-admit-transmitter-frequency-queue-heads.patch
     0031-wmediumd-bounded-access-category-admission.patch
+    0032-wmediumd-disable-netlink-success-acks.patch
 )
 
 case "${1:-}" in

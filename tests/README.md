@@ -60,6 +60,31 @@ They do not replace fresh-artifact 0→105/native100 acceptance.
 Phase 0 RF contract/provenance tests and the short read-only live audit are in
 the [RF assessment](../reference/radio/virtual-rf-assessment.md#123-implemented-phase-0-truthfulness-baseline).
 
+## Netlink transport
+
+After a normal `scripts/build-wmediumd.sh` build, run these bounded host-only
+checks against the actual patched source (compiler, pkg-config and libnl
+development headers required):
+
+```sh
+source_dir=${WMEDIUMD_SOURCE_DIR:-$PWD/build/wmediumd-source}
+results=$(mktemp -d)
+python3 wmediumd/tests/netlink-ack-test.py --source "$source_dir/wmediumd/wmediumd.c" --output "$results/ack.json"
+python3 wmediumd/tests/netlink-receive-test.py --source "$source_dir/wmediumd/wmediumd.c" --output "$results/receive.json"
+cc -std=gnu11 -Wall -Wextra -Werror wmediumd/tests/kernel-ack-query-test.c -o "$results/kernel-ack"
+timeout 10 "$results/kernel-ack"
+timeout 60 "$source_dir/wmediumd/wmediumd" -T
+bash tests/wmediumd-offline-build.sh
+```
+
+The 19 libnl checks extract production initialization/send functions and verify
+that request flags, sequence IDs, payloads and negative errors survive without
+automatic success-ACK requests. Five parser checks exercise the production receive
+callback without success ACKs, including batched and multipart messages. Four
+read-only Linux control-family queries prove that negative errors still arrive
+without the ACK flag. They do not send hwsim frames or modify a running lab.
+RF/802.11 ACK modeling is unchanged; these tests are not live room qualification.
+
 ## Interactive room
 
 With the default 20-client room service already running, inside the appliance:

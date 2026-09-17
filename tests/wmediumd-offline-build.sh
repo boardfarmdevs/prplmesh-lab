@@ -59,5 +59,9 @@ test -r "$output_dir/wmediumd.provenance.env"
 ! grep -Eq '(^| )(clone|fetch)( |$)' "$git_log"
 grep -Fq 'WMEDIUMD_COMMIT=' "$output_dir/wmediumd.provenance.env"
 grep -Fq 'WMEDIUMD_PATCHSET_SHA256=' "$output_dir/wmediumd.provenance.env"
+for patch in "$ROOT"/patches/wmediumd/*.patch; do
+    grep -Fqx -- "-C $source_dir apply --check $patch" "$git_log"
+    grep -Fqx -- "-C $source_dir apply $patch" "$git_log"
+done
 
 echo 'PASS: wmediumd offline build uses only the accepted source cache'
