@@ -74,6 +74,14 @@ monitoring on 18892/18893. See [monitoring](../reference/observability/monitorin
 for nested containers and the outer VM. The native adapter remains guest-loopback
 8092. Room URLs need no `?mode=`. Proxies survive reboot; use a trusted LAN/VPN.
 
+### Post-export appliance state
+
+The 0916 export thinned and then restored the qualification appliance through
+its normal fixed-100-client first-boot path. That restoration completed with
+exit status zero on 17 September; `prplmesh-lab.service` is active and
+`prplmesh-room-demo.service` is running. This confirms only post-export service
+restoration, not fresh-import or full room-catalog acceptance.
+
 The 0916 thin distribution belongs under `/home/rev/releases/0916/`. Adjacent
 SHA-256 files, `release.json`, `KNOWN-ISSUES-0916.md` and packaging receipts
 record exact inputs, checks and outstanding gaps. Presence of a tar does not
