@@ -8,6 +8,9 @@ SELECTION_REQUIRED=${PRPLMESH_THIN_SELECTION_REQUIRED:-/var/lib/prplmesh-lab/thi
 REPORT=${PRPLMESH_THIN_REPORT:-/var/lib/prplmesh-lab/thin-firstboot-report.txt}
 RUNTIME_IMAGE=${PRPLMESH_RUNTIME_IMAGE:-prpl-runtime-local}
 CANDIDATE_ALIAS=prpl-runtime-thin-candidate
+SANITIZED_TEMPLATE=prpl-thin-template
+CAPACITY_STATE=${PRPLMESH_THIN_CAPACITY_STATE:-/var/lib/prplmesh-lab/thin-image-capacity.json}
+GUARD=$ROOT/deploy/guest/thin-image-guard.py
 
 [ "$(id -u)" -eq 0 ] || { echo "thin image preparation must run as root" >&2; exit 1; }
 # shellcheck disable=SC1091
@@ -15,6 +18,7 @@ source /etc/default/prplmesh-lab
 agents=${PROVISIONED_AGENT_COUNT:?}
 clients=${PROVISIONED_CLIENT_COUNT:?}
 expected=$((1 + agents + clients))
+[ "$agents:$clients" = 4:100 ] || { echo "thin preparation requires the fixed 105-instance pool" >&2; exit 1; }
 
 systemctl stop prplmesh-room-demo.service
 systemctl stop prplmesh-lab.service
@@ -42,9 +46,18 @@ done
 "$ROOT/scripts/stop-nested-instances.sh" "${instances[@]}"
 
 if lxc image alias list --format csv | cut -d, -f1 | grep -Fxq "$CANDIDATE_ALIAS"; then
-    lxc image alias delete "$CANDIDATE_ALIAS"
+    echo "existing thin candidate requires review; refusing to replace it" >&2
+    exit 1
 fi
-lxc publish prpl-controller --alias "$CANDIDATE_ALIAS"
+python3 "$GUARD" copy-check
+lxc copy prpl-controller "$SANITIZED_TEMPLATE" --instance-only -c boot.autostart=false
+install -d -m 0755 "$(dirname "$CAPACITY_STATE")"
+preparation=$(mktemp -d "$(dirname "$CAPACITY_STATE")/thin-preparation.XXXXXX")
+python3 "$GUARD" sanitize --compare-controller --output "$preparation/sanitation"
+lxc publish "$SANITIZED_TEMPLATE" --alias "$CANDIDATE_ALIAS"
+python3 "$GUARD" prepare-check --sanitation "$preparation/sanitation/sanitation.json" \
+    --image "$CANDIDATE_ALIAS" --state "$CAPACITY_STATE" \
+    --reclaim "${instances[@]}" "$SANITIZED_TEMPLATE" > "$preparation/capacity.json"
 fingerprint=$(lxc image info "$CANDIDATE_ALIAS" | sed -n 's/^Fingerprint: //p')
 [ -n "$fingerprint" ]
 if lxc image alias list --format csv | cut -d, -f1 | grep -Fxq "$RUNTIME_IMAGE"; then
@@ -56,6 +69,7 @@ lxc image alias delete "$CANDIDATE_ALIAS"
 for name in "${instances[@]}"; do
     lxc delete "$name"
 done
+lxc delete "$SANITIZED_TEMPLATE"
 [ "$(lxc list --format csv -c n | awk 'NF {n++} END {print n+0}')" -eq 0 ]
 
 while IFS= read -r image; do
