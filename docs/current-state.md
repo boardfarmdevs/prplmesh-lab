@@ -1,30 +1,67 @@
 # Current prplMesh lab
 
-Reviewed 16 September 2026. This is a deployment summary, not a live health
+Reviewed 17 September 2026. This is a deployment summary, not a live health
 monitor; use [operations](operations.md) for current service checks.
 
-## Identity
+## Identity and release status
 
 | Item | Current value |
 | --- | --- |
 | Canonical branch | `codex/0916-clean` |
 | Canonical checkout | `rev150:/home/rev/git/prplmesh-lab-0916-clean` |
-| Running qualification VM | `rev150:prplmesh-0916`; fresh build, not released |
-| Native runtime bundle | SHA-256 prefix `65a8ee22`; source recorded in qualification evidence |
+| Candidate appliance | `rev150:prplmesh-0916-repair-02` |
+| Packaged source and clean medium build | `79c547e55f5385c32d9ab4673c5ce7b71ac51244` |
+| Preserved native runtime archive | SHA-256 prefix `65a8ee22`; separate original build provenance |
+| Original native build source | Dirty checkout based on `5c998803568467ce8c7a164b3074535bbccccec7` |
 | Guest checkout | `/opt/prplmesh-lab` |
-| Native prplMesh | 6.0.0, `2e153c7e00cbcab6b8ee35082f494a364e23f018`, patches through 0025 |
 | Platform | Ubuntu 24.04 / Linux 7 radio host, userspace wmediumd |
 | Fixed pool | 100 clients; five mesh containers / six logical roles |
-| Rollback | `prplmesh-0913` stopped; previous downloads retained |
-| RDK peer | Independent repository and appliance on rev140 |
+| Release classification | 0916 candidate with known issues; not newly full-catalog-qualified |
+| RDK peer | Separate repository and appliance on rev140 |
 
-The default room selects ten private and ten IoT clients from the permanent
-pool. Loading a room does not resize containers or radio identities.
-Outer VM autostart is disabled; manually starting the VM starts its lab.
+The default room selects ten private and ten IoT clients. Loading a room does
+not resize containers or radio identities. Outer VM autostart is disabled.
+Documentation commits after the packaged source do not imply native rebuilds.
 
-## Browser addresses
+**The current appliance combines multiple build origins.** Its clean medium
+build is not evidence that the native prplMesh archive was rebuilt from the
+same clean source. Original native build records, approved source-inventory
+differences and actual binary hashes remain authoritative.
 
-These temporary ports serve the running qualification VM:
+## Qualification and remaining gaps
+
+The latest normal lifecycle passes 105 containers and the independent audit of
+exactly 100 unique clients, each receiving all three probe packets. Native
+files and container identities remain unchanged. Default-20/frontend restoration
+and the bounded zero-additional-medium-receive-drop observation pass.
+
+Earlier native-runtime campaigns passed complete catalogs, including proactive
+backhaul handover. **The latest combined source/medium has not completed a new
+22-client-room + 3-geometry-room campaign.** This is a qualification gap, not a
+claim that all current rooms pass or fail. Earlier passes are limited to their
+recorded source/runtime.
+
+An earlier thin candidate exhausted backing storage while reconstructing the
+client pool. Template sanitation and capacity corrections are now included;
+the old failed import is not acceptance of a new archive. Respect the import
+storage guard: compressed download size does not represent expanded storage.
+
+The owner requested completing known-issues packaging on 17 September without
+further debugging. Failed evidence stays retained; no test gate is reclassified
+as passing. Exact-archive fresh-import acceptance must have its own receipt.
+
+Evidence on rev150 is under `/home/rev/work/release-0916/`, particularly:
+
+- `prpl-native-roaming/medium-success-ack/lifecycle-02/`
+- `prpl-native-roaming/medium-success-ack/combined-clean-build-draft.json`
+- `evidence/prpl-native-roaming-release-input-4b5ce43-v1/build.json`
+
+The combined record's filename is not a claim of a single clean native build.
+
+## Access and distribution
+
+Candidate forwarding is configured for these addresses. Packaging temporarily
+stops services; an address is not a promise of current health.
 
 | View | rev150 prplMesh |
 | --- | --- |
@@ -32,71 +69,38 @@ These temporary ports serve the running qualification VM:
 | Network topology | <http://192.168.2.150:19891/> |
 | wmediumd console | <http://192.168.2.150:19890/> |
 
-Normal ports 18891/8091/8090 still target the stopped rollback, not the candidate.
-Its monitoring endpoints 18892/18893 are not currently available. Monitoring
-is not installed in the candidate: it follows accepted sanitized export so
-enrollment credentials cannot enter release images. The supported setup covers
-all 105 nested containers and the outer VM; see
-[monitoring](../reference/observability/monitoring.md).
+Packaging alone does not promote production ports 18891/8091/8090 or enroll
+monitoring on 18892/18893. See [monitoring](../reference/observability/monitoring.md)
+for nested containers and the outer VM. The native adapter remains guest-loopback
+8092. Room URLs need no `?mode=`. Proxies survive reboot; use a trusted LAN/VPN.
 
-The native adapter stays on guest loopback 8092. Room URLs need no `?mode=`.
-LXD proxy devices survive reboot; wait for guest services rather than recreating
-forwarding. Management interfaces require a trusted LAN/VPN.
-
-## Latest distribution and qualification
-
-**0916 remains held; no thin tar is published and no older downloads removed.**
-The earlier native build passes its 100-client baseline and **22/22** client
-catalog. The new native proactive build passes **3/3 geometry rooms**, including
-ext3→ext2→ext1 handover, strict rosters/kernel ownership, traffic, both views,
-unchanged native identities and Default restoration. Native scans, rooted safety
-and standard 1905 steering drive the moves, not external parent forcing.
-Fresh full **22+3 qualification remains pending** on this combined build.
-The latest strict run stopped after 12 client-room passes: the extender-loss
-room retained correct clients but failed continuous mesh connectivity. Native
-discovery-wait unnecessarily reconnected healthy uplinks despite fresh packets
-from the current controller. The localized repair requires positive contact
-after the latest link-up. Focused extender-loss now passes all 34 continuous
-mesh-connectivity samples; all three geometry rooms and Default restoration
-pass again, with both native handovers verified in 1.209 and 1.202 seconds.
-Fresh full qualification must still pass before release. Original failed
-results and native/AP/wire evidence remain retained.
-
-Explicit client departure now blocks old-age association recovery; only recorded
-infrastructure loss permits the fresh-query exception. Three bounded stationary
-transitions overlapping actual native BTM exchanges pass strict rosters, kernel
-ownership and restoration. The original silent-AP ghost was not reproduced;
-these passes do not establish its root-cause repair. Native/AP events and hwsim
-captures remain under `release-0916/evidence/prpl-native-roaming-pending-btm-{1,2,3}`.
-
-[Room acceptance](../reference/testing/room-acceptance.md#0916-release-recovery-checks)
-records source identities, recovered failures, retries and remaining gates.
-Native credentials/scans, renewed NBAPI paths, controller identity and bounded
-lost-query retries are repaired without external forced parent changes.
-
-The recorded accepted rollback is
-`/home/rev/releases/0913/prplmesh-0913-thin.tar`, source `9a2dd2d`,
-SHA-256 prefix `c294a503`, mirrored on rev140/rev150. Its adjacent SHA-256
-and `prpl-0913-acceptance.json` identify the exact immutable archive. Historical
-import/catalog evidence does not qualify the new build.
+The 0916 thin distribution belongs under `/home/rev/releases/0916/`. Adjacent
+SHA-256 files, `release.json`, `KNOWN-ISSUES-0916.md` and packaging receipts
+record exact inputs, checks and outstanding gaps. Presence of a tar does not
+establish fresh-import, room-catalog or monitoring acceptance.
 See [release information](release-notes.md); prpl has no VirtualBox distribution.
+
+The original stopped 0913 VM was retired after verifying a cold rollback on
+rev140. That archive remains at
+`/home/rev/work/release-0916/private-rollback/prpl-0913-before-0916/cold-rollback.tar.gz`;
+its SHA-256 starts `14adffcaa55f`. The verified rollback-check VM is stopped
+with autostart disabled. Redundant rev150 release/backup files were removed only
+after verifying retained rev140 copies; unique evidence remains.
 
 A fresh import needs at least 200 GiB free backing storage plus retained
 VM/export space; a compressed download may allocate the entire 160-GiB disk.
 
-## Boundaries and open issues
+## Boundaries
 
-- The reference optimizer supplies client policy; native NBAPI and BTM provide
-  observations and actuation. This does not assert native autonomous optimization.
+- The external reference optimizer supplies client policy; native NBAPI/BTM
+  provide observations and actuation. This is not native autonomous client policy.
 - Most rooms protect startup backhaul. Three geometry rooms change AP-to-AP RF,
-  not parent configuration. Native proactive steering and loss recovery are
-  separate from the external client optimizer; see [native policy](../reference/rooms/architecture.md#native-backhaul-roaming-0916-qualification).
-- Candidates require native timestamp advancement, correct radio identities
-  and current RF/association epochs. Retries neither reuse stale values nor
-  reset the original collection deadline.
-- Strict convergence includes membership, physical/native ownership, fresh
-  eligible candidates and traffic. An accepted BTM request alone is insufficient.
-- Keep host cooling and observer load separate from native performance.
-  Grafana guest metrics do not measure physical-host totals or subsecond steering.
+  not parent configuration. Native proactive steering and loss recovery differ.
+- Candidate metrics require native timestamp advancement, correct radio identity
+  and current RF/association epochs. Retrying must not make stale data fresh.
+- Convergence includes membership, native ownership, fresh candidates and traffic;
+  an accepted BTM request or green badge alone is insufficient.
+- Keep cooling and observer load separately attributed. Guest Grafana metrics do
+  not measure physical-host totals or subsecond steering performance.
 - [Neighbor-network rooms](../reference/proposals/neighbor-rooms/design.md)
   remain proposed.
