@@ -200,9 +200,102 @@ def test_preparation_writes_image_bound_measurement_only_after_success(prepared,
     report = json.loads(capsys.readouterr().out)
     assert report["status"] == "PASS"
     manifest = json.loads(state.read_text())
+    assert manifest["schema_version"] == 2
     assert manifest["image_fingerprint"] == FINGERPRINT
     assert manifest["measured"] == json.loads((sanitation / "sanitation.json").read_text())["after"]
+    assert manifest["publication"]["measured"] == manifest["measured"]
+    assert GUARD.manifest_measurement(manifest) == manifest["measured"]
     assert manifest["preparation_capacity"]["reclaim_instances"] == [GUARD.TEMPLATE]
+
+
+def test_actual_allocation_growth_preserves_content_and_raises_publication_budget(prepared, template):
+    state, sanitation = prepared
+    original_record = (sanitation / "sanitation.json").read_bytes()
+    original = json.loads(original_record)
+    protected = GUARD.protected_snapshot(template)
+    native = template / GUARD.REQUIRED_NATIVE[0]
+    original_size = native.stat().st_size
+    subprocess.run(["fallocate", "--keep-size", "--offset", "4096", "--length", "4096", str(native)],
+                   check=True)
+    assert native.stat().st_size == original_size
+    assert GUARD.protected_snapshot(template) == protected
+    assert GUARD.footprint(template)["expanded_bytes"] == original["after"]["expanded_bytes"] + 4096
+    GUARD.main()
+    manifest = json.loads(state.read_text())
+    assert (sanitation / "sanitation.json").read_bytes() == original_record
+    assert manifest["sanitation"] == original
+    assert manifest["publication"]["measured"] == GUARD.footprint(template)
+    assert GUARD.manifest_measurement(manifest) == manifest["publication"]["measured"]
+    assert manifest["preparation_capacity"]["required_bytes"] > GUARD.capacity(original["after"], generous_free())["required_bytes"]
+
+
+@pytest.mark.parametrize("delta", [-4096, 0, 4096, 1024 * 1024])
+def test_publication_records_both_measurements_without_reducing_budget(prepared, template, monkeypatch, delta):
+    state, sanitation = prepared
+    original_bytes = (sanitation / "sanitation.json").read_bytes()
+    original = json.loads(original_bytes)
+    measured = {**original["after"], "expanded_bytes": original["after"]["expanded_bytes"] + delta}
+    monkeypatch.setattr(GUARD, "footprint", lambda root: measured)
+    GUARD.main()
+    manifest = json.loads(state.read_text())
+    assert (sanitation / "sanitation.json").read_bytes() == original_bytes
+    assert manifest["publication"]["measured"] == measured
+    assert manifest["publication"]["cleaned_paths_empty"] == list(GUARD.CLEAN)
+    assert manifest["publication"]["protected_sha256"] == original["protected_after_sha256"]
+    budget = GUARD.manifest_measurement(manifest)
+    assert budget["expanded_bytes"] == max(original["after"]["expanded_bytes"], measured["expanded_bytes"])
+    assert budget["entries"] == original["after"]["entries"]
+
+
+def test_larger_publication_budget_fails_if_only_old_budget_fits(prepared, monkeypatch):
+    state, sanitation = prepared
+    original = json.loads((sanitation / "sanitation.json").read_text())["after"]
+    old_capacity = GUARD.capacity(original, generous_free())
+    monkeypatch.setattr(GUARD, "footprint", lambda root: {**original, "expanded_bytes": original["expanded_bytes"] + 4096})
+    monkeypatch.setattr(GUARD, "available", lambda path: {"bytes": old_capacity["required_bytes"],
+                                                         "inodes": old_capacity["required_inodes"]})
+    monkeypatch.setattr(GUARD.subprocess, "check_output", lambda *args, **kwargs: "0 fixture\n")
+    with pytest.raises(ValueError, match="insufficient guest capacity"):
+        GUARD.main()
+    assert not state.exists()
+
+
+@pytest.mark.parametrize("relative", GUARD.CLEAN)
+def test_new_transient_files_cannot_be_mistaken_for_allocation_drift(prepared, template, relative):
+    state, unused_sanitation = prepared
+    (template / relative / "unexpected").write_bytes(b"new content")
+    with pytest.raises(ValueError, match="cleanup path is no longer empty"):
+        GUARD.main()
+    assert not state.exists()
+
+
+@pytest.mark.parametrize("change", ["mode", "xattr", "symlink", "added", "removed"])
+def test_protected_mutations_still_fail_before_publication_capacity(prepared, template, change):
+    state, unused_sanitation = prepared
+    native = template / GUARD.REQUIRED_NATIVE[0]
+    if change == "mode":
+        native.chmod(0o755)
+    elif change == "xattr":
+        os.setxattr(native, "user.publication-test", b"changed")
+    elif change == "symlink":
+        native.unlink()
+        native.symlink_to("unexpected")
+    elif change == "added":
+        (template / "etc/new-content").write_bytes(b"unexpected")
+    else:
+        (template / "etc/startup.conf").unlink()
+    with pytest.raises(ValueError):
+        GUARD.main()
+    assert not state.exists()
+
+
+def test_different_entry_count_is_not_allocation_drift(prepared, monkeypatch):
+    state, sanitation = prepared
+    original = json.loads((sanitation / "sanitation.json").read_text())["after"]
+    monkeypatch.setattr(GUARD, "footprint", lambda root: {**original, "entries": original["entries"] + 1})
+    with pytest.raises(ValueError, match="entry count changed"):
+        GUARD.main()
+    assert not state.exists()
 
 
 @pytest.mark.parametrize("problem", ["enospc", "native-changed", "proof-changed", "scope", "duplicate-reclaim"])
@@ -253,7 +346,7 @@ def firstboot(tmp_path):
     measured = {"expanded_bytes": 4096, "entries": 10}
     manifest.write_text(json.dumps({"schema_version": 1, "expected_instances": 105,
                                     "image_fingerprint": FINGERPRINT, "measured": measured,
-                                    "sanitation": {"status": "PASS", "after": measured,
+                                    "sanitation": {"schema_version": 1, "status": "PASS", "after": measured,
                                                    "cleaned_paths": list(GUARD.CLEAN),
                                                    "protected_before_sha256": "c" * 64,
                                                    "protected_after_sha256": "c" * 64}}))
@@ -283,6 +376,90 @@ def firstboot(tmp_path):
                    "PRPLMESH_THIN_CAPACITY_STATE": str(manifest), "PRPLMESH_LXC_BIN": str(fake),
                    "PRPLMESH_RADIO_LAB": str(radio), "CALLS": str(calls)}
     return environment, manifest, calls
+
+
+@pytest.fixture
+def firstboot_publication(firstboot):
+    environment, manifest, calls = firstboot
+    data = json.loads(manifest.read_text())
+    data["schema_version"] = 2
+    original = data["sanitation"]["after"]
+    published = {**original, "expanded_bytes": original["expanded_bytes"] + 4096}
+    data["publication"] = {"measured": published, "cleaned_paths_empty": list(GUARD.CLEAN),
+                           "protected_sha256": data["sanitation"]["protected_after_sha256"]}
+    data["measured"] = GUARD.publication_budget(original, published)
+    data["preparation_capacity"] = {**GUARD.capacity(data["measured"], generous_free()),
+                                    "image_fingerprint": FINGERPRINT}
+    manifest.write_text(json.dumps(data))
+    return environment, manifest, calls
+
+
+@pytest.mark.parametrize("problem", ["budget", "published", "sanitized", "entries", "boolean-size",
+                                     "clean", "protected", "capacity", "headroom", "image",
+                                     "schema", "legacy-downgrade", "missing-publication"])
+def test_inconsistent_publication_state_fails_before_any_provisioning(firstboot_publication, problem):
+    environment, manifest, calls = firstboot_publication
+    data = json.loads(manifest.read_text())
+    if problem == "budget":
+        data["measured"]["expanded_bytes"] -= 4096
+    elif problem in ("published", "entries", "boolean-size"):
+        published = data["publication"]["measured"]
+        if problem == "published":
+            published["expanded_bytes"] += 4096
+        elif problem == "entries":
+            published["entries"] += 1
+        else:
+            published["expanded_bytes"] = True
+    elif problem == "sanitized":
+        data["sanitation"]["after"]["expanded_bytes"] += 8192
+    elif problem == "clean":
+        data["publication"]["cleaned_paths_empty"] = ["tmp"]
+    elif problem == "protected":
+        data["publication"]["protected_sha256"] = "d" * 64
+    elif problem in ("capacity", "headroom"):
+        data["preparation_capacity"]["required_bytes" if problem == "capacity" else "headroom_bytes"] -= 1
+    elif problem == "image":
+        data["preparation_capacity"]["image_fingerprint"] = "b" * 64
+    elif problem == "schema":
+        data["schema_version"] = 3
+    elif problem == "legacy-downgrade":
+        data["schema_version"] = 1
+    else:
+        del data["publication"]
+    manifest.write_text(json.dumps(data))
+    result = subprocess.run(["bash", str(ROOT / "deploy/guest/prepare-thin-firstboot.sh")],
+                            env=environment, capture_output=True, text=True)
+    assert result.returncode != 0, result.stdout + result.stderr
+    assert "thin image guard:" in result.stderr
+    assert Path(environment["PRPLMESH_THIN_MARKER"]).exists()
+    assert not Path(environment["PRPLMESH_THIN_REPORT"]).exists()
+    assert calls.read_text() == ""
+
+
+@pytest.mark.parametrize("delta", [-4096, 4096])
+def test_firstboot_uses_conservative_publication_budget(firstboot_publication, monkeypatch, capsys, delta):
+    environment, manifest, unused_calls = firstboot_publication
+    data = json.loads(manifest.read_text())
+    data["sanitation"]["after"]["expanded_bytes"] = 8192
+    data["publication"]["measured"]["expanded_bytes"] = 8192 + delta
+    measured = GUARD.publication_budget(data["sanitation"]["after"], data["publication"]["measured"])
+    data["measured"] = measured
+    data["preparation_capacity"] = {**GUARD.capacity(measured, generous_free()), "image_fingerprint": FINGERPRINT}
+    manifest.write_text(json.dumps(data))
+    monkeypatch.setenv("PRPLMESH_LXC_BIN", environment["PRPLMESH_LXC_BIN"])
+    monkeypatch.setattr(sys, "argv", ["guard", "firstboot-check", "--state", str(manifest),
+                                     "--image", "prpl-runtime-local", "--expected", "105", "--existing", "0"])
+    capacity = GUARD.capacity(measured, generous_free())
+    monkeypatch.setattr(GUARD, "available", lambda path: {"bytes": capacity["required_bytes"],
+                                                         "inodes": capacity["required_inodes"]})
+    GUARD.main()
+    report = json.loads(capsys.readouterr().out)
+    assert report["status"] == "PASS"
+    assert report["expanded_bytes_per_instance"] == max(8192, 8192 + delta)
+    monkeypatch.setattr(GUARD, "available", lambda path: {"bytes": capacity["required_bytes"] - 1,
+                                                         "inodes": capacity["required_inodes"]})
+    with pytest.raises(ValueError, match="insufficient guest capacity"):
+        GUARD.main()
 
 
 @pytest.mark.parametrize("problem", ["enospc", "fingerprint", "missing", "corrupt", "cardinality", "preservation"])

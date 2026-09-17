@@ -69,6 +69,18 @@ and native BSS Load reporting. These are modeled activity counters, not calibrat
 AP capacity. The kernel backend does not implement this full survey path. See the
 [virtual RF assessment](virtual-rf-assessment.md) for provenance and qualification.
 
+Medium patch `0032` disables libnl's automatic administrative success-ACK requests
+after synchronous family lookup. It removes redundant kernel replies, not simulated
+802.11 acknowledgments: RF/PER calculations, frame delivery, TX status and negative
+netlink errors remain unchanged. Existing patches, including `0031` access-category
+admission, still apply. Unexpected kernel netlink receive drops are transport loss,
+not modeled RF loss; track their counter delta independently during startup and room
+qualification. A rebuilt medium needs a normal lifecycle startup and fresh native
+100-client/room qualification; a live swap alone does not establish acceptance.
+
+The focused [netlink tests](../../tests/README.md#netlink-transport) exercise actual
+patched functions with real libnl plus read-only Linux generic-netlink queries.
+
 Medium patch `0025` preserves confirmed client departures. Read-only
 `GET_ASSOCIATION` returns flag `4`, a zero owner and zero frequency for a known
 departure; genuinely unknown ownership still returns unavailable. Only successful
