@@ -41,6 +41,15 @@ The UI update is newer than the released 0913 thin tar.
 Documentation-only check (no lab access): `python3 tests/test_documentation.py`.
 This checks local files/anchors, navigation, guide sizes and packaged manual inputs.
 
+The asymmetric RF audit samples only native link readbacks. It retries at most
+three complete snapshots when playback changes the environment epoch or native
+generation during collection; every discarded before/after counter and link row
+is retained. Run/world/daemon changes and query errors fail immediately. The
+10-second collection budget and20-second process bound stay within the existing
+30-second caller timeout; no playback pause, RF writes or room deadline changes.
+No coherent snapshot means a nonzero exit with all attempts in stderr.
+Offline fixtures: `python3 -m pytest -q tests/test_room_feature_rf_audit.py`.
+
 Packaging-only offline checks (no LXD/VM actions):
 `python3 -m pytest -q tests/test_thin_image_guard.py`,
 `bash tests/thin-firstboot.sh`, and `bash tests/thin-package-order.sh`.
