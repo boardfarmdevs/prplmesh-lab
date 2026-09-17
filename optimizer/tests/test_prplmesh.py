@@ -342,9 +342,68 @@ def test_radio_discovery_caches_inventory_and_capability_without_publishing_fail
     monkeypatch.setattr(provider, "_call", completed_read)
     assert len(provider._radio_objects()) == 2
     assert len(provider._radio_objects()) == 2
-    assert calls == [(provider.NETWORK, "_get", {"rel_path": "Device.*.", "depth": 2})] * 2 + [
-        (radio_one, "_describe", {"functions": True, "parameters": False, "objects": False})]
+    inventory_call = (provider.NETWORK, "_get", {"rel_path": "Device.*.", "depth": 2})
+    assert calls == [inventory_call, inventory_call,
+                     (radio_one, "_describe", {"functions": True, "parameters": False, "objects": False}),
+                     inventory_call]
     assert not provider.defer_registration_query
+
+
+@pytest.mark.parametrize("new_device,new_radio", [(7, 1), (2, 1)])
+def test_candidate_registration_follows_recreated_native_radio_paths(monkeypatch, new_device, new_radio):
+    provider = PrplMeshCandidateProvider(allow_simulated=True)
+    device_id = "02:00:00:27:02:01"
+    radio_id = "02:00:00:00:04:00"
+    old_device = provider.NETWORK + ".Device.2"
+    old_radio = old_device + ".Radio.2"
+    current_device = old_device
+    current_radio = old_radio
+    calls = []
+
+    def call(obj, method, payload):
+        calls.append((obj, method, payload))
+        if method == "_get":
+            return {current_device: {"ID": device_id}, current_radio: {"ID": radio_id}}
+        if method == "_describe":
+            return {"functions": {"AddUnassociatedStation": {"arguments": [
+                {"name": "defer_query", "type_name": "bool"}]}}}
+        assert obj == current_radio
+        return {"retval": ""}
+
+    monkeypatch.setattr(provider, "_call", call)
+    metadata = {"channel": 36, "opclass": 115, "device_id": device_id}
+    assert provider._radio_objects()[(device_id, radio_id)] == old_radio
+    provider._register_targets({(old_radio, "station"): []}, {old_radio: metadata})
+    provider._radio_objects()
+    assert provider.registered == {(old_radio, "station")}
+    assert sum(method == "_describe" for _, method, _ in calls) == 1
+    current_device = provider.NETWORK + f".Device.{new_device}"
+    current_radio = current_device + f".Radio.{new_radio}"
+    assert provider._radio_objects()[(device_id, radio_id)] == current_radio
+    assert not provider.registered and not provider.registration_channels
+    provider._register_targets({(current_radio, "station"): []}, {current_radio: metadata})
+    assert provider.registered == {(current_radio, "station")}
+    assert [obj for obj, method, _ in calls if method == "AddUnassociatedStation"] == [
+        old_radio, current_radio]
+
+
+def test_failed_rediscovery_cannot_reuse_old_registrations(monkeypatch):
+    provider = PrplMeshCandidateProvider()
+    provider.object_cache = {("agent", "radio"): "old-path"}
+    provider.registered = {("old-path", "station")}
+    provider.registration_channels = {"station": frozenset({(36, 115)})}
+    device = provider.NETWORK + ".Device.7"
+
+    def call(obj, method, payload):
+        if method == "_describe":
+            raise CandidateMetricsUnavailable("radio disappeared during rediscovery")
+        return {device: {"ID": "02:00:00:27:02:01"},
+                device + ".Radio.1": {"ID": "02:00:00:00:04:00"}}
+
+    monkeypatch.setattr(provider, "_call", call)
+    with pytest.raises(CandidateMetricsUnavailable, match="disappeared"):
+        provider._radio_objects()
+    assert not provider.object_cache and not provider.registered and not provider.registration_channels
 
 
 def test_orphaned_radio_does_not_leave_a_partial_inventory(monkeypatch):
@@ -513,6 +572,83 @@ def test_candidate_timeout_distinguishes_missing_from_unchanged_publication():
         observer.observe()
     assert provider.last_raw[-1]["freshness"][0]["last_read"] is None
     assert provider.last_raw[-1]["freshness"][0]["baseline"] is None
+
+
+@pytest.fixture
+def retry_provider(monkeypatch):
+    elapsed = [0.0]
+    monkeypatch.setattr("optimizer.prplmesh.time.monotonic", lambda: elapsed[0])
+    monkeypatch.setattr("optimizer.prplmesh.time.sleep", lambda seconds: elapsed.__setitem__(0, elapsed[0] + seconds))
+    provider = _Provider()
+    provider.timeout_seconds = 30
+    observer = PrplMeshObserver(fetcher=lambda url: _topology(), candidate_provider=provider, clock=lambda: NOW)
+    return provider, observer, elapsed
+
+
+def test_lost_candidate_query_retries_without_reusing_stale_values(retry_provider):
+    provider, observer, elapsed = retry_provider
+    published = []
+    provider.result_ready = lambda measurements, rejected, transaction: published.extend(measurements)
+
+    def read(radio):
+        updates = sum(method == "UpdateUnassociatedStationsStats" for _, method, _ in provider.calls)
+        return {"02:00:00:10:01:00": (122, STAMP if updates >= 2 else METRIC_STAMP)}
+
+    provider._radio_metrics = read
+    snapshot = observer.observe()
+    assert 2 <= elapsed[0] < 2.3
+    assert len(snapshot.candidates) == len(published) == 1
+    assert snapshot.candidates[0].metric_observed_at == STAMP
+    retries = [entry for entry in provider.last_raw if entry["operation"] == "update_retry"]
+    assert len(retries) == 1
+    assert retries[0]["attempt"] == 1
+    assert retries[0]["missing"] == [("Device.WiFi.DataElements.Network.Device.2.Radio.2", "02:00:00:10:01:00")]
+    assert sum(method == "AddUnassociatedStation" for _, method, _ in provider.calls) == 1
+
+
+@pytest.mark.parametrize("timeout,expected_retries", [(1, 0), (5, 1), (30, 3), (120, 3)])
+def test_candidate_retry_budget_never_extends_deadline(retry_provider, timeout, expected_retries):
+    provider, observer, elapsed = retry_provider
+    provider.timeout_seconds = timeout
+    provider._radio_metrics = lambda radio: {"02:00:00:10:01:00": (122, METRIC_STAMP)}
+    with pytest.raises(CandidateMetricsUnavailable, match="incomplete"):
+        observer.observe()
+    assert elapsed[0] == pytest.approx(timeout)
+    assert sum(method == "UpdateUnassociatedStationsStats" for _, method, _ in provider.calls) == expected_retries + 1
+    assert provider.last_raw[-1]["freshness"][0]["last_read"] == (122, METRIC_STAMP)
+    assert not any(entry["operation"] == "published" for entry in provider.last_raw)
+
+
+def test_candidate_retry_stops_when_world_is_superseded(retry_provider):
+    provider, observer, elapsed = retry_provider
+    provider.generation_guard = lambda: elapsed[0] < 1.5
+    provider._radio_metrics = lambda radio: {}
+    with pytest.raises(CandidateSnapshotSuperseded):
+        observer.observe()
+    assert elapsed[0] < 2
+    assert sum(method == "UpdateUnassociatedStationsStats" for _, method, _ in provider.calls) == 1
+
+
+def test_candidate_retry_does_not_republish_partial_results(retry_provider):
+    provider, observer, elapsed = retry_provider
+    topology = _topology()
+    second_client = copy.deepcopy(topology["devices"][0]["radios"][0]["bsses"][0]["clients"][0])
+    second_client["id"] = "02:00:00:10:02:00"
+    topology["devices"][0]["radios"][0]["bsses"][0]["clients"].append(second_client)
+    observer = PrplMeshObserver(fetcher=lambda url: topology, candidate_provider=provider, clock=lambda: NOW)
+    published = []
+    provider.result_ready = lambda measurements, rejected, transaction: published.extend(measurements)
+
+    def read(radio):
+        updates = sum(method == "UpdateUnassociatedStationsStats" for _, method, _ in provider.calls)
+        return {"02:00:00:10:01:00": (122, STAMP if updates else METRIC_STAMP),
+                second_client["id"]: (118, STAMP if updates >= 2 else METRIC_STAMP)}
+
+    provider._radio_metrics = read
+    snapshot = observer.observe()
+    assert 2 <= elapsed[0] < 2.3
+    assert len(snapshot.candidates) == len(published) == 2
+    assert len({entry.sta_mac for entry in published}) == 2
 
 
 def test_zero_candidate_completes_only_after_native_timestamp_advances():

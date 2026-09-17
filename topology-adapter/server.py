@@ -95,8 +95,8 @@ def topology(objects=None):
         device_paths = instances("Device.")
         with ThreadPoolExecutor(max_workers=8) as executor:
             snapshots = executor.map(
-                lambda device: ubus(device, "_get", {"rel_path": "", "depth": 4}),
-                device_paths,
+                lambda device: ubus(device, "_get", {"rel_path": "", "depth": 0 if device == ROOT else 4}),
+                [ROOT, *device_paths],
             )
             objects = {}
             for snapshot in snapshots:
@@ -119,6 +119,12 @@ def topology(objects=None):
     def parameters(object_path):
         return objects.get(object_path + ".", {})
 
+    controller_id = parameters(ROOT).get("ControllerID")
+    if (not isinstance(controller_id, str) or
+            not re.fullmatch(r"(?:[0-9a-fA-F]{2}:){5}[0-9a-fA-F]{2}", controller_id) or
+            controller_id == "00:00:00:00:00:00"):
+        raise ValueError("NBAPI controller identity is unavailable")
+    controller_id = controller_id.lower()
     device_paths = indexed(snapshot_instances("Device.", 1), rf"{re.escape(ROOT)}\.Device\.(\d+)")
     devices = []
     for display_index, device_path in enumerate(device_paths, 1):
@@ -127,7 +133,7 @@ def topology(objects=None):
         device_id = device_data.get("ID", "")
         backhaul_path = device_path + ".MultiAPDevice.Backhaul"
         backhaul = parameters(backhaul_path)
-        role = "controller" if not backhaul.get("BackhaulDeviceID") else "agent"
+        role = "controller" if device_id.lower() == controller_id else "agent"
         device = {
             "id": device_id,
             "name": device_name(device_id, role, display_index - 1),

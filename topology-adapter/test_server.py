@@ -56,6 +56,7 @@ class SnapshotProjectionTests(unittest.TestCase):
         radio = device + ".Radio.1"
         bss = radio + ".BSS.1"
         objects = {
+            server.ROOT + ".": {"ControllerID": "02:00:00:27:01:01"},
             device + ".": {"ID": "02:00:00:27:01:01"},
             radio + ".": {"ID": "02:00:00:00:01:00"},
             radio + ".CurrentOperatingClassProfile.1.": {"Class": 115, "Channel": 36},
@@ -65,7 +66,8 @@ class SnapshotProjectionTests(unittest.TestCase):
         }
         with patch.object(server, "instances", return_value=[device]), patch.object(server, "ubus", return_value=objects) as native:
             value = server.topology()
-        self.assertEqual(native.call_count, 2)
+        self.assertEqual(native.call_count, 3)
+        native.assert_any_call(server.ROOT, "_get", {"rel_path": "", "depth": 0})
         native.assert_any_call(device, "_get", {"rel_path": "", "depth": 4})
         native.assert_any_call(server.ROOT, "_get", {"rel_path": "Device.*.Radio.*.BSS.*.STA.", "depth": 1})
         self.assertEqual(len(value["devices"]), 1)
@@ -80,7 +82,7 @@ class SnapshotProjectionTests(unittest.TestCase):
         def read_device(path, method, arguments):
             self.assertEqual(method, "_get")
             if path == server.ROOT:
-                return {}
+                return {server.ROOT + ".": {"ControllerID": "02:00:00:27:01:01"}}
             self.assertEqual(arguments["depth"], 4)
             barrier.wait()
             return {path + ".": {"ID": path}}
@@ -102,6 +104,8 @@ class SnapshotProjectionTests(unittest.TestCase):
                                  bss + ".STA.1.": station}
         def read(path, method, arguments):
             if path == server.ROOT:
+                if arguments["rel_path"] == "":
+                    return {server.ROOT + ".": {"ControllerID": "02:00:00:27:01:01"}}
                 return {target + ".STA.1.": station}
             return snapshots[path]
         with patch.object(server, "instances", return_value=list(snapshots)), patch.object(server, "ubus", side_effect=read):
@@ -114,13 +118,35 @@ class SnapshotProjectionTests(unittest.TestCase):
         for response in ([], None):
             with self.subTest(response=response), patch.object(server, "instances", return_value=[]), \
                     patch.object(server, "ubus", return_value=response):
-                with self.assertRaisesRegex(ValueError, "station snapshot"):
+                with self.assertRaisesRegex(ValueError, "snapshot"):
                     server.topology()
 
     def test_failed_device_read_is_not_an_empty_topology(self):
         with patch.object(server, "instances", return_value=[server.ROOT + ".Device.1"]), patch.object(server, "ubus", side_effect=TimeoutError):
             with self.assertRaises(TimeoutError):
                 server.topology()
+
+    def test_parentless_reconnecting_agents_do_not_become_extra_controllers(self):
+        controller = "aa:bb:cc:dd:ee:01"
+        for parent in (None, "", "00:00:00:00:00:00", controller):
+            with self.subTest(parent=parent):
+                objects = {server.ROOT + ".": {"ControllerID": controller.upper()}}
+                for index, address in enumerate(("02:00:00:27:02:01", controller,
+                                                  "02:00:00:27:03:01"), 7):
+                    device = server.ROOT + f".Device.{index}"
+                    objects[device + "."] = {"ID": address}
+                    objects[device + ".MultiAPDevice.Backhaul."] = {"BackhaulDeviceID": parent}
+                devices = server.topology(objects)["devices"]
+                self.assertEqual([device["id"] for device in devices if device["role"] == "controller"],
+                                 [controller])
+                self.assertEqual([device["name"] for device in devices], ["agent-1", "controller", "agent-2"])
+                self.assertEqual(devices[0]["backhaul"]["parent_id"], parent)
+
+    def test_missing_controller_identity_is_not_guessed_from_parentlessness(self):
+        for identity in (None, "", "00:00:00:00:00:00", "invalid", False):
+            with self.subTest(identity=identity), self.assertRaisesRegex(ValueError, "controller identity"):
+                server.topology({server.ROOT + ".": {"ControllerID": identity},
+                                 server.ROOT + ".Device.1.": {"ID": "02:00:00:27:01:01"}})
 
 
 class StableDeviceNameTests(unittest.TestCase):

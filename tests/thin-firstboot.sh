@@ -7,6 +7,14 @@ trap 'rm -rf -- "$work"' EXIT
 state=$work/instances
 marker=$work/thin-pending.env
 report=$work/firstboot-report.txt
+mkdir -p "$work/root/deploy/guest"
+cat > "$work/root/deploy/guest/thin-image-guard.py" <<'PY'
+import sys
+
+assert sys.argv[1] == 'firstboot-check'
+assert sys.argv[sys.argv.index('--expected') + 1] == '105'
+print('{"status": "PASS", "expected_instances": 105}')
+PY
 
 cat > "$work/lxc" <<'SH'
 #!/bin/bash
@@ -41,7 +49,8 @@ chmod 755 "$work/lxc" "$work/radio-lab"
 run_firstboot()
 {
     local action=${1:-prepare}
-    env PROVISIONED_AGENT_COUNT=4 PROVISIONED_CLIENT_COUNT=20 \
+    env PROVISIONED_AGENT_COUNT=4 PROVISIONED_CLIENT_COUNT=100 \
+        PRPLMESH_ROOT="$work/root" \
         PRPLMESH_THIN_ALLOW_UNPRIVILEGED=1 \
         PRPLMESH_THIN_SKIP_SYNC=1 \
         PRPLMESH_THIN_MARKER="$marker" \
@@ -57,11 +66,11 @@ run_firstboot()
 run_firstboot >/dev/null
 test -e "$marker"
 grep -Fxq 'nested_instances_before=0' "$report"
-grep -Fxq 'nested_instances_after_provision=25' "$report"
-test "$(wc -l < "$state")" -eq 25
+grep -Fxq 'nested_instances_after_provision=105' "$report"
+test "$(wc -l < "$state")" -eq 105
 run_firstboot finalize >/dev/null
 test ! -e "$marker"
-grep -Fxq 'nested_instances_final=25' "$report"
+grep -Fxq 'nested_instances_final=105' "$report"
 grep -Fxq 'thin_firstboot_status=PASS' "$report"
 
 printf 'prpl-other\n' > "$state"
@@ -79,13 +88,13 @@ printf 'prpl-controller\n' > "$state"
 cat > "$report" <<'EOF'
 thin_firstboot_started_at=test
 nested_instances_before=0
-expected_instances_after=25
-profile_clients=20
+expected_instances_after=105
+profile_clients=100
 EOF
 run_firstboot >/dev/null
 test -e "$marker"
 grep -Fxq 'retry_instances_before=1' "$report"
-grep -Fxq 'nested_instances_after_provision=25' "$report"
+grep -Fxq 'nested_instances_after_provision=105' "$report"
 run_firstboot finalize >/dev/null
 test ! -e "$marker"
 

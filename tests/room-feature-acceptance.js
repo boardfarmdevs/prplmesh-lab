@@ -294,7 +294,7 @@ function argumentsFrom(argv) {
   const args = {};
   for (let index = 0; index < argv.length; index++) {
     const key = argv[index].replace(/^--/, '');
-    if (key === 'yes-act') args[key] = true;
+    if (key === 'yes-act' || key === 'fail-fast') args[key] = true;
     else if (key === 'world') (args.world ||= []).push(argv[++index]);
     else args[key] = argv[++index];
   }
@@ -751,6 +751,10 @@ async function run(args) {
           verified: activeRoom.performance.verifiedActions, errors: activeRoom.errors.map(error => error.message.split('\n')[0])}));
         save('report.json', report);
       }
+      if (args['fail-fast'] && !activeRoom.passed) {
+        report.abortedAfterRoom = activeRoom.id;
+        break;
+      }
     }
   } catch (error) {
     report.failure = error.stack;
@@ -806,6 +810,6 @@ function kernelClientAudit(bindings, wanted, associations, links) {
   return {onlineCount: online.size, offlineCount: bound.size - online.size, passed: errors.length === 0, errors, links};
 }
 
-module.exports = {expectedFrame, evaluate, distribution, eventPerformance, viewAgreement, recordedEventKind, fronthaulOutages, bandExpectations, bandSteeringSummary, bandNativeErrors, kernelClientAudit, trafficExperimentSummary};
+module.exports = {argumentsFrom, expectedFrame, evaluate, distribution, eventPerformance, viewAgreement, recordedEventKind, fronthaulOutages, bandExpectations, bandSteeringSummary, bandNativeErrors, kernelClientAudit, trafficExperimentSummary};
 if (require.main === module) run(argumentsFrom(process.argv.slice(2))).then(report => { process.exitCode = report.passed ? 0 : 1; })
   .catch(error => { console.error(error); process.exitCode = 2; });

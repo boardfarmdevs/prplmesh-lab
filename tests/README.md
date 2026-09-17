@@ -41,6 +41,13 @@ The UI update is newer than the released 0913 thin tar.
 Documentation-only check (no lab access): `python3 tests/test_documentation.py`.
 This checks local files/anchors, navigation, guide sizes and packaged manual inputs.
 
+Packaging-only offline checks (no LXD/VM actions):
+`python3 -m pytest -q tests/test_thin_image_guard.py`,
+`bash tests/thin-firstboot.sh`, and `bash tests/thin-package-order.sh`.
+These cover stopped-template sanitation/preservation, link and mount guards,
+expanded 105-instance capacity, fingerprint binding and pre-provision failure.
+They do not replace fresh-artifact 0→105/native100 acceptance.
+
 Phase 0 RF contract/provenance tests and the short read-only live audit are in
 the [RF assessment](../reference/radio/virtual-rf-assessment.md#123-implemented-phase-0-truthfulness-baseline).
 

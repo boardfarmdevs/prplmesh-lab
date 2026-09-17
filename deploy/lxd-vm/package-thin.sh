@@ -210,6 +210,11 @@ lxc exec "$NAME" -- test -r /var/lib/prplmesh-lab/thin-profile-selection.require
 lxc exec "$NAME" -- test ! -e /var/lib/prplmesh-lab/thin-pending.env
 printf 'nested_instances_before_export=%s\n' "$nested_count" >> "$TRIM_REPORT"
 
+lxc exec "$NAME" -- python3 /opt/prplmesh-lab/deploy/guest/thin-image-guard.py firstboot-check \
+    --state /var/lib/prplmesh-lab/thin-image-capacity.json \
+    --image "$RUNTIME_IMAGE" --existing 0 --expected 105 > "$BUNDLE/thin-capacity-check.json"
+lxc file pull "$NAME/var/lib/prplmesh-lab/thin-image-capacity.json" "$BUNDLE/thin-image-capacity.json"
+
 lxc file push "$ROOT/deploy/lxd-vm/package-cleanup.sh" \
     "$NAME/run/prplmesh-package-cleanup"
 lxc exec "$NAME" -- chmod 0755 /run/prplmesh-package-cleanup
@@ -286,6 +291,7 @@ jq -n \
     cd "$BUNDLE"
     sha256sum "$(basename "$OUTPUT")" import.sh install-host.sh \
         package-release.sh README.md RELEASE-NOTES.md INTERACTIVE.md release.env release.json trim-report.txt \
+        thin-capacity-check.json thin-image-capacity.json \
         > SHA256SUMS
     find observability -type f -print0 | sort -z | xargs -0 sha256sum >> SHA256SUMS
 )

@@ -1,0 +1,37 @@
+--- a/hostapd/ctrl_iface.c
++++ b/hostapd/ctrl_iface.c
+@@ -1190,14 +1190,15 @@
+ 
+ 	pos = buf;
+ 	end = buf + buflen;
+ 
+ 	ret = os_snprintf(pos, end - pos, "bssid=" MACSTR "\n"
+-			  "ssid=%s\n",
++			  "ssid=%s\nmulti_ap=%d\n",
+ 			  MAC2STR(hapd->own_addr),
+ 			  wpa_ssid_txt(hapd->conf->ssid.ssid,
+-				       hapd->conf->ssid.ssid_len));
++				       hapd->conf->ssid.ssid_len),
++			  hapd->conf->multi_ap);
+ 	if (os_snprintf_error(end - pos, ret))
+ 		return pos - buf;
+ 	pos += ret;
+ 
+ #ifdef CONFIG_WPS
+@@ -1231,16 +1232,10 @@
+ 	}
+ 
+ 	if (hapd->conf->multi_ap) {
+ 		struct hostapd_ssid *ssid = &hapd->conf->multi_ap_backhaul_ssid;
+ 
+-		ret = os_snprintf(pos, end - pos, "multi_ap=%d\n",
+-				  hapd->conf->multi_ap);
+-		if (os_snprintf_error(end - pos, ret))
+-			return pos - buf;
+-		pos += ret;
+-
+ 		if (ssid->ssid_len) {
+ 			ret = os_snprintf(pos, end - pos,
+ 					  "multi_ap_backhaul_ssid=%s\n",
+ 					  wpa_ssid_txt(ssid->ssid,
+ 						       ssid->ssid_len));

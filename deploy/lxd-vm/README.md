@@ -74,6 +74,18 @@ lxc exec prplmesh-0916 -- journalctl -fu prplmesh-lab.service
 lxc exec prplmesh-0916 -- prplmesh-lab-start status
 ```
 
+Before creating any radios or containers, first boot checks the retained image's
+fingerprint against `thin-image-capacity.json` in `/var/lib/prplmesh-lab` and
+budgets all 105 expanded root filesystems on the actual guest pool. Each copy
+includes a 5% allocation margin and 64 MiB runtime-growth allowance, with another
+8 GiB left free globally; free inodes are checked too. A compressed download's
+size is **not** its expanded footprint. Failure preserves the pending marker and
+a `thin-firstboot-report.txt.capacity.*.json` diagnostic; missing/mismatched image
+measurements also fail closed. Do not remove the guard or mark a partial roster
+ready. Preserve diagnostics and correct the image or guest capacity before a
+separately recorded recovery. This guard currently requires nested `dir` storage
+without per-container root quotas; it does not replace the outer-host space check.
+
 When ready, the wmediumd Console is on host port `8090`, the Controller UI is
 on `8091`, and the room-demo proxy is on `18891`. The room server is
 started by `prplmesh-room-demo.service` with 100-client capacity; stop that
@@ -129,6 +141,30 @@ retains the verified local runtime image and exact source, and exports a
 stopped instance-only backup. It emits `prplmesh-0916-thin.tar`, its adjacent
 `.sha256`, schema-2 `release.json`, inner `SHA256SUMS`, and this README.
 The bundle also includes `RELEASE-NOTES.md` for the delivered checkpoint.
+
+The runtime image is published from a **dedicated stopped copy**, never directly
+from the exercised controller. Only contents of `/var/log`, `/tmp`, `/var/tmp`
+and `/var/crash` in that copy are removed. Native binaries/libraries, configuration,
+leases and other startup data are preserved, not stripped. Symlinked cleanup roots
+and mounted subtrees are refused. SHA-256 and metadata snapshots of every protected
+file (including native assets) must agree before/after, and installed `/opt`/`/usr`
+assets must match the source controller. Keep the generated
+`/var/lib/prplmesh-lab/thin-preparation.*/` evidence with the release record.
+
+Preparation checks temporary copy/publication space, then the projected 105-copy
+budget before changing the runtime alias or deleting the stopped roster. Only
+actual allocated bytes of explicitly scheduled stopped-container deletions are
+credited; no credit is assumed for future outer cleanup, compression or sparse
+files. The first-boot check repeats against actual free space after import.
+On failure, the candidate/template and original roster are retained for review.
+`deploy/guest/thin-image-guard.py sanitize --output NEW-EVIDENCE-DIR` also supports
+`prpl-thin-template` initialized from the retained image without ever booting it;
+`--compare-controller` additionally verifies an existing stopped controller.
+This helper alone neither publishes an image nor proves release acceptance.
+All exports, including already-thin repackaging, repeat the empty-guest capacity
+check. `thin-image-capacity.json` and `thin-capacity-check.json` are included in
+the bundle checksums; an older unmeasured runtime image cannot bypass this gate.
+
 ## Optional container management and metrics
 
 Newly packaged releases accept `bash import.sh --monitoring`.

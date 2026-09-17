@@ -7,6 +7,7 @@ REPORT=${PRPLMESH_THIN_REPORT:-/var/lib/prplmesh-lab/thin-firstboot-report.txt}
 LXC_BIN=${PRPLMESH_LXC_BIN:-lxc}
 RADIO_LAB=${PRPLMESH_RADIO_LAB:-$ROOT/scripts/radio-lab.sh}
 RUNTIME_IMAGE=${PRPLMESH_RUNTIME_IMAGE:-prpl-runtime-local}
+CAPACITY_STATE=${PRPLMESH_THIN_CAPACITY_STATE:-/var/lib/prplmesh-lab/thin-image-capacity.json}
 ACTION=${1:-prepare}
 
 case "$ACTION" in
@@ -89,6 +90,12 @@ if [ "$ACTION" = finalize ]; then
     exit 0
 fi
 
+install -d -m 0755 "$(dirname "$REPORT")"
+capacity_report=$(mktemp "${REPORT}.capacity.XXXXXX.json")
+PRPLMESH_LXC_BIN="$LXC_BIN" python3 "$ROOT/deploy/guest/thin-image-guard.py" firstboot-check \
+    --state "$CAPACITY_STATE" --image "$RUNTIME_IMAGE" --existing "$before" \
+    --expected "$expected" > "$capacity_report"
+
 if [ ! -e "$REPORT" ]; then
     [ "$before" -eq 0 ] || {
         echo "thin appliance did not start from an empty nested inventory: $before" >&2
@@ -104,6 +111,7 @@ if [ ! -e "$REPORT" ]; then
 else
     printf 'retry_instances_before=%s\n' "$before" >> "$REPORT"
 fi
+printf 'capacity_report=%s\n' "$capacity_report" >> "$REPORT"
 
 env PRPL_AGENT_COUNT="$agents" PRPL_CLIENT_COUNT="$clients" \
     PROVISIONED_AGENT_COUNT="$agents" PROVISIONED_CLIENT_COUNT="$clients" \
