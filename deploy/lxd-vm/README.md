@@ -156,6 +156,13 @@ budget before changing the runtime alias or deleting the stopped roster. Only
 actual allocated bytes of explicitly scheduled stopped-container deletions are
 credited; no credit is assumed for future outer cleanup, compression or sparse
 files. The first-boot check repeats against actual free space after import.
+Physical block allocation can change during publication without changing file
+contents. Schema-2 capacity records retain both the original sanitation footprint
+and the post-publication measurement, budgeting the **larger** value. Protected
+content and metadata must still match exactly, entry counts must agree, and all
+four cleaned directories must remain empty. First boot validates this binding
+before provisioning; the 105-copy growth/headroom requirements are unchanged.
+Existing schema-1 records retain their original strict single-measurement check.
 On failure, the candidate/template and original roster are retained for review.
 `deploy/guest/thin-image-guard.py sanitize --output NEW-EVIDENCE-DIR` also supports
 `prpl-thin-template` initialized from the retained image without ever booting it;

@@ -108,6 +108,28 @@ def footprint(root):
     return {"expanded_bytes": total, "entries": count}
 
 
+def validate_measurement(measured):
+    require(isinstance(measured, dict) and set(measured) == {"expanded_bytes", "entries"},
+            "invalid measured footprint")
+    for key in ("expanded_bytes", "entries"):
+        require(type(measured[key]) is int and measured[key] > 0, f"invalid measured {key}")
+
+
+def publication_budget(sanitized, published):
+    validate_measurement(sanitized)
+    validate_measurement(published)
+    require(sanitized["entries"] == published["entries"], "template entry count changed after sanitation")
+    return {"expanded_bytes": max(sanitized["expanded_bytes"], published["expanded_bytes"]),
+            "entries": sanitized["entries"]}
+
+
+def require_empty_clean_roots(root):
+    for relative in CLEAN:
+        directory = root / relative
+        require(not directory.exists() or next(directory.iterdir(), None) is None,
+                f"cleanup path is no longer empty: {relative}")
+
+
 def protected_snapshot(root):
     records = {}
     for path in entries(root):
@@ -169,8 +191,7 @@ def available(path):
 
 def capacity(measured, free, remaining=INSTANCES):
     require(type(remaining) is int and 0 <= remaining <= INSTANCES, "invalid remaining roster")
-    for key in ("expanded_bytes", "entries"):
-        require(type(measured.get(key)) is int and measured[key] > 0, f"invalid measured {key}")
+    validate_measurement(measured)
     per_instance = (measured["expanded_bytes"] * 105 + 99) // 100 + PER_INSTANCE_GROWTH
     required = remaining * per_instance + HEADROOM
     required_inodes = (remaining * measured["entries"] * 105 + 99) // 100 + 8192
@@ -180,6 +201,41 @@ def capacity(measured, free, remaining=INSTANCES):
             "budget_bytes_per_instance": per_instance, "headroom_bytes": HEADROOM,
             "required_bytes": required, "available_bytes": free["bytes"],
             "required_inodes": required_inodes, "available_inodes": free["inodes"]}
+
+
+def manifest_measurement(manifest):
+    version = manifest["schema_version"]
+    require(type(version) is int and version in (1, 2), "unsupported capacity manifest schema")
+    sanitation = manifest["sanitation"]
+    require(sanitation["status"] == "PASS" and sanitation["schema_version"] == 1,
+            "invalid sanitation record")
+    checksum = sanitation["protected_after_sha256"]
+    require(sanitation["cleaned_paths"] == list(CLEAN)
+            and sanitation["protected_before_sha256"] == checksum
+            and isinstance(checksum, str) and re.fullmatch(r"[0-9a-f]{64}", checksum),
+            "invalid sanitation preservation binding")
+    sanitized = sanitation["after"]
+    validate_measurement(sanitized)
+    measured = manifest["measured"]
+    validate_measurement(measured)
+    if version == 1:
+        require("publication" not in manifest and measured == sanitized,
+                "invalid sanitized-image measurement")
+    else:
+        publication = manifest["publication"]
+        require(publication["protected_sha256"] == checksum
+                and publication["cleaned_paths_empty"] == list(CLEAN),
+                "invalid published-image preservation binding")
+        require(measured == publication_budget(sanitized, publication["measured"]),
+                "invalid conservative published-image measurement")
+        preparation = manifest["preparation_capacity"]
+        expected = capacity(measured, {"bytes": preparation["available_bytes"],
+                                      "inodes": preparation["available_inodes"]})
+        require(expected["status"] == "PASS"
+                and all(preparation.get(key) == value for key, value in expected.items())
+                and preparation["image_fingerprint"] == manifest["image_fingerprint"],
+                "inconsistent publication capacity record")
+    return measured
 
 
 def checked_capacity(result):
@@ -239,8 +295,9 @@ def main():
                 "sanitation snapshot digest mismatch")
         require(protected_snapshot(root) == json.loads((args.sanitation.parent / "protected-after.json").read_text()),
                 "template changed after sanitation")
-        measured = footprint(root)
-        require(measured == sanitation["after"], "template footprint changed after sanitation")
+        require_empty_clean_roots(root)
+        published = footprint(root)
+        measured = publication_budget(sanitation["after"], published)
         require(TEMPLATE in args.reclaim and len(set(args.reclaim)) == len(args.reclaim), "invalid reclaim roster")
         roots = []
         for name in args.reclaim:
@@ -256,22 +313,20 @@ def main():
         result["reclaim_instances"] = args.reclaim
         result["image_fingerprint"] = image_fingerprint(args.image)
         checked_capacity(result)
-        write_json(args.state, {"schema_version": 1, "image_fingerprint": result["image_fingerprint"],
+        write_json(args.state, {"schema_version": 2, "image_fingerprint": result["image_fingerprint"],
                                 "expected_instances": INSTANCES, "measured": measured,
+                                "publication": {"measured": published,
+                                                "protected_sha256": sanitation["protected_after_sha256"],
+                                                "cleaned_paths_empty": list(CLEAN)},
                                 "sanitation": sanitation, "preparation_capacity": result})
     else:
         manifest = json.loads(args.state.read_text())
-        require(manifest["schema_version"] == 1 and manifest["expected_instances"] == args.expected == INSTANCES,
+        require(manifest["expected_instances"] == args.expected == INSTANCES,
                 "missing fixed 105-instance capacity manifest")
         require(manifest["image_fingerprint"] == image_fingerprint(args.image), "capacity/image fingerprint mismatch")
-        require(manifest["sanitation"]["status"] == "PASS" and manifest["measured"] == manifest["sanitation"]["after"],
-                "invalid sanitized-image measurement")
-        require(manifest["sanitation"]["cleaned_paths"] == list(CLEAN)
-                and manifest["sanitation"]["protected_before_sha256"] == manifest["sanitation"]["protected_after_sha256"]
-                and re.fullmatch(r"[0-9a-f]{64}", manifest["sanitation"]["protected_after_sha256"]),
-                "invalid sanitation preservation binding")
+        measured = manifest_measurement(manifest)
         pool = pool_path(query("/1.0/profiles/default")["devices"])
-        result = capacity(manifest["measured"], available(pool), INSTANCES - args.existing)
+        result = capacity(measured, available(pool), INSTANCES - args.existing)
         result["image_fingerprint"] = manifest["image_fingerprint"]
         checked_capacity(result)
 
