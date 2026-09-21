@@ -21,6 +21,7 @@ from optimizer.prplmesh import PrplMeshObserver, PrplMeshCandidateProvider
 from optimizer.policy import ThresholdPolicy
 from optimizer.load_policy import policy_for
 from optimizer.load_observer import NativeLoadProvider
+from optimizer.rf_observations import property_catalog
 from optimizer.streaming import StreamingCandidateProvider
 from optimizer.state import ClientPolicyState, PolicyState
 from optimizer.verifier import OutcomeVerifier
@@ -338,6 +339,8 @@ class LiveConductor:
         self.manifest = manifest
         self._load_provider = None
         self._load_error = None
+        self._rf_start_lock = threading.Lock()
+        self._rf_policy_enabled = False
         self.mode = mode
         self.repo_root = repo_root
         self.base_url = base_url
@@ -732,6 +735,7 @@ class LiveConductor:
             workers.append(("optimizer", self._optimizer_worker))
         if self.interactive:
             workers.append(("network-metrics", self._network_metrics_worker))
+            workers.append(("rf-observer", self._rf_observer_worker))
         for name, target in workers:
             thread = threading.Thread(
                 target=self._run_worker,
@@ -958,13 +962,44 @@ class LiveConductor:
     def _start_rf_observation(self, required: bool) -> None:
         if not (self.interactive or required):
             return
-        try:
-            self._load_provider = NativeLoadProvider("prpl-controller", byte_counter_unit_bytes=1024)
-            self._load_error = None
-        except (OSError, RuntimeError, ValueError, subprocess.SubprocessError) as error:
-            self._load_error = str(error)
-            if required:
-                raise
+        with self._rf_start_lock:
+            if self._load_provider is not None:
+                return
+            try:
+                self._load_provider = NativeLoadProvider("prpl-controller", byte_counter_unit_bytes=1024)
+                self._load_error = None
+            except (OSError, RuntimeError, ValueError, subprocess.SubprocessError) as error:
+                self._load_error = str(error)
+                if required:
+                    raise
+
+    def _rf_observer_worker(self):
+        if not self._wait_for_run():
+            return
+        self._start_rf_observation(False)
+        self.store.emit("rf.catalog", self._time(), property_catalog(), producer="rf-observer")
+        previous = None
+        while not self.stop_event.is_set() and self._active():
+            epoch = self.store.environment_epoch()
+            provider = self._load_provider
+            try:
+                inspection = provider.inspection(include_envelope=False) if provider is not None else {
+                    "schema": "easymesh.rf-inspection.v2", "enabled": False,
+                    "error": self._load_error or "native load receiver unavailable", "bss_loads": [],
+                    "client_activity": [], "maximum_age_seconds": 5,
+                }
+            except (OSError, ValueError, KeyError, TypeError) as error:
+                inspection = {"schema": "easymesh.rf-inspection.v2", "enabled": True,
+                              "error": str(error), "bss_loads": [], "client_activity": []}
+            inspection["policy_enabled"] = self._rf_policy_enabled
+            for row in inspection["bss_loads"]:
+                row["role"] = self._ap_role_by_bssid.get(row["bssid"])
+            signature = json.dumps({key: inspection.get(key) for key in (
+                "enabled", "policy_enabled", "error", "context_state", "bss_loads", "client_activity")}, sort_keys=True)
+            if (epoch, signature) != previous and self.store.publish_rf_observations(inspection, self._time(), epoch):
+                previous = (epoch, signature)
+            if self.stop_event.wait(0.5):
+                break
 
     def _observe_rf(self, snapshot, raw, required: bool):
         if self._load_provider is not None:
@@ -999,6 +1034,7 @@ class LiveConductor:
             policy_config = replace(policy_config, require_complete_client_roster=False)
         policy = policy_for(policy_config) if policy_config.load_aware_enabled else ThresholdPolicy(policy_config)
         self._start_rf_observation(policy_config.load_aware_enabled)
+        self._rf_policy_enabled = policy_config.load_aware_enabled
         state = PolicyState()
         priority_role = None
         priority_until = 0.0

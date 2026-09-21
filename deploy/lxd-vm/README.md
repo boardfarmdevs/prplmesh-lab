@@ -3,6 +3,11 @@
 LXD VM is the primary portable deployment. It keeps the Linux 7 radio host,
 nested containers, hwsim/wmediumd, prplMesh services, and UIs within one VM.
 
+For a new source build, use the [artifact-first build guide](../../docs/build/README.md)
+and [named VM lifecycle](../../docs/build/vm.md). Release import remains below.
+New bundles select a reusable named pool and derived per-VM ports; use the
+printed URLs rather than assuming the legacy port examples below.
+
 ## Use the universal appliance
 
 Use the selected release tar and adjacent checksum in an empty directory.
@@ -46,12 +51,13 @@ may adjust `PRPLMESH_NESTED_LXD_READY_ATTEMPTS` and
 
 ## Site settings
 
-The defaults use outer LXD network `lxdbr0`, its default storage pool, and host
-ports `8090`, `8091`, and `18891`. Override them without changing the appliance:
+New imports use outer LXD network `lxdbr0`, a reusable `VM-NAME-pool`, and a
+deterministic per-name port block. Older bundles without `instance-config.sh`
+retain legacy ports `8090`, `8091`, `18891`. Override explicitly when needed:
 
 ```sh
 PRPLMESH_LXD_STORAGE=bpi-lab \
-PRPLMESH_UI_HOST_IP=192.168.2.150 \
+PRPLMESH_UI_HOST_IP=192.0.2.10 \
 PRPLMESH_WMEDIUMD_CONSOLE_HOST_PORT=18090 \
 PRPLMESH_UI_HOST_PORT=18091 \
 PRPLMESH_ROOM_DEMO_HOST_PORT=18894 \
@@ -59,8 +65,10 @@ PRPLMESH_VM_NAME=my-prplmesh-lab \
   ./import.sh
 ```
 
-The selected storage pool must already exist. The source host's pool name is
-provenance only and is not imposed on the destination.
+Existing pools are reused without changing their backend. A missing named pool
+is created with `dir` by default; new CoW pools can select
+`PRPLMESH_STORAGE_DRIVER`. Older bundles require the pool to exist. The source
+host's pool name is provenance only and is not imposed on the destination.
 
 ## First boot and operation
 
@@ -86,12 +94,11 @@ ready. Preserve diagnostics and correct the image or guest capacity before a
 separately recorded recovery. This guard currently requires nested `dir` storage
 without per-container root quotas; it does not replace the outer-host space check.
 
-When ready, the wmediumd Console is on host port `8090`, the Controller UI is
-on `8091`, and the room-demo proxy is on `18891`. The room server is
+When ready, use the URLs printed by import (not assumed legacy ports).
+The room server is
 started by `prplmesh-room-demo.service` with 100-client capacity; stop that
 service before starting a manual `demo/room-demo` session. The NBAPI adapter
-is internal on guest loopback port `8092`. Open
-`http://HOST_IP:18891/` for the live room and its
+is internal on guest loopback port `8092`. Open the printed room URL for its
 built-in manual. The release's `INTERACTIVE.md` covers trusted-network access,
 automatic world loading, fixed-pool presence and RF recovery.
 Normal lifecycle is:
@@ -113,16 +120,13 @@ lxc delete prplmesh-0916
 
 ## Release engineering
 
-Normal users do not need a source checkout or the build commands below. A
-release builder creates a ready VM from clean, checksummed inputs:
+Normal import users do not need a source checkout. For a source build, complete
+the artifact-first guide linked above, then:
 
 ```sh
-PRPLMESH_LXD_STORAGE=default \
-PRPL_RUNTIME_DEPS_ARCHIVE=/absolute/path/prpl-runtime-deps-6.0.0.tar.gz \
-PRPL_INSTALL_ARCHIVE=/absolute/path/prpl-install-nl80211-6.0.0.tar.gz \
-PRPL_HOSTAP_ARCHIVE=/absolute/path/hostap-runtime-2.10.tar.gz \
-  deploy/lxd-vm/build.sh build
-deploy/lxd-vm/build.sh check
+source deploy/lxd-vm/lab-config.sh demo-a
+bash deploy/lxd-vm/build.sh build
+bash deploy/lxd-vm/build.sh check
 ```
 
 Convert an accepted ready VM into the single universal release:

@@ -210,7 +210,9 @@
         ? row.station_count : null;
       const percent = utilization === null ? null : (utilization * 100 / 255).toFixed(1);
       const name = bss.ssid === 'private_ssid' ? '"private"' : bss.ssid === 'iot_ssid' ? '"iot"' : bss.ssid;
-      const channel = Number.isInteger(row?.channel) && row.channel > 0 ? ' · ch ' + row.channel : '';
+      const channel = (Number.isInteger(row?.channel) && row.channel > 0 ? ' · ch ' + row.channel : '') +
+        (Number.isInteger(row?.frequency_mhz) ? ' · ' + row.frequency_mhz + ' MHz' : '') +
+        (row?.context_state === 'unverified' ? ' · RF context unverified' : '');
       const label = escapeHTML(name) + '<small>' + escapeHTML(bands[bss.band] || 'Radio') + channel + '</small>';
       const meter = percent === null ? '<span class="rf-unavailable">— unavailable</span>' :
         '<b>' + percent + '%</b><small>' + utilization + '/255</small>' +
@@ -223,7 +225,9 @@
     const status = !available ? 'Room telemetry unavailable; values hidden.' : observations.error
       ? 'Collection unavailable: ' + observations.error : observations.enabled !== true
       ? 'Native AP metrics collector unavailable.' : 'Native AP metrics · report receipt age.';
-    return '<section class="topology-rf"><b>AP-reported BSS load</b><table>' +
+    const publication = observations.published_at ? '<small>Shared RF observations · independent publication. ' +
+      (observations.policy_enabled ? 'Load policy enabled; decision evidence is separate.' : 'Inspection only; load policy disabled.') + '</small>' : '';
+    return '<section class="topology-rf"><b>AP-reported BSS load</b>' + publication + '<table>' +
       '<thead><tr><th>BSS / radio</th><th>Channel use</th><th>STAs</th><th>Age</th></tr></thead><tbody>' +
       rows + '</tbody></table><small>' + escapeHTML(status) + '</small>' +
       '<small>Shared-radio utilization is not additive. Not a beacon capture or physical capacity.</small>' +

@@ -86,6 +86,20 @@ class EventStoreTests(unittest.TestCase):
         self.store.emit("optimizer.measurement.unavailable", 100, unavailable)
         self.assertEqual(self.store.current()["optimizer"], unavailable)
 
+    def test_rf_publication_is_independent_and_does_not_rewrite_decision_inputs(self):
+        self.store.emit("optimizer.evaluation", 0, {"rf_observations": {"bss_loads": [{"utilization": 10}]}})
+        current = {"schema": "easymesh.rf-inspection.v2", "enabled": True,
+                   "bss_loads": [], "observations": {"records": [{"value": 200}]}}
+        self.assertTrue(self.store.publish_rf_observations(current, 1, 0))
+        self.assertEqual(self.store.current()["optimizer"]["rf_observations"]["bss_loads"][0]["utilization"], 10)
+        self.store.emit("optimizer.measurement.unavailable", 2, {"status": "unavailable"})
+        self.assertEqual(self.store.rf_observations()["observations"]["records"][0]["value"], 200)
+        self.store.emit("optimizer.environment.changed", 3, {"environment_epoch": 2})
+        self.assertFalse(self.store.publish_rf_observations(current, 4, 0))
+        result = self.store.rf_observations()
+        result["observations"]["records"][0]["value"] = 0
+        self.assertEqual(self.store.rf_observations()["observations"]["records"][0]["value"], 200)
+
     def test_rf_changes_invalidate_old_convergence_and_progress_survives_reload(self):
         self.store.emit("optimizer.evaluation", 0, {"fleet": {"converged": True}, "client_decisions": [{"reason": "ready"}]})
         self.store.emit("optimizer.environment.changed", 0, {"environment_epoch": 2})

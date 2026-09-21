@@ -96,6 +96,7 @@
 <section id="quick-start" aria-labelledby="quick-start-title">
   <h2 id="quick-start-title">1. Quick start</h2>
   <p>In the live network topology, hover an extender or Agent-1 for AP-reported BSS load: channel utilization in percent and raw 0–255, associated stations per BSS, band/channel and report age. Interactive rooms collect these reports passively, without enabling load steering. Stale or missing values are unavailable, not zero. This is not a beacon capture; BSSs sharing a radio do not have independent utilization budgets.</p>
+  <p>The RF inspector, topology and Console NG use the same property catalog and independent passive observations. Candidate collection or steering failures do not freeze native load. Unknown radio/channel context stays unverified; configured stimulus is not measured evidence. The read-only <code>/api/demo/rf-catalog</code> and <code>/api/demo/rf-observations</code> endpoints expose units, source, timestamps and validity without requesting new scans. Console NG includes an RF properties manual explaining each simulation and observation path; it does not add RF controls.</p>
   <h3>Try the room without a lab</h3>
   <ol>
     <li>Open the <a href="https://boardfarmdevs.github.io/meta-cmf-bananapi-vcpe/viewer/?world=home-a-private-client-room-walk" target="_blank" rel="noopener">public sandbox</a>. Look for <strong>NO CONNECT</strong>; no mode parameter is needed.</li>

@@ -8,7 +8,7 @@ Use the [LXD appliance guide](../deploy/lxd-vm/README.md) for checksummed thin
 import and port overrides. 0916 has one fixed 100-client pool; the default
 room selects 20 online and other rooms select their own subset. There is no
 VM size profile. Allow eight vCPUs and 16 GiB RAM for the appliance.
-For native builds use [from source](from-scratch.md); for a dedicated direct
+For native builds use [the build guide](build/README.md); for a dedicated direct
 radio host use [bare metal](../deploy/bare-metal/README.md).
 
 Thin provisioning uses local artifacts. Source builds and optional monitoring
@@ -20,7 +20,8 @@ a URL or add [monitoring](../reference/observability/monitoring.md).
 On the physical LXD host, replace the name with the actual selected instance:
 
 ```sh
-VM=prplmesh-0916
+source deploy/lxd-vm/lab-config.sh demo-a
+VM=$PRPLMESH_VM_NAME
 lxc config get "$VM" boot.autostart
 lxc start "$VM"
 lxc exec "$VM" -- systemctl is-active prplmesh-lab.service prplmesh-room-demo.service

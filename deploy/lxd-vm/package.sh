@@ -86,10 +86,14 @@ trap restart EXIT
 lxc export "$NAME" "$OUTPUT" --instance-only --compression zstd </dev/null
 printf 'archive_bytes=%s\n' "$(stat -c %s "$OUTPUT")" >> "$TRIM_REPORT"
 install -m 0755 "$ROOT/deploy/lxd-vm/import.sh" "$BUNDLE/import.sh"
+install -m 0644 "$ROOT/deploy/lxd-vm/instance-config.sh" "$BUNDLE/instance-config.sh"
 cp -a "$ROOT/deploy/lxd-vm/observability" "$BUNDLE/observability"
 install -m 0755 "$ROOT/deploy/lxd-vm/install-host.sh" "$BUNDLE/install-host.sh"
 install -m 0755 "$ROOT/deploy/lxd-vm/package-release.sh" "$BUNDLE/package-release.sh"
-install -m 0644 "$ROOT/deploy/lxd-vm/README.md" "$BUNDLE/README.md"
+DOCS_URL="https://github.com/boardfarmdevs/prplmesh-lab/blob/$(git -C "$ROOT" rev-parse HEAD)"
+sed -e "s#](../../docs/#]($DOCS_URL/docs/#g" \
+    -e "s#](../../reference/#]($DOCS_URL/reference/#g" \
+    "$ROOT/deploy/lxd-vm/README.md" > "$BUNDLE/README.md"
 cat > "$BUNDLE/release.env" <<EOF
 LAB_STACK=prplmesh
 LAB_PROFILE=$PROFILE
@@ -121,7 +125,7 @@ jq -n \
       status:"candidate"}' > "$BUNDLE/release.json"
 (
     cd "$BUNDLE"
-    sha256sum "$(basename "$OUTPUT")" import.sh install-host.sh \
+    sha256sum "$(basename "$OUTPUT")" import.sh instance-config.sh install-host.sh \
         package-release.sh README.md release.env release.json trim-report.txt \
         > SHA256SUMS
     find observability -type f -print0 | sort -z | xargs -0 sha256sum >> SHA256SUMS

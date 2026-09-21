@@ -1,5 +1,10 @@
 # prplMesh lab acceptance tests
 
+Start with the [host-side tiered runner](../docs/test/README.md). It selects a
+named VM, keeps the full-pool baseline stable across native tiers, restores
+the room once and records results. The individual tools below are for focused
+diagnostics; run mutating ones only in the documented command context.
+
 Room/topology UI regression checks (no live RF changes):
 
 ```sh
@@ -29,14 +34,8 @@ compact packing, accessible dividers, stale-data handling, no UI-induced RF
 writes, native-only BTM evidence, finite roam highlights and five-device prpl
 convergence semantics. Golden geometry coverage is not live-room qualification.
 
-September 14 parity check: the deployed prpl room reports 20/20 converged clients
-and 5/5 native mesh devices; its topology has the six expected logical icons.
-All four extender bearings match the actual default room camera. Pane resizing
-retains the SVG and follow mode; fullscreen preserves the title and readiness
-card. The read-only live check records no browser errors or lab writes, and the
-105-container roster is unchanged. Evidence on rev150:
-`/home/rev/work/release-0913/evidence/prpl-ui-parity-20260914/`.
-The UI update is newer than the released 0913 thin tar.
+Console NG and passive RF source parity require fresh native-room acceptance
+after installation; old deployment evidence does not qualify a new checkout.
 
 Documentation-only check (no lab access): `python3 tests/test_documentation.py`.
 This checks local files/anchors, navigation, guide sizes and packaged manual inputs.

@@ -149,6 +149,19 @@ class InteractiveMediumSessionTests(unittest.TestCase):
         self.addCleanup(self.session.close)
         self.lease = self.session.acquire("browser-test")
 
+    def test_observer_snapshot_does_not_expire_lease_or_write_medium(self):
+        before = len(self.client.applied)
+        with patch.object(self.session, "_expire_lease", side_effect=AssertionError("observer mutated lease")):
+            observed = self.session.observer_snapshot()
+        self.assertEqual(observed["schema"], "easymesh.room-observer.v1")
+        self.assertTrue(observed["read_only"])
+        self.assertEqual(len(self.client.applied), before)
+        role = next(row for row in observed["roles"] if row["role"] == "sta_01")
+        self.assertEqual(role["radio"], PLAN["bindings"]["sta_01"]["radio_tx_mac"])
+        role["position"][0] = 999
+        current = next(row for row in self.session.observer_snapshot()["roles"] if row["role"] == "sta_01")
+        self.assertNotEqual(current["position"][0], 999)
+
     def test_candidate_epochs_track_client_and_mesh_changes(self):
         initial = self.session.snapshot()["candidate_epochs"]
         self.session.position("sta_01", token=self.lease["token"], expected_revision=0,
@@ -221,6 +234,7 @@ class InteractiveMediumSessionTests(unittest.TestCase):
             self.assertTrue(acquired.wait(1))
             started = time.monotonic()
             self.assertIsNone(engine.projection_snapshot())
+            self.assertIsNone(engine.observer_snapshot())
             self.assertLess(time.monotonic() - started, 0.1)
         finally:
             release.set()
@@ -229,6 +243,7 @@ class InteractiveMediumSessionTests(unittest.TestCase):
         self.assertEqual(engine.projection_snapshot()["revision"], engine.snapshot()["revision"])
         with patch.object(self.session, "_expire_lease", side_effect=AssertionError("a display read mutated the lease")):
             self.assertIsNotNone(engine.projection_snapshot())
+            self.assertEqual(engine.observer_snapshot()["schema"], "easymesh.room-observer.v1")
 
     def test_probe_selection_is_client_only_and_does_not_write_rf(self):
         self.session._traffic_probe_role = None

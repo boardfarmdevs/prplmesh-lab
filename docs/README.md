@@ -13,8 +13,9 @@ This is prplMesh's equivalent of RDK's `doc/easymesh/README.md`.
 | Develop or diagnose external policy | [Optimizer reference](../reference/optimizer/README.md) |
 | Understand RF and the medium | [Radio reference](../reference/radio/README.md) |
 | Open LXD UI and inner/outer Grafana dashboards | [Monitoring](../reference/observability/monitoring.md) |
-| Build native software | [From source](from-scratch.md) |
-| Validate changes and room convergence | [Testing reference](../reference/testing/README.md) |
+| Build native artifacts, then a named VM | [Build guide](build/README.md), [legacy entrypoint](from-scratch.md) |
+| Validate changes and room convergence | [Test tiers and runner](test/README.md), [testing reference](../reference/testing/README.md) |
+| Explore radios, packet paths and RF evidence | [Console NG manual](wmediumd-console-ng.md) |
 | Find detailed contracts and proposals | [Reference index](../reference/README.md) |
 
 ## Keeping this documentation small

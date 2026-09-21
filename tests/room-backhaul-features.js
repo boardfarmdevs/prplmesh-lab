@@ -7,6 +7,7 @@ const {execFile} = require('child_process');
 const {promisify} = require('util');
 const {kernelClientAudit} = require('./room-feature-acceptance.js');
 const execute = promisify(execFile);
+const {hostCommand} = require('./room-host-monitor.js');
 const rooms = ['backhaul-branch-formation', 'backhaul-parent-handover', 'backhaul-isolation-recovery'];
 const delay = milliseconds => new Promise(resolve => setTimeout(resolve, milliseconds));
 
@@ -70,6 +71,10 @@ function summarizeNative(samples, room) {
 }
 
 async function run(options) {
+  for (const key of ['host', 'vm', 'room-url', 'topology-url', 'output']) {
+    assert.ok(options[key], 'usage: node tests/room-backhaul-features.js --host local --vm NAME --flavor prpl --room-url URL --topology-url URL --output NEW-DIRECTORY --yes-act true (missing --' + key + ')');
+  }
+  for (const key of ['room-url', 'topology-url']) assert.ok(['http:', 'https:'].includes(new URL(options[key]).protocol), 'Invalid --' + key);
   for (const key of ['host', 'vm']) assert.match(options[key], /^[a-zA-Z0-9_.-]+$/);
   assert.equal(options['yes-act'], 'true', 'Explicit --yes-act true is required; these rooms change live RF and can interrupt service');
   const selectedRooms = options.room ? [options.room] : rooms;
@@ -116,15 +121,15 @@ async function run(options) {
   for (const page of [roomPage, topologyPage]) page.on('pageerror', error => report.errors.push(error.message));
 
   async function identity() {
-    const result = await execute('ssh', [options.host, 'lxc exec ' + options.vm +
-      ' -- python3 /tmp/room-feature-guest-audit.py identity ' + flavor], {timeout: 45000, maxBuffer: 1048576});
+    const result = await execute(...hostCommand(options.host, 'lxc exec ' + options.vm +
+      ' -- python3 /tmp/room-feature-guest-audit.py identity ' + flavor), {timeout: 45000, maxBuffer: 1048576});
     return JSON.parse(result.stdout);
   }
 
   async function native() {
     if (flavor === 'prpl') {
-      const result = await execute('ssh', [options.host, 'lxc exec ' + options.vm +
-        ' -- python3 /tmp/backhaul-native-probe.py'], {timeout: 25000, maxBuffer: 1048576});
+      const result = await execute(...hostCommand(options.host, 'lxc exec ' + options.vm +
+        ' -- python3 /tmp/backhaul-native-probe.py'), {timeout: 25000, maxBuffer: 1048576});
       const nodes = Object.fromEntries(Object.entries(JSON.parse(result.stdout)).map(([role, value]) =>
         [role, {...value, ...interfaceState(value.raw)}]));
       const owners = Object.fromEntries(Object.entries(nodes).map(([role, value]) => [value.apBssid, role]));
@@ -134,8 +139,8 @@ async function run(options) {
     const readings = await Promise.all(Object.entries(containers).map(async ([role, container]) => {
       const script = 'iw dev wifi1.1 info; iw dev wifi1.3 link 2>/dev/null; ping -I brlan0 -q -c 1 -W 1 10.0.0.1 >/dev/null 2>&1; printf "\\nPROBE_EXIT=%s\\n" "$?"; printf "FRONTHAUL_APS=%s\\n" "$(iw dev | grep -Ec \"ssid (private_ssid|iot_ssid)$\")"';
       try {
-        const result = await execute('ssh', ['-o', 'BatchMode=yes', '-o', 'ConnectTimeout=5', options.host,
-          'lxc exec ' + options.vm + ' -- lxc exec ' + container + " -- sh -c '" + script.replace('wifi1.1', profile.ap).replace('wifi1.3', profile.station).replace('brlan0', profile.bridge).replace('10.0.0.1', profile.gateway) + "'"],
+        const result = await execute(...hostCommand(options.host,
+          'lxc exec ' + options.vm + ' -- lxc exec ' + container + " -- sh -c '" + script.replace('wifi1.1', profile.ap).replace('wifi1.3', profile.station).replace('brlan0', profile.bridge).replace('10.0.0.1', profile.gateway) + "'"),
         {timeout: 12000, maxBuffer: 65536});
         return [role, {...interfaceState(result.stdout), raw: result.stdout}];
       } catch (error) { return [role, {error: error.message, pingOk: null}]; }
@@ -152,8 +157,8 @@ async function run(options) {
     const wanted = Object.entries(observation.interactions.roles)
       .filter(([role, value]) => value.present && bindings[role]).map(([role]) => bindings[role].sta_mac);
     const model = observation.clients.map(client => ({mac: client.sta_mac, bssid: client.connected_bssid}));
-    const response = await execute('ssh', [options.host, 'lxc exec ' + options.vm +
-      " -- python3 /tmp/room-feature-guest-audit.py links '" + JSON.stringify(mapping) + "'"],
+    const response = await execute(...hostCommand(options.host, 'lxc exec ' + options.vm +
+      " -- python3 /tmp/room-feature-guest-audit.py links '" + JSON.stringify(mapping) + "'"),
       {timeout: 45000, maxBuffer: 1048576});
     const result = kernelClientAudit(bindings, wanted, model, JSON.parse(response.stdout));
     assert.equal(result.passed, true, JSON.stringify(result.errors));

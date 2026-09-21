@@ -174,6 +174,11 @@ class RoomEngine:
             return copy.deepcopy(self._final_snapshot)
         return self._session.projection_snapshot()
 
+    def observer_snapshot(self) -> dict[str, Any] | None:
+        if self._closed:
+            return None
+        return self._session.observer_snapshot()
+
     def acquire(self, owner: str, *, command_id: str) -> dict[str, Any]:
         return self._mutation("lease.acquire", command_id, "acquire", owner)
 

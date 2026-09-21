@@ -4,10 +4,13 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const {spawn} = require('node:child_process');
-const {HostMonitor} = require('./room-host-monitor.js');
+const {HostMonitor, hostCommand} = require('./room-host-monitor.js');
 const {hostSummary} = require('./room-feature-report.js');
 
 async function test() {
+  assert.deepEqual(hostCommand('local', 'printf test'), ['bash', ['-c', 'printf test']]);
+  assert.deepEqual(hostCommand('user@host', 'true'), ['ssh', ['-o', 'BatchMode=yes', '-o', 'ConnectTimeout=5', '--', 'user@host', 'true']]);
+  assert.throws(() => hostCommand('-oProxyCommand=bad', 'true'), /Invalid SSH host/);
   const sample = {cpu_busy_percent: 10, available_memory_kib: 1048576, temperatures_celsius: {cpu: 60}};
   const summary = hostSummary([
     {...sample, time: '2026-09-12T00:00:00Z', cpu_busy_percent: 99, package_throttle_count: 10},

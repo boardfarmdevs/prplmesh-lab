@@ -6,7 +6,7 @@ const {performance} = require('node:perf_hooks');
 const {execFile} = require('node:child_process');
 const {promisify} = require('node:util');
 const execFileAsync = promisify(execFile);
-const {startHostMonitor} = require('./room-host-monitor.js');
+const {startHostMonitor, hostCommand} = require('./room-host-monitor.js');
 const pause = milliseconds => new Promise(resolve => setTimeout(resolve, milliseconds));
 const lower = value => String(value || '').toLowerCase();
 const same = (left, right) => JSON.stringify(left) === JSON.stringify(right);
@@ -390,7 +390,7 @@ async function run(args) {
     const command = 'lxc exec ' + quote(args.vm) + ' -- python3 /tmp/room-feature-guest-audit.py ' + quote(operation) + ' ' + quote(payload);
     const started = performance.now();
     try {
-      return JSON.parse((await execFileAsync('ssh', [args.host, command], {timeout: 45000, maxBuffer: 8 * 1024 * 1024})).stdout);
+      return JSON.parse((await execFileAsync(...hostCommand(args.host, command), {timeout: 45000, maxBuffer: 8 * 1024 * 1024})).stdout);
     } catch (error) {
       error.message += ' ' + JSON.stringify({operation, elapsedMs: performance.now() - started,
         code: error.code, signal: error.signal, killed: error.killed,
@@ -711,7 +711,7 @@ async function run(args) {
           if (!middleCaptured && previousTime >= world.duration_ms / 2) {
             if (id === 'home-a-asymmetric-link') {
               const command = 'lxc exec ' + quote(args.vm) + ' -- python3 /tmp/room-feature-rf-audit.py ' + quote(args.flavor);
-              const audit = JSON.parse((await execFileAsync('ssh', [args.host, command], {timeout: 30000})).stdout);
+              const audit = JSON.parse((await execFileAsync(...hostCommand(args.host, command), {timeout: 30000})).stdout);
               save('../asymmetric-rf-audit.json', audit);
             }
             await screenshot('moving'); middleCaptured = true;

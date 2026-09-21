@@ -6,10 +6,12 @@ ROOT=$(cd "$(dirname "$0")/../.." && pwd)
 source "$ROOT/deploy/lxd-vm/profile.sh"
 # shellcheck source=device-property.sh
 source "$ROOT/deploy/lxd-vm/device-property.sh"
+source "$ROOT/deploy/lxd-vm/instance-config.sh"
+prplmesh_instance_config
 PROFILE=$(prplmesh_profile_name "${PRPLMESH_LAB_PROFILE:-unified}")
 CLIENTS=$(prplmesh_profile_clients "$PROFILE")
 RADIOS=$(prplmesh_profile_radios "$PROFILE")
-NAME=${PRPLMESH_VM_NAME:-$(prplmesh_profile_release_name "$PROFILE")}
+NAME=$PRPLMESH_VM_NAME
 IMAGE=${PRPLMESH_VM_IMAGE:-ubuntu:24.04}
 NETWORK=${PRPLMESH_LXD_NETWORK:-lxdbr0}
 CPUS=${PRPLMESH_VM_CPUS:-$(prplmesh_profile_cpus "$PROFILE")}
@@ -22,16 +24,16 @@ HOST_IP=${HOST_IP:-127.0.0.1}
 CONSOLE_PORT=${PRPLMESH_WMEDIUMD_CONSOLE_HOST_PORT:-8090}
 UI_PORT=${PRPLMESH_UI_HOST_PORT:-8091}
 ROOM_PORT=${PRPLMESH_ROOM_DEMO_HOST_PORT:-18891}
-RUNTIME_DEPS=${PRPL_RUNTIME_DEPS_ARCHIVE:-}
-PRPL_INSTALL=${PRPL_INSTALL_ARCHIVE:-}
-HOSTAP_RUNTIME=${PRPL_HOSTAP_ARCHIVE:-}
+RUNTIME_DEPS=${PRPL_RUNTIME_DEPS_ARCHIVE:-$ROOT/artifacts/prpl-runtime-deps-6.0.0.tar.gz}
+PRPL_INSTALL=${PRPL_INSTALL_ARCHIVE:-$ROOT/artifacts/prpl-install-nl80211-6.0.0.tar.gz}
+HOSTAP_RUNTIME=${PRPL_HOSTAP_ARCHIVE:-$ROOT/artifacts/hostap-runtime-2.10.tar.gz}
 
 usage()
 {
     cat <<EOF
-usage: $0 {build|status|check|stop|start|restart|delete}
+usage: $0 {build|status|urls|check|stop|start|restart|delete}
 
-Clean-build inputs:
+Clean-build inputs (default: archives under artifacts/; build-artifacts.sh creates them):
   PRPL_RUNTIME_DEPS_ARCHIVE=/path/to/prpl-runtime-deps-6.0.0.tar.gz
   PRPL_INSTALL_ARCHIVE=/path/to/prpl-install-nl80211-6.0.0.tar.gz
   PRPL_HOSTAP_ARCHIVE=/path/to/hostap-runtime-2.10.tar.gz
@@ -43,7 +45,9 @@ Site overrides:
   PRPLMESH_WMEDIUMD_CONSOLE_HOST_PORT=$CONSOLE_PORT
   PRPLMESH_UI_HOST_PORT=$UI_PORT
   PRPLMESH_ROOM_DEMO_HOST_PORT=$ROOM_PORT
-  PRPLMESH_LXD_STORAGE=<outer LXD storage pool>
+  PRPLMESH_LXD_STORAGE=$PRPLMESH_LXD_STORAGE (retained on delete)
+  PRPLMESH_PORT_BASE=$PRPLMESH_PORT_BASE
+  PRPLMESH_STORAGE_DRIVER=dir (new pools only; existing pools are reused)
 EOF
 }
 
@@ -131,7 +135,7 @@ check_vm() (
 )
 
 build_vm()
-{
+(
     local stage bundle commit guest_ip artifact storage_pool boot_mode_error
     [ -z "$(git -C "$ROOT" status --porcelain)" ] || {
         echo "source checkout must be clean" >&2
@@ -139,19 +143,34 @@ build_vm()
     }
     for artifact in "$RUNTIME_DEPS" "$PRPL_INSTALL" "$HOSTAP_RUNTIME"; do
         [ -f "$artifact" ] || {
-            echo "all three PRPL_*_ARCHIVE inputs are required" >&2
+            echo "Missing $artifact; run bash deploy/lxd-vm/build-artifacts.sh first." >&2
             exit 2
         }
+        python3 - "$artifact" <<'PY'
+import hashlib
+from pathlib import Path
+import sys
+archive = Path(sys.argv[1]).resolve()
+manifest = archive.parent / 'SHA256SUMS'
+if not manifest.is_file():
+    raise SystemExit(f'Missing artifact checksums: {manifest}')
+expected = [line.split()[0] for line in manifest.read_text().splitlines()
+            if len(line.split()) == 2 and line.split()[1].lstrip('*') in (archive.name, './' + archive.name)]
+digest = hashlib.sha256()
+with archive.open('rb') as stream:
+    for chunk in iter(lambda: stream.read(1024 * 1024), b''):
+        digest.update(chunk)
+if expected != [digest.hexdigest()]:
+    raise SystemExit(f'Artifact checksum missing, duplicate or mismatched: {archive}')
+PY
     done
     exists && {
         echo "$NAME already exists; delete it explicitly before a clean build" >&2
         exit 1
     }
-    storage_pool=${PRPLMESH_LXD_STORAGE:-${PRPLMESH_LXD_STORAGE_POOL:-$(lxc profile device get default root pool)}}
-    [ -n "$storage_pool" ] || {
-        echo "cannot determine the LXD storage pool from the default profile" >&2
-        exit 2
-    }
+    storage_pool=$PRPLMESH_LXD_STORAGE
+    prplmesh_check_ports
+    prplmesh_ensure_storage "$storage_pool"
     "$ROOT/deploy/lxd-vm/storage-preflight.sh" "$PROFILE" "$storage_pool"
 
     stage=$(mktemp -d /tmp/prplmesh-lxd-build.XXXXXX)
@@ -183,6 +202,8 @@ build_vm()
         esac
     fi
     lxc config set "$NAME" boot.autostart false
+    lxc config set "$NAME" user.prplmesh.source-commit "$commit"
+    lxc config set "$NAME" user.prplmesh.port-base "$PRPLMESH_PORT_BASE"
     lxd_set_device_property "$NAME" root size "$DISK"
     guest_ip=$(select_guest_ipv4)
     lxd_set_device_property "$NAME" eth0 network "$NETWORK"
@@ -271,12 +292,30 @@ EOF"
     # full disk copy on non-copy-on-write outer storage pools.
     trap - EXIT
     rm -rf -- "$stage"
-}
+)
 
 case "${1:-}" in
-    build) build_vm ;;
+    build)
+        mkdir -p "$ROOT/build-evidence"
+        log="$ROOT/build-evidence/vm-$NAME-$(date -u +%Y%m%dT%H%M%SZ).log"
+        exec > >(tee "$log") 2>&1
+        trap 'result=$?; echo "VM build exit=$result elapsed=${SECONDS}s log=$log"' EXIT
+        build_vm
+        ;;
     status) exists; lxc list "$NAME" -c nst4m; [ "$(state)" != RUNNING ] || run prplmesh-lab-start status ;;
     check) check_vm ;;
+    urls)
+        if exists; then
+            lxc query "/1.0/instances/$NAME" | python3 -c '
+import json, sys
+for name, device in json.load(sys.stdin).get("expanded_devices", {}).items():
+    if device.get("type") == "proxy" and device.get("listen", "").startswith("tcp:"):
+        scheme = "https" if "lxd" in name or "grafana" in name else "http"
+        print(name + ": " + scheme + "://" + device["listen"][4:] + "/")'
+        else
+            printf 'Planned topology: http://%s:%s/\nPlanned console: http://%s:%s/\nPlanned room: http://%s:%s/\n' "$HOST_IP" "$UI_PORT" "$HOST_IP" "$CONSOLE_PORT" "$HOST_IP" "$ROOM_PORT"
+        fi
+        ;;
     start) start_vm ;;
     stop) stop_vm ;;
     restart) stop_vm; start_vm ;;

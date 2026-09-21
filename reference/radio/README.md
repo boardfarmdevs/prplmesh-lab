@@ -4,6 +4,9 @@
 
 RF delivery, configurator and Console.
 
+- [Console RF property guide](console-rf-properties.md): configured versus
+  observed evidence, independent native load, freshness and protocol catalog.
+
 - [Virtual RF assessment and implementation roadmap](virtual-rf-assessment.md):
   current attributes, implemented survey/BSS Load setup and acceptance,
   Phase 3 airtime/ACK/visibility profiles, measured overhead and open gates.

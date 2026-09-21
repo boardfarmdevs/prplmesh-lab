@@ -90,6 +90,7 @@ class EventStore:
             "movements": {},
             "recording": {},
             "optimizer": {},
+            "rf_observations": {},
             "network": {},
             "traffic_probe": {},
             "health": {},
@@ -146,7 +147,8 @@ class EventStore:
             self._state.update({"scenario": self.world["name"],
                                 "duration_ms": self.world["duration_ms"],
                                 "tick_ms": self.world["tick_ms"],
-                                "movements": {}, "recording": {}, "optimizer": {}, "network": {}, "health": {}})
+                                "movements": {}, "recording": {}, "optimizer": {}, "network": {}, "health": {},
+                                "rf_observations": {}})
             self._state["roles"] = {
                 role: {"kind": self.world["roles"].get(role, "station"),
                        "base_position": copy.deepcopy(value["position"]),
@@ -155,7 +157,7 @@ class EventStore:
                 for role, value in payload["roles"].items()
             }
             for stale_kind in list(self._state["latest"]):
-                if stale_kind != kind and stale_kind.startswith(("room.", "interaction.movement.", "interaction.recording.", "network.", "optimizer.", "health.", "traffic.")):
+                if stale_kind != kind and (stale_kind == "rf.observations" or stale_kind.startswith(("room.", "interaction.movement.", "interaction.recording.", "network.", "optimizer.", "health.", "traffic."))):
                     del self._state["latest"][stale_kind]
         elif kind.startswith("interaction.playback."):
             self._state["playback"] = copy.deepcopy(payload["playback"])
@@ -222,6 +224,8 @@ class EventStore:
                 "contaminated": True,
                 "contamination": copy.deepcopy(payload),
             })
+        elif kind == "rf.observations":
+            self._state["rf_observations"] = copy.deepcopy(payload)
         elif kind in {"optimizer.evaluation", "optimizer.measurement.unavailable"}:
             safety = self._state["optimizer"].get("steering_safety")
             self._state["optimizer"] = copy.deepcopy(payload)
@@ -427,6 +431,26 @@ class EventStore:
         with self._condition:
             return copy.deepcopy(self._state)
 
+    def publish_rf_observations(self, payload, world_time_ms, environment_epoch):
+        with self._condition:
+            if environment_epoch != self._state["environment_epoch"]:
+                return False
+            self.emit("rf.observations", world_time_ms,
+                      {**payload, "environment_epoch": environment_epoch}, producer="rf-observer")
+            return True
+
+    def rf_observations(self):
+        with self._condition:
+            inspection = copy.deepcopy(self._state["rf_observations"])
+        if inspection.get("published_at") and "observations" not in inspection:
+            from optimizer.model import parse_time
+            from optimizer.rf_observations import observation_envelope
+            loads = inspection.get("bss_loads", [])
+            inspection["observations"] = observation_envelope(
+                loads, inspection.get("client_activity", []), inventory={row["bssid"]: row for row in loads},
+                now=parse_time(inspection["published_at"]), error=inspection.get("error"))
+        return inspection
+
     def mesh_layout(self) -> dict[str, Any]:
         with self._condition:
             state = self._state
@@ -438,18 +462,27 @@ class EventStore:
                     continue
                 nodes.append({"device_id": device.get("device_id"), "role": role,
                               "position": copy.deepcopy(position.get("authoritative_position"))})
-            observations = state["optimizer"].get("rf_observations") or {}
+            observations = state["rf_observations"] or state["optimizer"].get("rf_observations") or {}
             device_ids = {str(node["device_id"]).lower() for node in nodes}
-            fields = ("bssid", "device_id", "radio_id", "channel", "utilization", "station_count",
-                      "observed_at", "epoch", "source", "transport")
+            fields = ("bssid", "device_id", "radio_id", "channel", "context_state", "utilization", "station_count",
+                      "observed_at", "epoch", "source", "transport", "band", "frequency_mhz", "role")
             loads = [{key: row.get(key) for key in fields}
                      for row in observations.get("bss_loads", [])
                      if str(row.get("device_id", "")).lower() in device_ids][:96]
+            envelope = observations.get("observations")
+            if envelope:
+                records = [row for row in envelope.get("records", [])
+                           if row.get("scope") == "bss" and str(row.get("identity", {}).get("device_id", "")).lower() in device_ids]
+                envelope = {**envelope, "records": records[:192],
+                            "truncated": envelope.get("truncated", False) or len(records) > 192}
             rf = {"enabled": observations.get("enabled") is True,
                   "policy_enabled": observations.get("policy_enabled") is True,
                   "error": str(observations.get("error") or "")[:256],
                   "maximum_age_seconds": observations.get("maximum_age_seconds", 5),
-                  "bss_loads": copy.deepcopy(loads)}
+                  "bss_loads": copy.deepcopy(loads),
+                  "observations": copy.deepcopy(envelope),
+                  "published_at": observations.get("published_at"),
+                  "inventory_age_seconds": observations.get("inventory_age_seconds")}
             return {"schema": "easymesh.room-layout.v1", "run_id": self.run_id,
                     "rf_observations": rf,
                     "world_epoch": state["world_epoch"], "sequence": state["sequence"],

@@ -21,7 +21,7 @@ grep -Eq '(vmx|svm)' /proc/cpuinfo || {
 }
 
 apt-get update
-apt-get install -y qemu-kvm snapd
+apt-get install -y ca-certificates curl git iproute2 jq python3 qemu-kvm snapd zstd
 if ! snap list lxd >/dev/null 2>&1; then
     snap install lxd
 fi

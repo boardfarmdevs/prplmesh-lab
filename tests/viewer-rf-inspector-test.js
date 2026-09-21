@@ -11,6 +11,14 @@ assert.match(describe(input), /Utilization \(0–255\): 0 · received/);
 assert.match(describe(input), /Associated stations: 0 · received/);
 assert.match(describe(input), /Sample window: unknown/);
 assert.match(describe({...input, now: now + 6000}), /Utilization \(0–255\): — unavailable\/stale/);
+for (const changes of [{utilization: null}, {utilization: 256}, {utilization: -1},
+  {utilization: true}, {utilization: '0'}, {source: 'fixture'}, {transport: 'unknown'},
+  {observed_at: new Date(now + 1000).toISOString()}]) {
+  assert.match(describe({...input, observations: {...input.optimizer.rf_observations,
+    bss_loads: [{...observation, ...changes}]}}), /Utilization \(0–255\): — unavailable\/stale/);
+}
+assert.match(describe({...input, observations: {...input.optimizer.rf_observations, error: 'closed'}}),
+  /Utilization \(0–255\): — unavailable\/stale/);
 assert.doesNotMatch(describe({...input, selected: 'other'}), /BSSID ap/);
 assert.match(describe({...input, optimizer: {}, world: {utilization: 255}}), /collector unavailable/);
 const received = {...input, selected: 'client', optimizer: {client_decisions: [
@@ -84,6 +92,14 @@ assert.match(describe({...input, view: 'traffic', traffic: {state: 'completed', 
 assert.match(describe({...input, view: 'traffic', traffic: {state: 'failed', history: [
   {state: 'failed', transmitted_packets: null, received_echo_replies: null}]}}), /Generated: unknown/);
 console.log('PASS: RF inspector provenance, zero, freshness, exclusions and traffic accounting');
+const independent = {...input, observations: {enabled: true, maximum_age_seconds: 5,
+  bss_loads: [{...observation, utilization: 200, frequency_mhz: 5180}]}};
+assert.match(describe(independent), /Utilization \(0–255\): 200/);
+assert.match(describe(independent), /5180 MHz/);
+assert.doesNotMatch(describe({...independent, observations: {enabled: true, error: 'inventory stale', bss_loads: []}}),
+  /Utilization \(0–255\): 0/);
+assert.match(describe({...input, view: 'properties', catalog: {properties: [
+  {id: 'noise', label: 'Independent noise', usage: 'unsupported'}]}}), /Unsupported; no value is invented/);
 const udp = {...input, view: 'traffic', world: {golden_sha256: 'current', traffic_experiment: {phases: [{mode: 'udp'}]}},
   traffic: {state: 'off', history: [{world_sha256: 'current', mode: 'udp', state: 'completed', requested_offered_mbps: 8,
     sender: {status: 'complete', bits_per_second: 6000000, seconds: 3},

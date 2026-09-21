@@ -15,4 +15,4 @@ $elevate install -m 0644 \
 $elevate systemctl daemon-reload
 $elevate systemctl enable wmediumd-console.service
 
-echo 'Installed the shared wmediumd Console for prplMesh on port 8090.'
+echo 'Installed read-only wmediumd Console NG for prplMesh on port 8090.'

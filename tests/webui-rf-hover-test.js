@@ -17,6 +17,10 @@ assert.match(html, /5 GHz · ch 36/);
 assert.match(html, />3<\/td>/);
 assert.match(html, /0.5 s/);
 assert.match(html, /Shared-radio utilization is not additive/);
+assert.match(render({frequency_mhz: 5180}, {...observations, published_at: report.observed_at}),
+  /Shared RF observations · independent publication/);
+assert.match(render({frequency_mhz: 5180}), /5180 MHz/);
+assert.match(render({context_state: 'unverified', radio_id: null, channel: null}), /RF context unverified/);
 assert.match(render({utilization: 0, station_count: 0}), /0.0%/);
 assert.match(render({utilization: 255}), /100.0%/);
 for (const changes of [{utilization: null}, {utilization: -1}, {utilization: 256},

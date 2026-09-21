@@ -5,4 +5,6 @@ WMEDIUMD_CONSOLE_IDENTITY_INVENTORY=/run/prpl-wmediumd/identity-inventory.json
 WMEDIUMD_CONSOLE_CONFIG=/run/prpl-wmediumd/wmediumd.conf
 WMEDIUMD_CONSOLE_PID_FILE=/run/prpl-wmediumd/wmediumd.pid
 WMEDIUMD_CONSOLE_DAEMON_MANIFEST=/run/prpl-wmediumd/wmediumd-binary.sha256
+WMEDIUMD_CONSOLE_ROOM_URL=http://127.0.0.1:8891
+WMEDIUMD_CONSOLE_SURVEY_STATUS=/run/wmdcfg-survey.json
 WMEDIUMD_CONSOLE_EXTRA_ARGS=
