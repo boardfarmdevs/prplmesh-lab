@@ -1,24 +1,26 @@
 #!/bin/bash
 set -euo pipefail
 
+ROOT=$(cd "$(dirname "$0")/.." && pwd)
+source "$ROOT/scripts/lib/nbapi-btm.sh"
 CONTROLLER=prpl-controller
 
 station_object()
 {
-    local mac=$1 object value instances
-    instances=$(lxc exec "$CONTROLLER" -- ubus call \
-        Device.WiFi.DataElements.Network _get_instances \
-        '{"rel_path":"Device.*.Radio.*.BSS.*.STA.","depth":1}' | \
-        sed -n 's/^[[:space:]]*"\([^"]*\.STA\.[0-9][0-9]*\)\.":.*/\1/p')
-    while read -r object; do
-        value=$(lxc exec "$CONTROLLER" -- ubus call "$object" _get \
-            '{"rel_path":"","depth":0}' </dev/null 2>/dev/null || true)
-        if printf '%s\n' "$value" | grep -q "\"MACAddress\": \"$mac\""; then
-            printf '%s\n' "$object"
-            return
-        fi
-    done <<< "$instances"
-    return 1
+    local mac=$1 values
+    values=$(lxc exec --mode non-interactive "$CONTROLLER" -- timeout -k 1 8 \
+        ubus call Device.WiFi.DataElements.Network _get \
+        '{"rel_path":"Device.*.Radio.*.BSS.*.STA.","depth":0}' </dev/null) || return
+    printf '%s\n' "$values" | jq -ers --arg mac "$mac" '
+        if any(.[]; (."amxd-error-code" // 0) != 0) then
+            error("native station query failed")
+        else
+            [ .[] | to_entries[] | select(.value | type == "object")
+              | select(.value.MACAddress == $mac)
+              | .key | select(test("^Device[.]WiFi[.]DataElements[.]Network[.]Device[.][0-9]+[.]Radio[.][0-9]+[.]BSS[.][0-9]+[.]STA[.][0-9]+[.]$"))
+              | rtrimstr(".") ]
+            | if length == 1 then .[0] else error("station ownership missing or ambiguous") end
+        end'
 }
 
 model_bssid()
@@ -26,10 +28,16 @@ model_bssid()
     local mac=$1 station bss value
     station=$(station_object "$mac") || return 1
     bss=${station%.STA.*}
-    value=$(lxc exec "$CONTROLLER" -- ubus call "$bss" _get \
-        '{"rel_path":"","depth":0}' 2>/dev/null || true)
-    printf '%s\n' "$value" | sed -n \
-        's/.*"BSSID": "\([^"]*\)".*/\1/p'
+    value=$(lxc exec --mode non-interactive "$CONTROLLER" -- timeout -k 1 8 \
+        ubus call Device.WiFi.DataElements.Network _get \
+        "{\"rel_path\":\"${bss#Device.WiFi.DataElements.Network.}.\",\"depth\":0}" </dev/null) || return
+    printf '%s\n' "$value" | jq -ers --arg object "$bss." '
+        if any(.[]; (."amxd-error-code" // 0) != 0) then
+            error("native BSS query failed")
+        else
+            [ .[] | .[$object].BSSID | select(type == "string" and length > 0) ]
+            | if length == 1 then .[0] else error("native BSSID missing or ambiguous") end
+        end'
 }
 
 client_bssid()
@@ -135,8 +143,7 @@ test_btm()
         '{"DisassociationImminent":false,"DisassociationTimer":0,"BSSTerminationDuration":0,"ValidityInterval":10,"SteeringTimer":50,"TargetBSS":"%s"}' \
         "$target")
     echo "BTM ${band}GHz ${cohort}: $client $mac $source -> $target"
-    lxc exec "$CONTROLLER" -- ubus call "${object}.MultiAPSTA" \
-        BTMRequest "$request" >/dev/null
+    nbapi_btm_request "$object" "$request"
     wait_for_target "$client" "$mac" "$target"
     wait_for_btm_response \
         "$SOURCE_NODE" "$SOURCE_RADIO" "$mac" "$target" "$responses_before"

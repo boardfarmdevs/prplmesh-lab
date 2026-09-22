@@ -34,6 +34,7 @@ def test_zero_backhaul_load_is_valid():
                                         ("source", "geometry"),
                                         ("observed_at", "2026-09-21T11:59:00Z"),
                                         ("observed_at", "2026-09-21T12:01:00Z"),
+                                        ("observed_at", None), ("observed_at", 42),
                                         ("identity", {"frequency_mhz": 5200, "bssid": "02:00:00:00:01:01"})])
 def test_strict_backhaul_check_cannot_pass_on_general_fronthaul_load(field, value):
     catalog, inspection, layout = fixture()
@@ -49,3 +50,11 @@ def test_strict_backhaul_check_requires_paths():
     assert "no native backhaul paths" in MODULE.validate(
         catalog, inspection, layout, now=datetime(2026, 9, 21, 12, tzinfo=timezone.utc).timestamp(),
         require_backhaul_load=True)
+
+
+@pytest.mark.parametrize("timestamp", [None, 42])
+def test_invalid_record_timestamp_is_reported(timestamp):
+    catalog, inspection, layout = fixture()
+    inspection["observations"]["records"][0]["observed_at"] = timestamp
+    assert "valid record lacks freshness identity" in MODULE.validate(
+        catalog, inspection, layout, now=datetime(2026, 9, 21, 12, tzinfo=timezone.utc).timestamp())

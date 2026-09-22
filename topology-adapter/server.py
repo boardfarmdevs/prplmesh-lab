@@ -65,7 +65,7 @@ def band_for(opclass, channel):
 
 
 def rcpi_dbm(value):
-    if isinstance(value, (int, float)) and 0 <= value <= 220:
+    if type(value) in (int, float) and 0 <= value <= 220:
         return round(value / 2 - 110, 1)
     return None
 
@@ -95,7 +95,9 @@ def topology(objects=None):
         device_paths = instances("Device.")
         with ThreadPoolExecutor(max_workers=8) as executor:
             snapshots = executor.map(
-                lambda device: ubus(device, "_get", {"rel_path": "", "depth": 0 if device == ROOT else 4}),
+                lambda device: ubus(ROOT, "_get", {
+                    "rel_path": "" if device == ROOT else relative(device) + ".",
+                    "depth": 0 if device == ROOT else 4}),
                 [ROOT, *device_paths],
             )
             objects = {}
@@ -133,6 +135,7 @@ def topology(objects=None):
         device_id = device_data.get("ID", "")
         backhaul_path = device_path + ".MultiAPDevice.Backhaul"
         backhaul = parameters(backhaul_path)
+        backhaul_stats = parameters(backhaul_path + ".Stats")
         role = "controller" if device_id.lower() == controller_id else "agent"
         device = {
             "id": device_id,
@@ -144,6 +147,10 @@ def topology(objects=None):
                 "parent_id": backhaul.get("BackhaulDeviceID"),
                 "type": backhaul.get("LinkType"),
                 "mac": backhaul.get("BackhaulMACAddress"),
+                "station_mac": backhaul.get("MACAddress"),
+                "signal_raw": backhaul_stats.get("SignalStrength"),
+                "signal_dbm": rcpi_dbm(backhaul_stats.get("SignalStrength")),
+                "signal_updated_at": backhaul_stats.get("TimeStamp"),
             },
             "radios": [],
         }

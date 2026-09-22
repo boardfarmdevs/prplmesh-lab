@@ -87,7 +87,7 @@ PY
 
 run()
 {
-    lxc exec "$NAME" -- "$@"
+    lxc exec --mode non-interactive "$NAME" -- "$@" </dev/null
 }
 
 start_vm()

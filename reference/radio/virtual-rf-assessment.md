@@ -316,21 +316,23 @@ socket shapes do not establish equal model fidelity.
 
 ### 4.10 Capture and host delay are observation limits
 
-`hwsim0` is the global transmitter-side monitor for one VM's virtual radios.
-It is useful for beacon fields; it is not a local spectrum analyzer or proof
-that every intended receiver accepted a frame. Modeled retries/ACKs also need
-their own interpretation rather than assuming a hardware-equivalent trace.
+`hwsim0` monitors all VM radios at the transmitter side. It exposes beacon
+fields, not local spectrum or proof of receiver acceptance. Modeled retries
+and ACKs are not hardware-equivalent traces.
 
-The current patch set contains the multichannel monitor-ACK fix. Older blanket
-warnings that dynamic capture is always unsafe do not describe that fix.
-Nevertheless, verify the loaded module, preserve monitor state, bound capture
-duration and record drops. The room trace helper's normal management filter
-excludes beacons/probes, so use a deliberately chosen beacon capture for BSS Load.
+Current patches include the multichannel monitor-ACK fix. Verify the loaded
+module, preserve monitor state, bound capture duration and record drops.
+The room trace's management filter excludes beacons/probes; deliberately
+capture beacons to inspect BSS Load.
 
-CPU contention, netlink backlog, container scheduling, polling, candidate
-admission and browser rendering add real latency. They are not RF congestion.
-Fast emulation requires measuring and bounding these costs, not claiming zero
-cost or interpreting a loaded host as a busy wireless channel.
+CPU contention, netlink backlog, scheduling, polling, candidate admission and
+rendering add real latency, not RF congestion. Measure and bound those costs;
+never assume zero overhead or interpret host load as wireless channel load.
+
+Cold room initialization also needs this distinction: a cubic frequency-slot
+reservation search previously blocked the medium event loop for seconds and
+caused beacon loss. The shared linear-reservation fix preserves atomic RF
+updates and native policy; see [cold initialization qualification](rf-property-coverage.md#cold-room-initialization).
 
 ## 5. Required measurement contract
 
@@ -554,25 +556,31 @@ not removal of every meaningful timing mechanism.
 
 ### 9.4 Shared consumer access and next RF increment
 
-Both source trees publish cached native RF independently of optimizer work,
-with explicit freshness, context and provenance. Native backhaul explanations
-join actual parent paths, timestamped signal and exact parent-BSSID load in the
-room, topology and Console NG. Missing/ambiguous parents, stale samples and
-retunes fail closed. Shared-frequency hops indicate possible contention, not
-capacity. Backhaul traffic remains unavailable without qualified counter windows;
-client counters are not substituted. Policy inputs/ranking are unchanged.
+Both stacks publish cached native RF independently of optimizer work, with
+freshness, context and provenance. Room, topology and Console NG share native
+parent paths, timestamped signal and parent-BSSID load. Missing/ambiguous parents,
+stale samples and retunes fail closed. Shared-frequency hops indicate possible
+contention, not capacity. Backhaul traffic requires qualified counter windows;
+policy inputs/ranking are unchanged.
 
-Run `tests/rf-access-smoke.py` for bounded GET-only access checks. This does not
-replace low/high/off traffic, received-discovery and branch-room qualification.
-No prpl runtime deployment or new live room pass is claimed by this source port.
+prpl passes five exact-context load samples and twenty native RSSI observations.
+Spaced bands retain frequency; missing timestamps fail closed. Signal uses NBAPI
+Backhaul.Stats, without extra queries or invented SNR.
+Console NG matches 115 radios and room/survey data.
 
-The next power/noise/CCA increment has an opt-in input contract and executable
-reference model in `wmdcfg/rf_environment.py`, **not live actuation**. Default
-−91 dBm noise reference and −90 dBm CCA preserve the legacy calculation.
-Noise changes decode SNR independently of received power; CCA separately
-classifies a frame's energy. It synthesizes no background traffic or measured
-noise. Runtime activation fails closed. Negotiated apply/readback, native
-context reporting, room restoration and bounded qualification remain required.
+The shared HTTP observer rejects malformed inventory with a typed availability
+error; empty arrays remain empty. RDK retries without steering. prpl startup
+retries known inventory transport outages within 30 seconds, retaining health
+gates. Native BTM passes both 5/6 GHz; the strengthened branch room passes initial,
+branch, return and default restoration without changing native identities/policy.
+BTM `Not found` came from missing per-station bus registration, not missing
+NBAPI stations. Checked root `_exec` preserves native BTM semantics without
+retries. Native memory fixes pass bounded 100-client qualification:
+[memory evidence](../testing/controller-memory.md). Full-catalog acceptance remains separate.
+
+`wmdcfg/rf_environment.py` is **not live actuation**. Independent power/noise/CCA
+retains −91/−90 dBm defaults. Activation requires negotiation/readback, native
+context, restoration and qualification.
 
 ## 10. Phased delivery
 
@@ -1237,11 +1245,10 @@ Earlier lifecycle, byte-rate and RF14 threshold/query results remain in
 [bounded acceptance](../testing/room-acceptance.md#rdk-threshold-and-query-qualification).
 They are not performance guarantees or a full-catalog qualification.
 
-Symbolized evidence confirms a cross-thread `dm_sta_t` use-after-free between topology
-encoding and disassociation deletion. Patch **0193** shares the topology mutex
-and unlocks before dispatch. Its contract, Yocto build and one live disconnect/
-reconnect pass; extended ASan churn was intentionally stopped. A dedicated
-data-model mutex with immutable snapshots remains the stronger design.
+RDK patch **0193** protects `dm_sta_t` topology encoding against concurrent
+disassociation deletion. Its contract, build and bounded reconnect pass;
+extended ASan churn was intentionally stopped. Immutable data-model snapshots
+remain the stronger design.
 
 The current counter/inspection work remains observation-only:
 
@@ -1257,9 +1264,9 @@ The current counter/inspection work remains observation-only:
   receiver/source, scan identity and two-second per-neighbor freshness.
   Stale counters stay hidden; shared-radio utilization is not additive.
 
-Next: qualify the shared RF/backhaul observations on a running prpl VM.
-Native path/load joins are implemented; traffic remains unavailable without
-qualified counter windows. Independent power/noise/CCA follows this gate,
-with negotiated control, restoration and native reporting, not guessed values.
+Next: resolve startup/resource failures before new RF actuation. Cold acceptance,
+shared load/signal and one branch pass, not the full catalog. Backhaul traffic
+requires qualified counter windows. Independent power/noise/CCA requires
+negotiated control, restoration and native reporting, not guessed values.
 
-Modern PHY/aggregation, ESP and full collision/DCF calibration remain later.
+Modern PHY/aggregation, ESP and collision calibration remain later.

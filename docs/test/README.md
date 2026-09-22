@@ -2,14 +2,11 @@
 
 [Build guide](../build/README.md) · [Detailed test tools](../../tests/README.md)
 
-Run the suite **on the outer LXD host**, from the matching checkout. It enters
-the selected VM itself; do not install browser tools inside client containers.
-No tests in this guide export, delete or rebuild the VM.
+Run **on the outer LXD host**, from the matching checkout. The suite enters
+the selected VM without rebuilding it; browser tools stay on the host.
 
-The live/soak tiers hold the room stopped with an owned runtime systemd
-condition, including when its installed unit lives under `/etc`. They restore
-the prior active state only after native tests finish. Cleanup failures count
-as failures. Room tests use `worlds/golden`, not the source-world directory.
+Live/soak tiers guard/stop the room until native tests finish, then restore its
+prior active state. Cleanup failures fail qualification. Room tests use `worlds/golden`.
 
 For RF checks, set `ROOM_URL` to the live-room URL from
 `bash deploy/lxd-vm/build.sh urls`. Proxies usually bind the LAN IP, not localhost:
@@ -55,9 +52,12 @@ No other host tooling is installed automatically.
 | `static` | Documentation, Python configurator/optimizer/room/regressions, Console and topology Go tests. No VM. |
 | `webui` | Deterministic Node render/layout/RF/steering and Console models. No VM. |
 | `browser` | Mock/local browser presentation, Console NG, sidebar, fullscreen/dividers. No live RF writes. |
+| `rf` | Two rooms, counter manifest/shadow and contracts; bounded RF writes. |
 | `rooms` | Every compatible room: load, initial convergence, **Play**, native associations/traffic and topology checks; geometry rooms run separately. Mutates RF. |
 | `live` | Console health, full 100-client native provenance/topology/BTM/data-plane/resource checks. Mutates RF. |
 | `soak` | Bounded leaf restart/steering churn, permanent radio and daemon identity checks; three cycles by default. Mutates RF. |
+
+`live/controller-memory` gates acceptance→soak: [90-second RSS/100-client/1s-metrics check](../../reference/testing/controller-memory.md).
 
 `all` runs those tiers in dependency order. These are functional/regression
 gates, not a hardware RF-capacity certification or an unlimited endurance soak.
@@ -69,6 +69,8 @@ Use an idle, freshly started default room with no browser control lease,
 recording or competing RF writer. Host and guest checkouts must be clean and
 at the same commit. Review the source-match failure rather than bypassing it.
 The full catalog can take hours; select tiers for a shorter run.
+
+Authorized dirty diagnostics: [direct RF helpers](../../reference/radio/rf-property-coverage.md#direct-prpl-diagnostic-checks), not suite qualification.
 
 ```sh
 bash tests/run-prplmesh-suite.sh rooms live --yes-act --install-browser-deps

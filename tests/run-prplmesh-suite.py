@@ -12,12 +12,12 @@ import time
 
 
 ROOT = Path(__file__).resolve().parents[1]
-PHASES = ('static', 'webui', 'browser', 'rooms', 'live', 'soak')
+PHASES = ('static', 'webui', 'browser', 'rf', 'rooms', 'live', 'soak')
 
 
 def main():
     parser = argparse.ArgumentParser(description='Host-side prplMesh suite; defaults to offline static tests. Mutating tiers require --yes-act.')
-    parser.add_argument('sections', nargs='*', metavar='SECTION', help='static, webui, browser, rooms, live, soak or all')
+    parser.add_argument('sections', nargs='*', metavar='SECTION', help='static, webui, browser, rf, rooms, live, soak or all')
     parser.add_argument('--yes-act', action='store_true')
     parser.add_argument('--install-browser-deps', action='store_true')
     parser.add_argument('--output', type=Path)
@@ -33,8 +33,8 @@ def main():
     if args.list:
         print('\n'.join(section for section in PHASES if section in chosen))
         return 0
-    if chosen & {'rooms', 'live', 'soak'} and not args.yes_act:
-        parser.error('rooms/live/soak change RF; use --yes-act on an idle test VM')
+    if chosen & {'rf', 'rooms', 'live', 'soak'} and not args.yes_act:
+        parser.error('rf/rooms/live/soak change RF; use --yes-act on an idle test VM')
     if not 1 <= args.churn_iterations <= 100:
         parser.error('--churn-iterations must be between 1 and 100')
     vm = os.environ.get('PRPLMESH_VM_NAME', 'prplmesh')
@@ -149,6 +149,7 @@ def main():
         (output / 'source.json').write_text(json.dumps(dict(commit=revision, dirty=dirty, sections=sorted(chosen)), indent=2))
         if 'static' in chosen:
             step('static/documentation', [sys.executable, 'tests/test_documentation.py'])
+            step('static/unattended-lxd', [sys.executable, 'tests/unattended-lxd.py'])
             step('static/python', [sys.executable, '-m', 'pytest', '--import-mode=importlib', '-q',
                                   'wmediumd/configurator/tests', 'optimizer/tests', 'demo/tests', 'tests'], 1200)
             step('static/console-go', ['go', 'test', './...'], cwd=ROOT / 'wmediumd/observer')
@@ -186,7 +187,7 @@ def main():
             else:
                 record('browser/tests', 'blocked', detail='browser dependencies unavailable')
         live_ok = True
-        if chosen & {'rooms', 'live', 'soak'}:
+        if chosen & {'rf', 'rooms', 'live', 'soak'}:
             live_ok = not dirty and step('live/source-match', guest('bash', '-c',
                 'test "$(git -C /opt/prplmesh-lab rev-parse HEAD)" = "$1" && '
                 'test -z "$(git -C /opt/prplmesh-lab status --porcelain)"', 'source-check', revision))
@@ -202,6 +203,40 @@ def main():
                 room_url = endpoint('room-demo-viewer')
                 topology_url = endpoint('controller-ui')
                 console_url = endpoint('wmediumd-console')
+        if 'rf' in chosen:
+            contracts_ok = step('rf/contracts', [sys.executable, '-m', 'pytest', '--import-mode=importlib', '-o', 'addopts=', '-q',
+                'optimizer/tests/test_counter_guard.py', 'optimizer/tests/test_counter_shadow.py',
+                'optimizer/tests/test_load_policy.py', 'optimizer/tests/test_policy.py',
+                'optimizer/tests/test_owner_observation.py', 'optimizer/tests/test_rf_observations.py',
+                'demo/tests/test_rf_property_coverage.py', 'demo/tests/test_rf_rooms.py', 'demo/tests/test_world_switch.py',
+                'demo/tests/test_traffic_experiment.py', 'demo/tests/test_rf_observation.py',
+                'tests/test_rf_property_rooms_smoke.py', 'tests/test_counter_guard_room_smoke.py',
+                'tests/test_native_retry_counters.py', 'tests/test_connected_model_repair.py',
+                'tests/test_candidate_event_memory.py', 'tests/test_neighbor_cache_memory.py',
+                'tests/test_frequency_slot_allocation.py',
+                'tests/test_console_ng_contract.py',
+                'wmediumd/configurator/tests/test_rf_contract.py'])
+            contracts_ok = step('rf/viewer', ['node', 'tests/viewer-room-guide-test.js']) and contracts_ok
+            contracts_ok = step('rf/inspector', ['node', 'tests/viewer-rf-inspector-test.js']) and contracts_ok
+            contracts_ok = step('rf/documentation', [sys.executable, 'tests/test_documentation.py']) and contracts_ok
+            if live_ok and contracts_ok:
+                rooms_ok = step('rf/rooms', [sys.executable, 'tests/rf-property-rooms-smoke.py', '--yes-act',
+                    '--host', 'local', '--vm', vm, '--room-url', room_url, '--output', str(output / 'rf-properties.json')], 240)
+                if rooms_ok:
+                    manifest_ok = step('rf/counter-manifest', guest('python3', '/opt/prplmesh-lab/tests/counter-guard-room-smoke.py',
+                        '--stack', 'prpl', '--yes-change-lab', '--output', f'/var/lib/prplmesh-lab/test-results/{stamp}-counter-manifest'), 1200)
+                    if manifest_ok:
+                        step('rf/counter-shadow', guest('env', 'PYTHONPATH=/opt/prplmesh-lab/optimizer:/opt/prplmesh-lab/wmediumd/configurator',
+                            'python3', '/opt/prplmesh-lab/tests/native-retry-counter-acceptance.py', '--stack', 'prpl',
+                            '--yes-change-lab', '--seconds', '8', '--shadow-counter-policy',
+                            '/opt/prplmesh-lab/optimizer/configs/load-counter-guard-policy.yaml', '--output',
+                            f'/var/lib/prplmesh-lab/test-results/{stamp}-counter-shadow'), 240)
+                    else:
+                        record('rf/counter-shadow', 'blocked', detail='manifest/restoration failed')
+                else:
+                    record('rf/counter-checks', 'blocked', detail='room/restoration failed')
+            else:
+                record('rf/live', 'blocked', detail='contracts or clean matching checkouts required; use direct helpers for diagnostics')
         if 'rooms' in chosen:
             if live_ok and browser_ok:
                 helpers_ok = all([step('rooms/install-' + name, install_helper(name))
@@ -223,6 +258,13 @@ def main():
                 acceptance_ok = True
                 if 'live' in chosen:
                     acceptance_ok = step('live/native-acceptance', native('tests/run-acceptance.sh'), 3600)
+                    if acceptance_ok:
+                        acceptance_ok = step('live/controller-memory', guest(
+                            'python3', '/opt/prplmesh-lab/tests/controller-memory.py', '--expected-clients', '100',
+                            '--traffic', '--include-fronthaul', '--output',
+                            f'/var/lib/prplmesh-lab/test-results/{stamp}-controller-memory.json'), 180)
+                    else:
+                        record('live/controller-memory', 'blocked', detail='native acceptance failed')
                 if 'soak' in chosen:
                     if acceptance_ok:
                         step('soak/churn', native('tests/churn-soak.sh'), 3600)

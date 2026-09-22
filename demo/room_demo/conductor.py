@@ -341,6 +341,7 @@ class LiveConductor:
         self._load_error = None
         self._rf_start_lock = threading.Lock()
         self._rf_policy_enabled = False
+        self._rf_counter_guard_enabled = False
         self.mode = mode
         self.repo_root = repo_root
         self.base_url = base_url
@@ -992,11 +993,13 @@ class LiveConductor:
                 inspection = {"schema": "easymesh.rf-inspection.v2", "enabled": True,
                               "error": str(error), "bss_loads": [], "client_activity": []}
             inspection["policy_enabled"] = self._rf_policy_enabled
+            inspection["counter_guard_enabled"] = self._rf_counter_guard_enabled
             inspection["backhaul"] = self.store.backhaul_observations(inspection)
             for row in inspection["bss_loads"]:
                 row["role"] = self._ap_role_by_bssid.get(row["bssid"])
             signature = json.dumps({key: inspection.get(key) for key in (
-                "enabled", "policy_enabled", "error", "context_state", "bss_loads", "client_activity", "backhaul")}, sort_keys=True)
+                "enabled", "policy_enabled", "counter_guard_enabled", "error", "context_state",
+                "bss_loads", "client_activity", "backhaul")}, sort_keys=True)
             if (epoch, signature) != previous and self.store.publish_rf_observations(inspection, self._time(), epoch):
                 previous = (epoch, signature)
             if self.stop_event.wait(0.5):
@@ -1036,6 +1039,7 @@ class LiveConductor:
         policy = policy_for(policy_config) if policy_config.load_aware_enabled else ThresholdPolicy(policy_config)
         self._start_rf_observation(policy_config.load_aware_enabled)
         self._rf_policy_enabled = policy_config.load_aware_enabled
+        self._rf_counter_guard_enabled = policy_config.load_counter_guard_enabled
         state = PolicyState()
         priority_role = None
         priority_until = 0.0
@@ -1300,11 +1304,13 @@ class LiveConductor:
                 )
                 if policy_config.load_aware_enabled:
                     unavailable = [item.sta_mac for item in evaluation.decisions
-                                   if item.reason in {"native_load_current_unavailable", "native_load_activity_unavailable"}]
+                                   if item.reason in {"native_load_current_unavailable", "native_load_activity_unavailable",
+                                                      "native_load_activity_context_mismatch", "native_load_counter_evidence_unavailable"}]
                     unsettled = [item.sta_mac for item in evaluation.decisions
                                  if item.action == "steer" or item.reason in {
                                      "load_condition_hold_not_met", "load_waiting_for_new_report",
-                                     "native_load_settling", "native_load_batch_deferred", "steer_pending"}]
+                                     "native_load_settling", "native_load_batch_deferred", "steer_pending",
+                                     "native_load_counter_pressure"}]
                     fleet.update(policy="native-load-v1", load_measurements_unavailable=unavailable,
                                  clients_outside_policy_margin=len(unsettled),
                                  converged=fleet["measurement_complete"] and not unavailable and not unsettled)
@@ -1409,6 +1415,7 @@ class LiveConductor:
                             "schema": "easymesh.rf-inspection.v1",
                             "enabled": self._load_provider is not None,
                             "policy_enabled": policy_config.load_aware_enabled,
+                            "counter_guard_enabled": policy_config.load_counter_guard_enabled,
                             "error": self._load_error,
                             "maximum_age_seconds": policy.config.load_maximum_age_seconds,
                             "bss_loads": [{**asdict(row), "role": self._ap_role_by_bssid.get(row.bssid)}

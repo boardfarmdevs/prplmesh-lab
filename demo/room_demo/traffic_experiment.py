@@ -344,7 +344,7 @@ class TrafficExperiment:
         with self._condition:
             return copy.deepcopy(self._state)
 
-    def sync(self, key, phase=None, container=None, remaining_ms=0):
+    def sync(self, key, phase=None, container=None, remaining_ms=0, *, complete_through=None):
         with self._condition:
             if self._closed:
                 return
@@ -352,6 +352,12 @@ class TrafficExperiment:
                 return
             if key is None and self._desired is None:
                 return
+            if self._desired is not None:
+                natural_end = (complete_through is not None
+                               and self._desired["key"][:2] == complete_through[:2]
+                               and self._desired["phase"]["end_ms"] <= complete_through[2])
+                self._stop_reason(self._desired, self._version,
+                                  "phase_end" if natural_end else "cancelled")
             self._version += 1
             if self._process is not None:
                 self._signal(self._process, signal.SIGINT)
@@ -364,6 +370,17 @@ class TrafficExperiment:
                 self._thread = threading.Thread(target=self._worker, name="room-traffic", daemon=True)
                 self._thread.start()
             self._condition.notify_all()
+
+    def _stop_reason(self, job, version, reason=None):
+        with self._condition:
+            if job.get("stop_reason") is None:
+                if time.monotonic() >= job["deadline"]:
+                    reason = "phase_end"
+                elif self._closed or self._version != version:
+                    reason = "cancelled"
+                if reason is not None:
+                    job["stop_reason"] = reason
+            return job.get("stop_reason")
 
     @staticmethod
     def _signal(process, signum):
@@ -397,7 +414,7 @@ class TrafficExperiment:
                 if self._closed:
                     return
                 handled = self._version
-                job = copy.deepcopy(self._desired)
+                job = self._desired
             if job is None:
                 self._report({"state": "off"})
                 continue
@@ -412,25 +429,24 @@ class TrafficExperiment:
                       "received_echo_replies": None}
             process = None
             started = time.monotonic()
-            cancelled = False
             try:
                 remaining_ms = max(0, round((job["deadline"] - started) * 1000))
                 if not remaining_ms:
-                    self._report({**detail, "state": "expired"}, {**detail, "state": "expired"})
+                    state = "cancelled" if self._stop_reason(job, handled) == "cancelled" else "expired"
+                    self._report({**detail, "state": state}, {**detail, "state": state})
                     continue
                 process, requested = self.launcher(job["container"], self.target, phase, remaining_ms,
                                                    admit=lambda: self._admit(handled, job["deadline"]))
                 with self._condition:
                     self._process = process
-                    cancelled = self._closed or self._version != handled
-                if cancelled:
+                    stopped = self._stop_reason(job, handled)
+                if stopped:
                     self._signal(process, signal.SIGINT)
-                if not cancelled:
+                if not stopped:
                     self._report({**detail, "state": "running", "requested_packets": requested})
                 while process.poll() is None:
                     with self._condition:
-                        cancelled = self._closed or self._version != handled
-                        if not cancelled and time.monotonic() < job["deadline"]:
+                        if self._stop_reason(job, handled) is None:
                             self._condition.wait(timeout=min(0.1, max(0, job["deadline"] - time.monotonic())))
                             continue
                     self._signal(process, signal.SIGINT)
@@ -439,20 +455,20 @@ class TrafficExperiment:
                     except subprocess.TimeoutExpired:
                         self._signal(process, signal.SIGKILL)
                     break
+                stopped = self._stop_reason(job, handled, "completed")
                 output, _unused = process.communicate(timeout=2)
-                with self._condition:
-                    cancelled = cancelled or self._closed or self._version != handled
                 counts = packet_counts(output)
                 result = {**detail, **counts, "requested_packets": requested,
                           "elapsed_seconds": round(time.monotonic() - started, 3),
                           "returncode": process.returncode,
-                          "state": "cancelled" if cancelled else
+                          "state": "cancelled" if stopped == "cancelled" else
                                    ("completed" if counts["transmitted_packets"] is not None else "failed")}
                 if counts["transmitted_packets"] is None:
                     result["error"] = output[-500:]
                 self._report(result, result)
             except TrafficCancelled:
-                self._report({**detail, "state": "cancelled"}, {**detail, "state": "cancelled"})
+                state = "expired" if self._stop_reason(job, handled) == "phase_end" else "cancelled"
+                self._report({**detail, "state": state}, {**detail, "state": state})
             except (OSError, ValueError, KeyError, subprocess.SubprocessError) as error:
                 self._report({**detail, "state": "failed", "error": str(error)},
                              {**detail, "state": "failed", "error": str(error)})
@@ -487,14 +503,22 @@ class TrafficExperiment:
         finally:
             with self._condition:
                 self._udp_processes = []
-        with self._condition:
-            if (self._closed or self._version != version) and not result.get("cleanup_errors"):
+        stopped = self._stop_reason(job, version, "completed")
+        if result.get("state") != "failed":
+            if stopped == "cancelled":
                 result["state"] = "cancelled"
+            elif stopped == "phase_end" and result.get("state") == "cancelled":
+                result["state"] = ("completed" if all(
+                    result.get(endpoint, {}).get("status") == "complete"
+                    and result[endpoint].get("returncode") == 0
+                    for endpoint in ("sender", "receiver")) else "failed")
         result = {**detail, **result, "elapsed_seconds": round(time.monotonic() - started, 3)}
         self._report(result, result)
 
     def close(self):
         with self._condition:
+            if self._desired is not None:
+                self._stop_reason(self._desired, self._version, "cancelled")
             self._closed = True
             self._version += 1
             for process in self._udp_processes:

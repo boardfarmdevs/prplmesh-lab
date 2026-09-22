@@ -13,7 +13,7 @@ suite = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(suite)
 
 
-def run_fixture(tmp_path, *, fail='', state='active', dirty=False):
+def run_fixture(tmp_path, *, fail='', state='active', dirty=False, sections=('live', 'soak')):
     calls = []
     def spawn(command, **_options):
         calls.append(command)
@@ -32,7 +32,7 @@ def run_fixture(tmp_path, *, fail='', state='active', dirty=False):
 
     environment = {'PRPLMESH_VM_NAME': 'fixture', 'PRPLMESH_ROOM_DEMO_HOST_PORT': '42002',
                    'PRPLMESH_UI_HOST_PORT': '42000', 'PRPLMESH_WMEDIUMD_CONSOLE_HOST_PORT': '42001'}
-    with patch.object(suite.sys, 'argv', ['suite', 'live', 'soak', '--yes-act', '--output', str(tmp_path / 'run')]), \
+    with patch.object(suite.sys, 'argv', ['suite', *sections, '--yes-act', '--output', str(tmp_path / 'run')]), \
          patch.dict(suite.os.environ, environment), \
          patch.object(suite.subprocess, 'Popen', side_effect=spawn), \
          patch.object(suite.subprocess, 'check_output', side_effect=output), \
@@ -47,7 +47,7 @@ def test_native_steps_hold_room_stopped_until_after_churn(tmp_path):
     result, calls, report = run_fixture(tmp_path)
     assert result == 0
     names = [row['name'] for row in report['results']]
-    assert names.index('live/stop-room') < names.index('live/native-acceptance') < names.index('soak/churn')
+    assert names.index('live/stop-room') < names.index('live/native-acceptance') < names.index('live/controller-memory') < names.index('soak/churn')
     assert names.index('soak/churn') < names.index('restore/release-room-guard') < names.index('restore/start-room')
     assert sum('acquire' in command for command in calls) == 1
     assert sum('start' in command for command in calls) == 1
@@ -60,7 +60,17 @@ def test_acceptance_failure_blocks_churn_but_restores_service(tmp_path):
     assert result == 1
     assert not any('churn-soak.sh' in str(command) for command in calls)
     assert report['results'][-1]['name'] == 'restore/start-room'
-    assert report['totals']['blocked'] == 1
+    assert {row['name'] for row in report['results'] if row['status'] == 'blocked'} == {
+        'live/controller-memory', 'soak/churn'}
+
+
+def test_memory_failure_blocks_churn_and_restores_room(tmp_path):
+    result, calls, report = run_fixture(tmp_path, fail='controller-memory.py')
+    assert result == 1
+    assert not any('churn-soak.sh' in str(command) for command in calls)
+    assert report['results'][-1]['name'] == 'restore/start-room'
+    memory = next(command for command in calls if any('controller-memory.py' in str(item) for item in command))
+    assert '--traffic' in memory and '--expected-clients' in memory
 
 
 def test_inactive_room_is_not_started_by_cleanup(tmp_path):
@@ -102,3 +112,26 @@ def test_guard_installation_can_replace_an_operator_owned_tmp_file(tmp_path):
     installation = next(command for command in calls if command[:2] == ['bash', '-c'])
     assert 'exec --mode non-interactive fixture -- install -m 0644 /dev/stdin /tmp/suite-room-guard.sh' in installation[2]
     assert not any(command[:3] == ['lxc', 'file', 'push'] for command in calls)
+
+
+def test_rf_tier_runs_new_rooms_manifest_and_native_shadow_without_full_campaign(tmp_path):
+    result, calls, report = run_fixture(tmp_path, sections=('rf',))
+    assert result == 0
+    names = [row['name'] for row in report['results']]
+    assert names.index('rf/contracts') < names.index('rf/rooms') < names.index('rf/counter-manifest') < names.index('rf/counter-shadow')
+    assert not any('room-feature-acceptance.js' in str(command) or 'churn-soak.sh' in str(command) for command in calls)
+    assert any('--shadow-counter-policy' in command for command in calls)
+
+
+def test_rf_tier_keeps_strict_dirty_source_gate(tmp_path):
+    result, calls, report = run_fixture(tmp_path, sections=('rf',), dirty=True)
+    assert result == 1
+    assert not any(command[0] == 'lxc' or 'tests/rf-property-rooms-smoke.py' in command for command in calls)
+    assert report['results'][-1]['name'] == 'rf/live'
+
+
+def test_rf_failed_manifest_restoration_blocks_native_counter_mutation(tmp_path):
+    result, calls, report = run_fixture(tmp_path, sections=('rf',), fail='counter-guard-room-smoke.py')
+    assert result == 1
+    assert not any('native-retry-counter-acceptance.py' in str(command) for command in calls)
+    assert report['results'][-1]['status'] == 'blocked'

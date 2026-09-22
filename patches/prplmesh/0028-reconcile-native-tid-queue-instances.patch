@@ -1,0 +1,188 @@
+Subject: [PATCH] nbapi: reconcile TID queue rows without periodic object churn
+
+Keep native per-TID instance identities stable across reports. Update changed
+queue sizes and add or remove only keys that actually appear or disappear.
+Initialize unique TID and Size together in one transaction. This avoids the
+remove/add/count event flood at full-roster one-second metrics cadence without
+discarding native metrics or changing the reporting interval.
+
+diff --git a/controller/src/beerocks/master/db/db.cpp b/controller/src/beerocks/master/db/db.cpp
+index 45c0035..cf38426 100644
+--- a/controller/src/beerocks/master/db/db.cpp
++++ b/controller/src/beerocks/master/db/db.cpp
+@@ -8217,25 +8217,14 @@ bool db::dm_add_tid_queue_sizes(
+         return true;
+     }
+ 
+-    if (!m_ambiorix_datamodel->remove_all_instances(station.dm_path + ".TIDQueueSizes")) {
+-        return false;
+-    }
+-
+-    bool ret_val = true;
+-
+-    // Device.WiFi.DataElements.Network.Device.{i}.Radio.{i}.BSS.{i}.STA.{i}.TIDQueueSizes.{i}.
+-    for (auto &tid_queue : tid_queue_vector) {
+-        auto tid_queue_size_path =
+-            m_ambiorix_datamodel->add_instance(station.dm_path + ".TIDQueueSizes");
+-        if (tid_queue_size_path.empty()) {
++    std::map<uint32_t, uint32_t> rows;
++    for (const auto &tid_queue : tid_queue_vector) {
++        if (!rows.emplace(tid_queue.tid, tid_queue.queue_size).second) {
+             return false;
+         }
+-
+-        ret_val &= m_ambiorix_datamodel->set(tid_queue_size_path, "TID", tid_queue.tid);
+-        ret_val &= m_ambiorix_datamodel->set(tid_queue_size_path, "Size", tid_queue.queue_size);
+     }
+-
+-    return ret_val;
++    return m_ambiorix_datamodel->sync_uint32_instances(station.dm_path + ".TIDQueueSizes",
++                                                     "TID", "Size", rows);
+ }
+ 
+ bool db::dm_clear_sta_stats(const sMacAddr &sta_mac)
+diff --git a/framework/platform/nbapi/ambiorix_impl.cpp b/framework/platform/nbapi/ambiorix_impl.cpp
+index 900551e..486b344 100644
+--- a/framework/platform/nbapi/ambiorix_impl.cpp
++++ b/framework/platform/nbapi/ambiorix_impl.cpp
+@@ -957,6 +957,69 @@ std::string AmbiorixImpl::add_instance(const std::string &relative_path)
+     return relative_path + "." + std::to_string(index);
+ }
+ 
++bool AmbiorixImpl::sync_uint32_instances(const std::string &path, const std::string &key,
++                                       const std::string &value,
++                                       const std::map<uint32_t, uint32_t> &rows)
++{
++    auto object = find_object(path);
++    if (!object) {
++        return false;
++    }
++    amxd_trans_t transaction;
++    if (amxd_trans_init(&transaction) != amxd_status_ok) {
++        return false;
++    }
++    std::unique_ptr<amxd_trans_t, decltype(&amxd_trans_clean)> cleanup(&transaction,
++                                                                   amxd_trans_clean);
++    if (amxd_trans_set_attr(&transaction, amxd_tattr_change_ro, true) != amxd_status_ok) {
++        return false;
++    }
++    auto pending = rows;
++    bool changed = false;
++    amxd_object_for_each(instance, iterator, object)
++    {
++        auto instance = amxc_llist_it_get_data(iterator, amxd_object_t, it);
++        amxd_status_t status;
++        auto current_key = amxd_object_get_value(uint32_t, instance, key.c_str(), &status);
++        if (status != amxd_status_ok) {
++            return false;
++        }
++        auto desired = pending.find(current_key);
++        if (desired == pending.end()) {
++            if (amxd_trans_select_object(&transaction, object) != amxd_status_ok ||
++                amxd_trans_del_inst(&transaction, amxd_object_get_index(instance), nullptr) !=
++                    amxd_status_ok) {
++                return false;
++            }
++            changed = true;
++            continue;
++        }
++        auto current_value = amxd_object_get_value(uint32_t, instance, value.c_str(), &status);
++        if (status != amxd_status_ok) {
++            return false;
++        }
++        if (current_value != desired->second) {
++            if (amxd_trans_select_object(&transaction, instance) != amxd_status_ok ||
++                amxd_trans_set_value(uint32_t, &transaction, value.c_str(), desired->second) !=
++                    amxd_status_ok) {
++                return false;
++            }
++            changed = true;
++        }
++        pending.erase(desired);
++    }
++    for (const auto &row : pending) {
++        if (amxd_trans_select_object(&transaction, object) != amxd_status_ok ||
++            amxd_trans_add_inst(&transaction, 0, nullptr) != amxd_status_ok ||
++            amxd_trans_set_value(uint32_t, &transaction, key.c_str(), row.first) != amxd_status_ok ||
++            amxd_trans_set_value(uint32_t, &transaction, value.c_str(), row.second) != amxd_status_ok) {
++            return false;
++        }
++        changed = true;
++    }
++    return !changed || amxd_trans_apply(&transaction, Amxrt::getDatamodel()) == amxd_status_ok;
++}
++
+ bool AmbiorixImpl::remove_instance(const std::string &relative_path, uint32_t index)
+ {
+     amxd_trans_t transaction;
+diff --git a/framework/platform/nbapi/include/ambiorix.h b/framework/platform/nbapi/include/ambiorix.h
+index 6cddf1f..ef0925e 100644
+--- a/framework/platform/nbapi/include/ambiorix.h
++++ b/framework/platform/nbapi/include/ambiorix.h
+@@ -11,6 +11,7 @@
+ 
+ #include "tlvf/common/sMacAddr.h"
+ #include <easylogging++.h>
++#include <map>
+ 
+ namespace beerocks {
+ namespace nbapi {
+@@ -176,6 +177,10 @@ public:
+      * @return True if date and time successfully set, false otherwise.
+      */
+     virtual bool set_time(const std::string &path_to_object, const std::string &time_stamp) = 0;
++
++    virtual bool sync_uint32_instances(const std::string &path, const std::string &key,
++                                      const std::string &value,
++                                      const std::map<uint32_t, uint32_t> &rows) = 0;
+ };
+ 
+ inline Ambiorix::~Ambiorix() {}
+diff --git a/framework/platform/nbapi/include/ambiorix_dummy.h b/framework/platform/nbapi/include/ambiorix_dummy.h
+index 1426aba..732f670 100644
+--- a/framework/platform/nbapi/include/ambiorix_dummy.h
++++ b/framework/platform/nbapi/include/ambiorix_dummy.h
+@@ -80,6 +80,12 @@ public:
+     bool set_current_time(const std::string &path_to_object,
+                           const std::string &param = "TimeStamp") override;
+     bool set_time(const std::string &path_to_object, const std::string &time_stamp) final;
++
++    bool sync_uint32_instances(const std::string &, const std::string &, const std::string &,
++                              const std::map<uint32_t, uint32_t> &) override
++    {
++        return true;
++    }
+ };
+ 
+ } // namespace nbapi
+diff --git a/framework/platform/nbapi/include/ambiorix_impl.h b/framework/platform/nbapi/include/ambiorix_impl.h
+index 0bd02f3..b28e098 100644
+--- a/framework/platform/nbapi/include/ambiorix_impl.h
++++ b/framework/platform/nbapi/include/ambiorix_impl.h
+@@ -180,6 +180,10 @@ public:
+      */
+     bool load_datamodel(const std::string &datamodel_path);
+ 
++    bool sync_uint32_instances(const std::string &path, const std::string &key,
++                              const std::string &value,
++                              const std::map<uint32_t, uint32_t> &rows) override;
++
+ private:
+     // Methods
+ 
+diff --git a/framework/platform/nbapi/include/ambiorix_mock.h b/framework/platform/nbapi/include/ambiorix_mock.h
+index 2bce3b2..2764f83 100644
+--- a/framework/platform/nbapi/include/ambiorix_mock.h
++++ b/framework/platform/nbapi/include/ambiorix_mock.h
+@@ -120,6 +120,10 @@ public:
+                 (const std::string &path_to_object, const std::string &object), (override));
+     MOCK_METHOD(bool, set_time, (const std::string &path_to_object, const std::string &time_stamp),
+                 (override));
++    MOCK_METHOD(bool, sync_uint32_instances,
++                (const std::string &path, const std::string &key, const std::string &value,
++                 (const std::map<uint32_t, uint32_t> &rows)),
++                (override));
+ };
+ 
+ } // namespace nbapi
+

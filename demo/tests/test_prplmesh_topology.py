@@ -1,9 +1,33 @@
 import unittest
+from datetime import datetime, timezone
 
 from room_demo.topology import project_topology
 
 
 class PrplMeshTopologyTests(unittest.TestCase):
+    def test_native_backhaul_signal_requires_fresh_received_report_and_known_parent(self):
+        now = datetime(2026, 9, 22, 12, tzinfo=timezone.utc)
+        backhaul = {"parent_id": "AA:00", "type": "Wi-Fi", "mac": "BB:00",
+                    "station_mac": "CC:01", "signal_dbm": -67}
+        topology = {"devices": [
+            {"id": "AA:00", "radios": [{"band": "5 GHz", "channel": 36,
+                                          "bsses": [{"bssid": "BB:00"}]}]},
+            {"id": "AA:01", "radios": [{"bsses": [{"bssid": "BB:01"}]}],
+             "backhaul": backhaul}]}
+        roles = {"bb:00": "gateway", "bb:01": "extender_1"}
+        for timestamp, status in (("2026-09-22T11:59:59.123456789Z", "fresh"),
+                                  ("2026-09-22T11:59:54Z", "stale"),
+                                  ("2026-09-22T12:00:01Z", "invalid"), (None, "invalid")):
+            with self.subTest(timestamp=timestamp):
+                backhaul["signal_updated_at"] = timestamp
+                edge = project_topology(topology, roles, now=now)["backhaul_edges"][0]
+                self.assertEqual(edge["signal"]["status"], status)
+                self.assertEqual(edge["signal"]["rssi_dbm"], -67 if status == "fresh" else None)
+                self.assertEqual(edge["signal"]["observed_at"], timestamp)
+                self.assertEqual(edge["backhaul_sta"], "cc:01")
+        backhaul["mac"] = "unknown"
+        self.assertEqual(project_topology(topology, roles, now=now)["backhaul_edges"][0]["signal"], {})
+
     def test_backhaul_uses_observed_parent_and_bssid_bound_roles(self):
         topology = {"devices": [
             {"id": "AA:00", "name": "controller", "radios": [

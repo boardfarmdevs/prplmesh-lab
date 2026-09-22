@@ -19,12 +19,12 @@ if lxc info "$BUILDER" >/dev/null 2>&1; then
     lxc delete "$BUILDER" --force
 fi
 
-lxc init "$SOURCE_IMAGE" "$BUILDER" -c security.privileged=true
+lxc init "$SOURCE_IMAGE" "$BUILDER" -c security.privileged=true </dev/null
 lxc config device add "$BUILDER" project disk source="$ROOT" path=/mnt/project
 lxc start "$BUILDER"
-log=/tmp/prpl-runtime-image-build.log
-if ! lxc exec "$BUILDER" -- \
-    /mnt/project/scripts/container/setup-runtime-base.sh >"$log" 2>&1; then
+log=${RUNTIME_IMAGE_BUILD_LOG:-/tmp/prpl-runtime-image-build.log}
+if ! lxc exec --mode non-interactive "$BUILDER" -- \
+    /mnt/project/scripts/container/setup-runtime-base.sh </dev/null >"$log" 2>&1; then
     tail -200 "$log" >&2
     exit 1
 fi

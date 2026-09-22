@@ -12,6 +12,7 @@ This is prplMesh's equivalent of RDK's `doc/easymesh/README.md`.
 | Choose a short demonstration | [Room catalog](../reference/rooms/catalog.md) |
 | Develop or diagnose external policy | [Optimizer reference](../reference/optimizer/README.md) |
 | Understand RF and the medium | [Radio reference](../reference/radio/README.md) |
+| Demonstrate every RF property and its policy boundary | [RF coverage](../reference/radio/rf-property-coverage.md) |
 | Open LXD UI and inner/outer Grafana dashboards | [Monitoring](../reference/observability/monitoring.md) |
 | Build native artifacts, then a named VM | [Build guide](build/README.md), [legacy entrypoint](from-scratch.md) |
 | Validate changes and room convergence | [Test tiers and runner](test/README.md), [testing reference](../reference/testing/README.md) |

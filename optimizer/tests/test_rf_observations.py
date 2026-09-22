@@ -55,6 +55,12 @@ def test_frequency_requires_band_instead_of_guessing_low_channel_numbers():
     assert frequency_for("2.4", True) is None
 
 
+@pytest.mark.parametrize("band,channel,frequency", [
+    ("2.4 GHz", 1, 2412), ("5 GHz", 36, 5180), ("6 GHz", 1, 5955)])
+def test_prpl_display_bands_keep_native_frequency_context(band, channel, frequency):
+    assert frequency_for(band, channel) == frequency
+
+
 def test_negative_dbm_is_not_confused_with_unsupported_measured_noise():
     now = parse_time(loaded().observed_at)
     arguments = ({}, loaded().observed_at, "model", now)

@@ -4,6 +4,9 @@
 
 RF delivery, configurator and Console.
 
+- [RF property demonstrations and coverage](rf-property-coverage.md): named rooms,
+  native counter guard, observation/abstention checks and live qualification limits.
+
 - [Console RF property guide](console-rf-properties.md): configured versus
   observed evidence, independent native load, freshness and protocol catalog.
 

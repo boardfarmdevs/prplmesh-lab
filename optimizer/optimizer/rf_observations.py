@@ -5,6 +5,7 @@ from datetime import datetime, timezone
 import math
 
 from .model import format_time, normalize_band, parse_time
+from .rf_coverage import demonstration
 
 
 SCHEMA = "easymesh.rf-observations.v1"
@@ -22,9 +23,9 @@ PROPERTIES = (
     ("modeled_busy", "Modeled channel busy", "percent", "radio-context", "model_observation", "diagnostic"),
     ("packets_per_second", "Native packet activity", "packets/s", "client-link", "native_observation", "load_opt_in"),
     ("bytes_per_second", "Native byte activity", "bytes/s", "client-link", "native_observation", "inspection"),
-    ("retries_per_second", "AP TX retries", "retries/s", "client-link", "native_observation", "inspection"),
-    ("tx_errors_per_second", "AP TX failures", "failures/s", "client-link", "native_observation", "inspection"),
-    ("rx_errors_per_second", "AP RX drops", "drops/s", "client-link", "native_observation", "inspection"),
+    ("retries_per_second", "AP TX retries", "retries/s", "client-link", "native_observation", "load_guard_opt_in"),
+    ("tx_errors_per_second", "AP TX failures", "failures/s", "client-link", "native_observation", "load_guard_opt_in"),
+    ("rx_errors_per_second", "AP RX drops", "drops/s", "client-link", "native_observation", "load_guard_opt_in"),
     ("backhaul_hops", "Wireless backhaul hops", "hops", "device", "native_observation", "load_opt_in"),
     ("receive_context", "Native receive context", "MHz", "radio-context", "native_observation", "inspection"),
     ("room_presence", "Room presence", "boolean", "radio", "scenario", "eligibility"),
@@ -43,6 +44,7 @@ def property_catalog():
     properties = []
     for definition in DEFINITIONS.values():
         row = dict(definition)
+        row["demonstration"] = demonstration(row["id"])
         native = row["id"] in {"native_utilization", "station_count", "backhaul_hops"} or row["id"].endswith("_per_second")
         row.update(availability="unsupported" if row["usage"] == "unsupported" else "requires_fresh_evidence",
                    activation="Native report receiver; load policy is a separate opt-in" if native else
