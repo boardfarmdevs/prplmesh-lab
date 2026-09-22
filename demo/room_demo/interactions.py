@@ -350,6 +350,41 @@ class InteractiveMediumSession:
         finally:
             self._lock.release()
 
+    def observer_snapshot(self) -> dict[str, Any] | None:
+        if not self._lock.acquire(blocking=False):
+            return None
+        try:
+            return self._observer_snapshot_locked()
+        finally:
+            self._lock.release()
+
+    def _observer_snapshot_locked(self) -> dict[str, Any]:
+        with self._lock:
+            paused = set(self.recovery.paused_clients()) if self.recovery else set()
+            roles = []
+            for role, state in self._roles.items():
+                binding = self.plan["bindings"].get(role, {})
+                roles.append({
+                    "role": role, "kind": self.world["roles"].get(role),
+                    "position": list(state["position"]), "present": state["present"],
+                    "container": binding.get("container"),
+                    "radio": binding.get("radio_tx_mac"),
+                    "station_mac": binding.get("station_mac"),
+                    "band_radios": copy.deepcopy(binding.get("band_radios", {})),
+                    "frequencies": copy.deepcopy(binding.get("fronthaul_frequencies_mhz", {})),
+                    "disconnect_requested": binding.get("container") in paused,
+                })
+            return {
+                "schema": "easymesh.room-observer.v1", "world": self._selected_world,
+                "revision": self._revision, "observed_at": dt.datetime.now(dt.timezone.utc).isoformat(),
+                "instance_id": self._instance_id, "generation": self._generation,
+                "roles": roles, "layout": copy.deepcopy(self.layout),
+                "playback": self._public_playback(), "fault": self._faulted,
+                "last_rf_applied_at": self._last_rf_applied_at,
+                "recovery": self.recovery.snapshot() if self.recovery else None,
+                "writer": "room-demo", "read_only": True,
+            }
+
     def snapshot(self, *, expire_lease: bool = True) -> dict[str, Any]:
         with self._lock:
             if expire_lease:

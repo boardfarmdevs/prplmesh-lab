@@ -73,6 +73,10 @@ if [ -z "$BACKUP" ]; then
     BACKUP=${candidates[0]}
 fi
 NAME=${PRPLMESH_VM_NAME:-$DEFAULT_NAME}
+if [ -r "$SCRIPT_DIR/instance-config.sh" ]; then
+    source "$SCRIPT_DIR/instance-config.sh"
+    prplmesh_instance_config "$NAME"
+fi
 if [ "$MONITORING" = true ]; then
     test -f "$SCRIPT_DIR/observability/enable.sh" || { echo 'Monitoring bundle is missing' >&2; exit 1; }
 fi
@@ -111,6 +115,10 @@ if lxc info "$NAME" >/dev/null 2>&1; then
     echo "LXD instance already exists: $NAME" >&2
     echo "stop and delete it explicitly before importing a replacement" >&2
     exit 1
+fi
+if declare -F prplmesh_check_ports >/dev/null; then
+    prplmesh_check_ports
+    prplmesh_ensure_storage "$STORAGE"
 fi
 lxc_cidr=$(lxc network get "$NETWORK" ipv4.address)
 used=$(lxc network list-leases "$NETWORK" --format csv \

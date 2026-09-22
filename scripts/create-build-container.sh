@@ -16,14 +16,18 @@ fi
 dnsmasq_servers=$(printf '%s' "$upstream_dns" | tr ',' '\n' | sed 's/^/server=/')
 lxc network set "$MANAGEMENT_NETWORK" raw.dnsmasq "$dnsmasq_servers"
 
-if ! lxc network show "$BACKHAUL_NETWORK" >/dev/null 2>&1; then
+if [ "${PRPL_BUILD_ONLY:-0}" != 1 ] && ! lxc network show "$BACKHAUL_NETWORK" >/dev/null 2>&1; then
     lxc network create "$BACKHAUL_NETWORK" \
         ipv4.address="$BACKHAUL_IPV4" ipv4.nat=false ipv6.address=none
 fi
 
 if ! lxc info "$BUILD_CONTAINER" >/dev/null 2>&1; then
-    lxc launch ubuntu:22.04/amd64 "$BUILD_CONTAINER" \
-        --network "$MANAGEMENT_NETWORK"
+    set -- ubuntu:22.04/amd64 "$BUILD_CONTAINER" --network "$MANAGEMENT_NETWORK" \
+        -c limits.cpu="${PRPL_BUILD_CPUS:-8}" -c limits.memory="${PRPL_BUILD_MEMORY:-8GiB}"
+    if [ -n "${PRPL_BUILD_STORAGE:-}" ]; then
+        set -- "$@" --storage "$PRPL_BUILD_STORAGE"
+    fi
+    lxc launch "$@"
 fi
 
 lxc config set "$BUILD_CONTAINER" boot.autostart false

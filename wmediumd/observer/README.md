@@ -1,264 +1,78 @@
-# wmediumd Console
+# wmediumd Console NG
 
-`wmediumd Console` is a standalone Go observer for the EasyMesh hwsim medium.
-It reads wmediumd's host-only `-O` Unix socket and serves an embedded live UI,
-immutable REST snapshots, a WebSocket update stream and low-cardinality
-Prometheus metrics. It is not part of a BPI container, EasyMesh, the Python
-configurator or the optimizer.
+Read-only 3D medium explorer, hierarchical radio/path table, on-demand
+properties, service health and RF evidence. Default route `/` opens NG;
+`/classic/` redirects. Legacy controls are disabled, not a second collector.
 
-The Console shows:
+- [Operator manual](../../docs/wmediumd-console-ng.md)
+- [RF properties: simulation, provenance and observation](../../reference/radio/console-rf-properties.md)
+- [Named-VM build](../../docs/build/README.md) and [test tiers](../../docs/test/README.md)
 
-- daemon identity, control generation, configured pair SNR and exact-frequency
-  overrides;
-- optional human labels, roles, LXD owners and interface names supplied by a
-  generated inventory (the service never queries LXD itself);
-- lifetime and windowed frame/byte/type, EAPOL, unicast/multicast, retry,
-  delivery, drop and netlink counters;
-- current client-to-infrastructure associations reported by wmediumd's
-  protocol-positive ownership ledger, with band, channel and evidence source;
-  older daemons fall back to the freshest observed non-multicast packet path;
-- radio/frequency activity and learned VIF-to-radio ownership;
-- raw active source/destination/frequency packet paths with signal, SNR, PER
-  and outcome counters, kept as a separate diagnostic view because multicast
-  receiver candidates are medium fan-out, not EasyMesh associations;
-- a bounded event timeline, informational ring-wrap accounting and an explicit
-  warning only when the observer actually misses event history;
-- queue depth/delay and factual health warnings; and
-- startup-config and running-binary SHA-256 identities. The root launcher
-  publishes a PID-qualified hash manifest in `/run`; this keeps the hardened
-  non-root service from needing `CAP_SYS_PTRACE` merely to dereference the
-  daemon's `/proc/PID/exe` entry.
+## Build
 
-No packet payload is copied, stored or exposed. If the Console is pointed at an
-older `-R` read-only endpoint, configured state remains visible and packet
-metrics are clearly marked unavailable.
-
-The process boundaries and correlation model are described in
-[the radio and Console reference](../../reference/radio/README.md).
-
-## Build and test
-
-Go 1.22 or newer is required. The module uses only the Go standard library.
+Go 1.22+ and Python 3.10+ are required. Vendored browser assets are checked in;
+Node/npm are needed only to regenerate them from the pinned package lock.
 
 ```sh
-cd gen/wmediumd/observer
-go test ./...
-go test -race ./...
-go vet ./...
-CGO_ENABLED=0 go build -buildvcs=false -trimpath -ldflags='-s -w' \
-  -o wmediumd-console ./cmd/wmediumd-observer
+bash wmediumd/observer/build.sh
+# Only after dependency or vendor-entry changes:
+bash wmediumd/observer/build.sh --vendor
 ```
 
-The resulting binary is static. A VM recipient can use a supplied release
-binary and `install.sh`; Go is only a build-time dependency.
+This regenerates the embedded manual and shared RF catalog and compiles the
+static binary. It does not deploy, restart a lab or run tests. The normal VM
+build installs this binary and builds the matching patched daemon.
 
-## Read-only operation (default)
+## Runtime integration
 
-Start the lab's patched wmediumd and verify the dedicated telemetry socket:
+Inside the prpl VM, installation uses `install-prplmesh.sh`, not the RDK
+launcher. Defaults: HTTP 8090, `/run/prpl-wmediumd/telemetry.sock`, generated
+identity inventory in the same directory, room HTTP 8891 and survey status
+`/run/wmdcfg-survey.json`. The root lab launcher publishes metadata and socket
+permissions. The observer itself never opens LXD or the writable control
+socket. The service's mount namespace hides both sockets.
+
+`patches/wmediumd/0033` adds selected on-demand frame/queue/retry detail;
+`0034` exposes model provenance. Rebuilding only the observer cannot add daemon
+capabilities. Upgrade the daemon, room/optimizer Python code and observer as a
+matching set during a maintenance window, or rebuild the VM. Do not replace
+wmediumd under an active test.
+
+The normal backend is userspace wmediumd. The experimental kernel-medium proxy
+has no NG packet-detail stream: HTTP availability is not telemetry readiness.
+Unsupported or absent evidence remains unavailable; do not manufacture zeros.
+
+## Short checks
 
 ```sh
-test -S /run/meta-cmf-wmediumd/observer/telemetry.sock
-
-./wmediumd-console \
-  --listen 127.0.0.1:8890 \
-  --socket /run/meta-cmf-wmediumd/observer/telemetry.sock \
-  --identity-inventory /run/meta-cmf-wmediumd/identity-inventory.json
+(cd wmediumd/observer && go test ./...)
+node --test wmediumd/observer/web/ng/model.test.mjs
+node tests/wmediumd-console-ng-browser-test.js
 ```
 
-Open `http://127.0.0.1:8890/` or use an SSH forward. The collector recovers
-when wmediumd is restarted. Read-only is the default: the process never opens
-the writable scenario socket and every HTTP mutation returns 405.
-
-The primary rev130 installation binds this read-only service to the lab LAN at
-`http://192.168.2.130:8890/`. Typed controls remain disabled unless explicitly
-enabled for a bounded diagnostic session.
-
-Important flags:
-
-| Flag | Default | Meaning |
-| --- | --- | --- |
-| `--listen` | `127.0.0.1:8890` | HTTP/UI listener |
-| `--socket` | `/run/meta-cmf-wmediumd/observer/telemetry.sock` | `-O` read-only telemetry socket |
-| `--identity-inventory` | `/run/meta-cmf-wmediumd/identity-inventory.json` | optional generated identity overlay |
-| `--poll` | `2s` | snapshot interval; minimum 250 ms |
-| `--timeout` | `2s` | Unix-socket request deadline |
-| `--config` | `/run/meta-cmf-wmediumd/wmediumd.cfg` | startup configuration to hash |
-| `--pid-file` | `/run/meta-cmf-wmediumd/wmediumd.pid` | PID used to hash the running binary |
-
-## Identity inventory
-
-wmediumd identities are radio MAC addresses; it cannot infer that a radio is
-`Agent-1`, belongs to `bpiap-1`, or represents `sta-03`. The normal
-`wmediumd-up.sh up` workflow runs `generate-identity-inventory.sh` after hwsim
-assignment and atomically creates the JSON handoff file. The Console only reads
-that file. It has no LXD socket access and runs no discovery commands.
-
-For mesh radios the generator correlates the hwsim transmitter identity with
-the EasyMesh topology node ID and uses the controller's current `Agent-1` or
-`Extender-N` label. This avoids assigning extender numbers from LXD enumeration
-order. If the controller topology is unavailable, stable container-order labels
-are used until the inventory is regenerated.
-
-Each `mac` must be the radio identity present in the generated wmediumd station
-matrix, not a BSS/VIF address. A learned VIF is a virtual-interface MAC seen in
-an 802.11 frame header, such as an AP BSSID/VAP or client interface. wmediumd
-maps that VIF to the hwsim physical radio that owns it and its observed
-frequency so it can deliver addressed frames correctly. A radio can own several
-VIFs; these mappings are not association edges. They are displayed under their
-owning enriched radio as medium diagnostics.
-
-See [`identity-inventory.example.json`](identity-inventory.example.json). The
-schema is deliberately small:
-
-```json
-{
-  "schema_version": 1,
-  "generated_at": "2026-08-23T12:00:00Z",
-  "stations": [
-    {
-      "mac": "42:00:00:00:01:00",
-      "label": "Agent-1",
-      "role": "controller-agent",
-      "owner": "bpibroadband",
-      "interface": ""
-    }
-  ]
-}
-```
-
-The supplied generator writes a temporary file and atomically renames it into
-place. Mesh entries intentionally leave `interface` empty because one hwsim
-radio identity owns multiple VIFs and bands; client entries identify `wlan0`.
-The Console reloads it with each snapshot. Input is limited to 1 MiB and
-512 unique six-octet MAC identities; unknown fields, control characters,
-duplicates and oversized labels are rejected. Invalid or absent inventory is
-reported through the API/UI without interrupting telemetry.
-
-## Install a prebuilt binary as a service
-
-Place the static release binary next to this directory or pass its path. The
-installer does not invoke Go:
+The browser test needs Playwright Core/Chromium, as described in the test guide.
+After boot, inside the VM:
 
 ```sh
-cd gen/wmediumd/observer
-chmod +x wmediumd-console
-./install.sh --binary ./wmediumd-console --start
-
-systemctl status wmediumd-console.service
-journalctl -u wmediumd-console.service -f
-curl -fsS http://127.0.0.1:8890/api/v1/status
+python3 /opt/prplmesh-lab/wmediumd/observer/check-ready.py \
+  --url http://127.0.0.1:8090 --require-room
 ```
 
-The installed unit runs as the unprivileged `wmediumd-console` user. The lab's
-`lxd` group gates the host-only wmediumd sockets, but known LXD and Incus daemon
-sockets are explicitly hidden from the service's mount namespace. It cannot
-query LXD, has no Linux capabilities, and uses systemd filesystem, device,
-namespace and kernel hardening. Runtime defaults live in
-`/etc/default/wmediumd-console` and default to read-only operation.
+Add `--require-survey` when a survey-enabled world is active. From the outer
+host use `build.sh urls` and pass the actual forwarded Console URL instead.
+Compare an identical workload with/without the observer before claiming an
+observer-cost budget. Compilation and mocked UI checks are not native RF or
+full-room qualification.
 
-To remove it:
+## API and cost
 
-```sh
-sudo systemctl disable --now wmediumd-console.service
-sudo rm -f /etc/systemd/system/wmediumd-console.service \
-  /etc/default/wmediumd-console /usr/local/bin/wmediumd-console
-sudo rm -rf /usr/local/share/doc/wmediumd-console
-sudo systemctl daemon-reload
-sudo userdel wmediumd-console
-sudo groupdel wmediumd-console
-```
+`/api/v2/health` requires fresh NG telemetry; `/api/v2/rf-catalog` describes
+properties and reserved protocol assignments. v2 snapshots/WebSocket streams
+are interest-driven: selection, expansion, service/event panels and Freeze
+control read subscriptions only. Configuration matrices describe possible
+directed delivery, not active flows or controller ownership. `room-excluded`
+means room intent; it is not proof that a bound radio emitted no frames.
 
-## Optional typed controls
-
-Controls require an explicit startup opt-in:
-
-```sh
-./wmediumd-console \
-  --listen 127.0.0.1:8890 \
-  --socket /run/meta-cmf-wmediumd/observer/telemetry.sock \
-  --enable-control \
-  --control-socket /run/wmediumd-control.sock
-```
-
-For the managed service, explicitly set the following in
-`/etc/default/wmediumd-console`, then restart it:
-
-```sh
-WMEDIUMD_CONSOLE_EXTRA_ARGS=--enable-control --control-socket=/run/wmediumd-control.sock
-sudo systemctl restart wmediumd-console.service
-```
-
-The writable socket is used only for these typed operations:
-
-- atomic pair-SNR set;
-- atomic exact-frequency override set;
-- atomic exact-frequency override clear; and
-- one-step undo of the most recent successful Console transaction.
-
-Every request must name the observed 128-bit daemon instance and current
-generation. The Console rechecks both on the writable socket immediately before
-reading prior values and applying generation `N+1`. Undo is held only in memory,
-is invalid after a daemon restart or intervening generation, and restores the
-exact previous pair value or previous frequency-override presence/value. A pair
-has no protocol-level delete operation; it always has a configured matrix
-value. Pair and frequency batches are individually atomic, but cannot be mixed
-in one cross-opcode transaction.
-
-The browser additionally requires a same-origin request, JSON content type and
-the per-process `X-Wmediumd-CSRF` token. There is deliberately no shell runner,
-generic HTTP/Unix-socket proxy or arbitrary-opcode endpoint. Keep the HTTP
-listener on loopback, or put authentication and TLS at a trusted reverse proxy.
-
-## API
-
-```text
-GET /api/v1/status
-GET /api/v1/snapshot
-GET /api/v1/stations
-GET /api/v1/identities
-GET /api/v1/links?kind=all|pair|frequency
-GET /api/v1/telemetry
-GET /api/v1/radio-frequencies
-GET /api/v1/active-links
-GET /api/v1/vifs
-GET /api/v1/events?limit=100
-GET /api/v1/health
-GET /api/v1/artifacts
-GET /api/v1/controls
-WS  /api/v1/stream
-GET /metrics
-```
-
-When controls are enabled, obtain `csrf_token`, `daemon.instance_id` and
-`daemon.generation` from the immutable APIs, then use only the following JSON
-routes:
-
-```text
-POST /api/v1/controls/pairs/set
-POST /api/v1/controls/frequencies/set
-POST /api/v1/controls/frequencies/clear
-POST /api/v1/controls/undo
-```
-
-Example pair batch:
-
-```json
-{
-  "expected_instance_id": "0123456789abcdeffedcba9876543210",
-  "expected_generation": 17,
-  "updates": [
-    {
-      "source": "42:00:00:00:01:00",
-      "destination": "42:00:00:00:02:00",
-      "snr_db": 28
-    }
-  ]
-}
-```
-
-The full pair matrix is potential medium state, not proof of an association.
-`active_links` records traffic wmediumd has processed, including multicast
-fan-out and stale peers, so it is also not authoritative ownership. Patched
-daemons expose `associations`, learned only from ACKed successful association
-responses or valid ACKed infrastructure data. The Console uses that ledger for
-green topology edges and uses active-link counters only to enrich those edges.
+Optional room/survey/native sources have separate freshness and failure states.
+Native load uses the passive room cache even while optimizer candidates are
+unavailable. prpl counter conversion remains 1024 bytes per native counter unit.

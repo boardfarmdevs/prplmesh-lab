@@ -3,7 +3,10 @@ from __future__ import annotations
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import contextmanager
 import copy
+import json
+from pathlib import Path
 import re
+import threading
 import time
 
 from optimizer.band_scan import NativeBandScanner, _command, client_radio_lock
@@ -36,12 +39,56 @@ def validate_profiles(world):
 class ClientBandSettings:
     def __init__(self, command=None, *, clock=None, sleep=None):
         self.command = command or _command
+        self._native_commands = command is None
+        self._sessions = threading.local()
         self.clock = clock or time.monotonic
         self.sleep = sleep or time.sleep
 
-    def control(self, container, *arguments):
+    @contextmanager
+    def _session(self, container):
         NativeBandScanner._validate_container(container)
-        return self.command("lxc", "exec", container, "--", "wpa_cli", "-i", "wlan0", *arguments).strip()
+        current = getattr(self._sessions, "current", None)
+        if current is not None:
+            if current["container"] != container:
+                raise ActuatorError("band settings namespace changed within a transaction")
+            yield current
+            return
+        current = {"container": container, "process": None}
+        self._sessions.current = current
+        try:
+            yield current
+        finally:
+            del self._sessions.current
+
+    @staticmethod
+    def _start_ticks(process):
+        try:
+            fields = Path(f"/proc/{process}/stat").read_text().rsplit(")", 1)[1].split()
+            if fields[0] in {"Z", "X", "x"}:
+                raise ValueError("client init exited")
+            return int(fields[19])
+        except (OSError, IndexError, ValueError) as error:
+            raise ActuatorError("band settings client namespace is no longer available") from error
+
+    def control(self, container, *arguments):
+        with self._session(container) as session:
+            if not self._native_commands:
+                return self.command("lxc", "exec", container, "--", "wpa_cli", "-i", "wlan0", *arguments).strip()
+            if session["process"] is None:
+                state = json.loads(self.command("lxc", "query", f"/1.0/instances/{container}/state", timeout=5))
+                process = state.get("pid")
+                if state.get("status") != "Running" or type(process) is not int or process <= 1:
+                    raise ActuatorError("band settings client namespace is unavailable")
+                session.update(process=process, start_ticks=self._start_ticks(process))
+            process = session["process"]
+            if self._start_ticks(process) != session["start_ticks"]:
+                raise ActuatorError("band settings client namespace identity changed")
+            result = self.command("nsenter", "--target", str(process), "--user", "--mount", "--net", "--pid", "--root", "--wd",
+                                  "--", "/usr/bin/env", "PATH=/usr/sbin:/usr/bin:/sbin:/bin",
+                                  "wpa_cli", "-i", "wlan0", *arguments).strip()
+            if self._start_ticks(process) != session["start_ticks"]:
+                raise ActuatorError("band settings client namespace identity changed")
+            return result
 
     def _ok(self, container, *arguments):
         result = self.control(container, *arguments)
@@ -49,6 +96,10 @@ class ClientBandSettings:
             raise ActuatorError(f"{container}: band settings {' '.join(arguments[:3])} failed: {result}")
 
     def capture(self, container, sta_mac):
+        with self._session(container):
+            return self._capture(container, sta_mac)
+
+    def _capture(self, container, sta_mac):
         status = dict(line.split("=", 1) for line in self.control(container, "status").splitlines() if "=" in line)
         if status.get("address", "").lower() != sta_mac:
             raise ActuatorError("client band profile identity changed")
@@ -71,6 +122,10 @@ class ClientBandSettings:
                 "values": {field: None if value == "FAIL" else value for field, value in values.items()}}
 
     def write(self, record, values):
+        with self._session(record["container"]):
+            self._write(record, values)
+
+    def _write(self, record, values):
         observed = self.capture(record["container"], record["sta_mac"])
         if any(observed[key] != record[key] for key in ("container", "sta_mac", "network_id", "ssid")):
             raise ActuatorError("client network identity changed before band settings write")
@@ -90,7 +145,7 @@ class ClientBandSettings:
             raise ActuatorError("client band settings readback mismatch")
 
     def restore(self, record, *, reconnect=True, wait=False):
-        with client_radio_lock(record["container"]):
+        with client_radio_lock(record["container"]), self._session(record["container"]):
             if "sae_pwe" not in record["values"]:
                 record = {**record, "values": {**record["values"], "sae_pwe": self.control(record["container"], "get", "sae_pwe")}}
             if record["values"]["ieee80211w"] == "3":
@@ -107,7 +162,7 @@ class ClientBandSettings:
                 self._ok(record["container"], "disconnect")
 
     def initialize(self, record, values, initial_frequencies):
-        with client_radio_lock(record["container"]):
+        with client_radio_lock(record["container"]), self._session(record["container"]):
             self._initialize(record, values, initial_frequencies)
 
     def _initialize(self, record, values, initial_frequencies):

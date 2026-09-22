@@ -4,6 +4,22 @@ const path = require('node:path');
 const {spawn} = require('node:child_process');
 const {createInterface} = require('node:readline');
 
+function hostCommand(host, command) {
+  if (host === 'local') return ['bash', ['-c', command]];
+  if (!/^[a-zA-Z0-9][a-zA-Z0-9_.@-]*$/.test(host)) throw new Error('Invalid SSH host');
+  return ['ssh', ['-o', 'BatchMode=yes', '-o', 'ConnectTimeout=5', '--', host, command]];
+}
+
+function guestAuditInstallCommand(host, vm) {
+  if (!/^[a-zA-Z0-9][a-zA-Z0-9_.-]*$/.test(vm)) throw new Error('Invalid VM name');
+  const commands = ['room-feature-guest-audit.py', 'backhaul-native-probe.py'].map(name => {
+    const encoded = fs.readFileSync(path.join(__dirname, name)).toString('base64');
+    return 'printf %s ' + encoded + ' | base64 -d | lxc exec --mode non-interactive ' + vm +
+      ' -- install -m 0644 /dev/stdin /tmp/' + name;
+  });
+  return hostCommand(host, 'set -euo pipefail; ' + commands.join('; '));
+}
+
 class HostMonitor {
   constructor(child, filename) {
     this.child = child;
@@ -60,11 +76,11 @@ async function startHostMonitor(host, directory, options = {}) {
   if (fs.existsSync(filename)) throw new Error('Refusing to overwrite host samples');
   const source = fs.readFileSync(path.join(__dirname, 'room-feature-host-monitor.py'), 'utf8');
   const quote = value => "'" + value.replaceAll("'", "'\\''") + "'";
-  const child = spawn('ssh', ['--', host, 'python3 -u -c ' + quote(source) +
-    ' --interval ' + interval + ' --duration ' + duration + ' --watch-stdin' + (processes ? ' --processes' : '')]);
+  const child = spawn(...hostCommand(host, 'python3 -u -c ' + quote(source) +
+    ' --interval ' + interval + ' --duration ' + duration + ' --watch-stdin' + (processes ? ' --processes' : '')));
   const monitor = new HostMonitor(child, filename);
   try { await monitor.ready; return monitor; }
   catch (error) { await monitor.stop(); throw error; }
 }
 
-module.exports = {HostMonitor, startHostMonitor};
+module.exports = {HostMonitor, startHostMonitor, hostCommand, guestAuditInstallCommand};

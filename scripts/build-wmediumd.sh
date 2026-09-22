@@ -40,6 +40,8 @@ PATCHES=(
     0030-wmediumd-admit-transmitter-frequency-queue-heads.patch
     0031-wmediumd-bounded-access-category-admission.patch
     0032-wmediumd-disable-netlink-success-acks.patch
+    0033-wmediumd-console-ng-detail.patch
+    0034-wmediumd-expose-rf-model-profile.patch
 )
 
 case "${1:-}" in

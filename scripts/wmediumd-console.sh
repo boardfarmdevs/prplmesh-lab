@@ -19,7 +19,10 @@ CONFIG_SNAPSHOT=$RUNTIME/wmediumd.conf
 DAEMON_MANIFEST=$RUNTIME/wmediumd-binary.sha256
 PIDFILE=$RUNTIME/wmediumd.pid
 READY=http://127.0.0.1:8090/
-HEALTH=http://127.0.0.1:8090/api/v1/health
+HEALTH=http://127.0.0.1:8090/api/v2/health
+if [ "${PRPL_MEDIUM_BACKEND:-userspace}" = kernel ]; then
+    HEALTH=$READY
+fi
 
 publish_runtime_metadata()
 {
@@ -59,8 +62,11 @@ start_console()
     fi
     systemctl restart wmediumd-console.service
     for unused in $(seq 1 30); do
-        curl -fsS "$READY" >/dev/null 2>&1 && {
-            echo 'wmediumd Console: http://127.0.0.1:8090/'
+        curl -fsS "$HEALTH" >/dev/null 2>&1 && {
+            echo 'wmediumd Console NG: http://127.0.0.1:8090/'
+            if [ "${PRPL_MEDIUM_BACKEND:-userspace}" = kernel ]; then
+                echo 'Experimental kernel backend: Console packet telemetry unavailable; HTTP readiness is not NG qualification.'
+            fi
             return 0
         }
         sleep 1

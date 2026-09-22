@@ -240,14 +240,17 @@ lxc config set "$NAME" boot.mode uefi-nosecureboot 2>/dev/null || \
     lxc config set "$NAME" security.secureboot false
 printf 'archive_bytes=%s\n' "$(stat -c %s "$OUTPUT")" >> "$TRIM_REPORT"
 install -m 0755 "$ROOT/deploy/lxd-vm/import.sh" "$BUNDLE/import.sh"
+install -m 0644 "$ROOT/deploy/lxd-vm/instance-config.sh" "$BUNDLE/instance-config.sh"
 cp -a "$ROOT/deploy/lxd-vm/observability" "$BUNDLE/observability"
 install -m 0755 "$ROOT/deploy/lxd-vm/install-host.sh" "$BUNDLE/install-host.sh"
 install -m 0755 "$ROOT/deploy/lxd-vm/package-release.sh" "$BUNDLE/package-release.sh"
-sed "s/0908/${RELEASE_ID}/g" "$ROOT/deploy/lxd-vm/README.md" \
+DOCS_URL="https://github.com/boardfarmdevs/prplmesh-lab/blob/$(git -C "$ROOT" rev-parse HEAD)"
+sed -e "s/0916/${RELEASE_ID}/g" \
+    -e "s#](../../docs/#]($DOCS_URL/docs/#g" \
+    -e "s#](../../reference/#]($DOCS_URL/reference/#g" "$ROOT/deploy/lxd-vm/README.md" \
     > "$BUNDLE/README.md"
 chmod 0644 "$BUNDLE/README.md"
 install -m 0644 "$ROOT/docs/release-notes.md" "$BUNDLE/RELEASE-NOTES.md"
-DOCS_URL="https://github.com/boardfarmdevs/prplmesh-lab/blob/$(git -C "$ROOT" rev-parse HEAD)"
 sed -e "s#](../README.md)#]($DOCS_URL/docs/README.md)#g" \
     -e "s#](../current-state.md)#]($DOCS_URL/docs/current-state.md)#g" \
     -e "s#](../../reference/#]($DOCS_URL/reference/#g" \
@@ -266,7 +269,7 @@ LAB_SOURCE_COMMIT=$(git -C "$ROOT" rev-parse HEAD)
 LAB_RUNTIME_BASE_COMMIT=$RUNTIME_BASE_COMMIT
 LAB_TRIMMED=true
 LAB_FIRST_BOOT_PROVISIONING=true
-LAB_ROOM_DEMO_HOST_PORT=18891
+LAB_PORT_ASSIGNMENT=instance-name
 EOF
 jq -n \
     --arg stack prplmesh --arg flavor thin --arg release_id "$RELEASE_ID" \
@@ -280,7 +283,8 @@ jq -n \
       runtime_base_commit:$runtime_base_commit,
       archive:$archive,
       capacity:{instance:("prplmesh-"+$release_id),clients:100,hwsim_radios:120,cpus:8,memory:"16GiB"},
-      defaults:{disk:$disk,wmediumd_console_host_port:8090,controller_ui_host_port:8091,room_demo_host_port:18891,autostart:false},
+      defaults:{disk:$disk,port_assignment:"instance-name",autostart:false,
+        port_offsets:{topology:0,wmediumd_console:1,room:2,lxd_ui:3,grafana:4,outer_metrics:5}},
       room:{interactive:true,profile_clients:20,automatic_start:true,profiling:true,adaptive_backhaul:false,
             service:"prplmesh-room-demo.service"},
       build:{storage_pool:$build_storage_pool},
@@ -289,7 +293,7 @@ jq -n \
       status:"candidate"}' > "$BUNDLE/release.json"
 (
     cd "$BUNDLE"
-    sha256sum "$(basename "$OUTPUT")" import.sh install-host.sh \
+    sha256sum "$(basename "$OUTPUT")" import.sh instance-config.sh install-host.sh \
         package-release.sh README.md RELEASE-NOTES.md INTERACTIVE.md release.env release.json trim-report.txt \
         thin-capacity-check.json thin-image-capacity.json \
         > SHA256SUMS
