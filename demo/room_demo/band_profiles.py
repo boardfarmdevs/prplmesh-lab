@@ -79,16 +79,26 @@ class ClientBandSettings:
                 process = state.get("pid")
                 if state.get("status") != "Running" or type(process) is not int or process <= 1:
                     raise ActuatorError("band settings client namespace is unavailable")
-                session.update(process=process, start_ticks=self._start_ticks(process))
+                session.update(process=process, start_ticks=self._start_ticks(process),
+                               user_namespace=self._user_namespace_arguments(process))
             process = session["process"]
             if self._start_ticks(process) != session["start_ticks"]:
                 raise ActuatorError("band settings client namespace identity changed")
-            result = self.command("nsenter", "--target", str(process), "--user", "--mount", "--net", "--pid", "--root", "--wd",
+            result = self.command("nsenter", "--target", str(process), *session["user_namespace"],
+                                  "--mount", "--net", "--pid", "--root", "--wd",
                                   "--", "/usr/bin/env", "PATH=/usr/sbin:/usr/bin:/sbin:/bin",
                                   "wpa_cli", "-i", "wlan0", *arguments).strip()
             if self._start_ticks(process) != session["start_ticks"]:
                 raise ActuatorError("band settings client namespace identity changed")
             return result
+
+    @staticmethod
+    def _user_namespace_arguments(process):
+        try:
+            shared = Path(f"/proc/{process}/ns/user").samefile("/proc/self/ns/user")
+        except OSError as error:
+            raise ActuatorError("band settings client user namespace is unavailable") from error
+        return () if shared else ("--user",)
 
     def _ok(self, container, *arguments):
         result = self.control(container, *arguments)

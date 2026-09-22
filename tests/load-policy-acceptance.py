@@ -9,6 +9,7 @@ import shutil
 import signal
 import subprocess
 import sys
+import threading
 import time
 import urllib.error
 import urllib.request
@@ -16,6 +17,7 @@ import urllib.request
 from optimizer.actuator import NativeSteerActuator, SteerActuator
 from optimizer.candidates import ControllerCandidateProvider
 from optimizer.config import load_policy
+from optimizer.counter_guard import evaluate_counter_guard
 from optimizer.load_observer import NativeLoadProvider, inventory
 from optimizer.load_policy import policy_for
 from optimizer.model import parse_time
@@ -84,6 +86,111 @@ def require_running_traffic(processes):
         status = process.poll()
         if status is not None:
             raise RuntimeError('traffic process exited before qualification completed: status ' + str(status))
+
+
+def require_clear_counter_action(decision, configuration):
+    if not configuration.load_counter_guard_enabled:
+        return
+    evidence = decision.load_evidence or {}
+    checks = evidence.get('counter_checks', [])
+    expected = {'retries_per_second', 'tx_errors_per_second', 'rx_errors_per_second'}
+    if (evidence.get('counter_guard_enabled') is not True
+            or {row.get('property') for row in checks} != expected or len(checks) != len(expected)
+            or any(row.get('state') != 'within_limit' for row in checks)):
+        raise RuntimeError('guarded load action lacks complete clear native counter evidence')
+
+
+def btm_events(text, action=None):
+    records = [json.loads(line) for line in text.splitlines() if line.strip()]
+    if action is None:
+        return [row for row in records if 'BSS-TM-REQ' in row.get('event', '')
+                or 'based on BSS Transition Management Request' in row.get('event', '')]
+    source, target = action['decision']['source_bssid'], action['decision']['target_bssid']
+    return [row for row in records if action['started_at'] <= row.get('received_at', 0) <= action['verified_at']
+            and f'Transition to BSS {target} based on BSS Transition Management Request (old BSSID {source} '
+            in row.get('event', '')]
+
+
+def post_steer_delivery(receiver, verified_at):
+    started = receiver.get('start', {}).get('timestamp', {}).get('timesecs')
+    if not isinstance(started, (int, float)):
+        return []
+    return [row['sum'] for row in receiver.get('intervals', []) if
+            row.get('sum', {}).get('sender') is False and not row['sum'].get('omitted')
+            and started + row['sum'].get('start', 0) > verified_at + 1
+            and row['sum'].get('bytes', 0) > 0 and row['sum'].get('packets', 0) > 0]
+
+
+def counter_pressure(snapshot, configuration, station, source_bssid):
+    current = next((row for row in snapshot.bss_loads if row.bssid == source_bssid), None)
+    activity = next((row for row in snapshot.client_activity if row.sta_mac == station
+                     and row.bssid == source_bssid), None)
+    return evaluate_counter_guard(activity, current, station=station, bssid=source_bssid,
+                                  now=parse_time(snapshot.observed_at), config=configuration)
+
+
+def pressure_observation(snapshot, evaluation, configuration, station, source_bssid, target_bssid):
+    if any(row.action != 'none' for row in evaluation.decisions):
+        raise RuntimeError('counter-pressure negative produced a steering action')
+    client = snapshot.client(station)
+    decision = next((row for row in evaluation.decisions if row.sta_mac == station), None)
+    pressure = counter_pressure(snapshot, configuration, station, source_bssid)
+    eligible = [row for row in snapshot.candidates_for(station) if row.eligible and row.rcpi is not None
+                and row.bssid != source_bssid and row.metric_observed_at is not None
+                and 0 <= (parse_time(snapshot.observed_at) - parse_time(row.metric_observed_at)).total_seconds()
+                <= configuration.reject_stale_metrics_after_seconds]
+    selection = None
+    if client is not None and client.rcpi is not None and client.connected_bssid == source_bssid:
+        selection = policy_for(replace(configuration, load_counter_guard_enabled=False))._load_selection(
+            snapshot, client, eligible, parse_time(snapshot.observed_at))
+    target = selection.get('target') if selection else None
+    return {'qualified': bool(decision and decision.reason == 'native_load_counter_pressure'
+                              and pressure['state'] == 'pressure' and target and target.bssid == target_bssid),
+            'counter_guard': pressure, 'unguarded_selection': {
+                'reason': selection['reason'], 'evidence': selection['evidence'],
+                'target_bssid': target.bssid if target else None} if selection else None,
+            'decision': decision.to_dict() if decision else None}
+
+
+class CounterPulse:
+    def __init__(self, socket_path, strong, impaired):
+        self.socket_path = socket_path
+        self.strong, self.impaired = strong, impaired
+        self.stopped = threading.Event()
+        self.error = None
+        self.generations = 0
+        with ControlClient(socket_path) as control:
+            self.instance = control.status().instance_id
+        self.thread = threading.Thread(target=self.run, daemon=True)
+
+    def run(self):
+        try:
+            while not self.stopped.is_set():
+                for rows in (self.impaired, self.strong):
+                    with ControlClient(self.socket_path) as control:
+                        status = control.status()
+                        if status.instance_id != self.instance:
+                            raise RuntimeError('medium restarted during impairment')
+                        control.apply_frequency(status.generation + 1, rows)
+                        for row in rows:
+                            if control.get_frequency_link(row['source'], row['destination'], row['frequency_mhz'])[1] != row['value']:
+                                raise RuntimeError('impairment RF readback mismatch')
+                    self.generations += 1
+                    if self.stopped.wait(.25):
+                        return
+        except Exception as error:
+            self.error = str(error)
+
+    def close(self):
+        self.stopped.set()
+        self.thread.join(timeout=10)
+        if self.thread.is_alive() or self.error:
+            raise RuntimeError('counter impairment failed: ' + str(self.error or 'worker did not stop'))
+        with ControlClient(self.socket_path) as control:
+            status = control.status()
+            if status.instance_id != self.instance:
+                raise RuntimeError('medium restarted before impairment restoration')
+            control.apply_frequency(status.generation + 1, self.strong)
 
 
 def select_source_radio(radios, bsses, hops, preferred):
@@ -297,12 +404,31 @@ def main():
     parser.add_argument('--root', type=Path, required=True)
     parser.add_argument('--output', type=Path, required=True)
     parser.add_argument('--yes-change-lab', action='store_true')
+    parser.add_argument('--policy', type=Path,
+                        help='policy file; defaults to the existing native load policy')
+    parser.add_argument('--offered-mbps', type=int, default=12,
+                        help='real UDP demand per client, 1..40 Mbps; never injected utilization')
+    parser.add_argument('--payload-bytes', type=int, default=1200,
+                        help='actual UDP payload, 128..1400 bytes; no fragmentation')
+    parser.add_argument('--counter-case', choices=('clear', 'pressure', 'rescue'), default='clear')
     parser.add_argument('--same-channel-negative', action='store_true',
                         help='keep all APs on channel 6; require real native overload, same_channel exclusion and no actions')
     args = parser.parse_args()
     if os.geteuid() or not args.yes_change_lab:
         parser.error('requires root and --yes-change-lab')
+    if Path('/run/easymesh-suite-room-guard').exists():
+        parser.error('external suite owns the room')
     require_traffic_tools()
+    policy_path = args.policy or args.root / 'optimizer/configs/load-aware-policy.yaml'
+    configuration = load_policy(policy_path)
+    if not configuration.load_aware_enabled:
+        parser.error('qualification requires a load-aware policy')
+    if not 1 <= args.offered_mbps <= 40:
+        parser.error('--offered-mbps must be 1..40')
+    if not 128 <= args.payload_bytes <= 1400:
+        parser.error('--payload-bytes must be 128..1400')
+    if args.counter_case != 'clear' and (not configuration.load_counter_guard_enabled or args.same_channel_negative):
+        parser.error('pressure/rescue require a counter-guard policy and a different-channel target')
     state_room = fetch('http://127.0.0.1:8891/api/demo/interactions')
     if (state_room['lease']['held'] or state_room['recording']['active']
             or state_room['playback']['status'] != 'paused' or state_room['playback']['time_ms'] != 0
@@ -343,7 +469,9 @@ def main():
     args.output.mkdir(parents=True, exist_ok=False)
     report = {'stack': args.stack, 'state': 'failed', 'original_associations': originals,
               'same_channel_negative': args.same_channel_negative,
-              'workload': {'clients': 2, 'offered_mbps_each': 12, 'seconds': 85, 'native_metrics_injected': False},
+              'workload': {'clients': 2, 'offered_mbps_each': args.offered_mbps,
+                           'payload_bytes': args.payload_bytes, 'seconds': 105, 'native_metrics_injected': False},
+              'counter_case': args.counter_case, 'counter_observations': [],
               'timing_schema': 'native-load-stage-timings.v1', 'observation_gate_seconds': 20,
               'freshness_timing_scope': 'first sampled evidence after verification; not native arrival or convergence latency',
               'station_macs': station_macs, 'radios': radios, 'actions': [], 'restoration_errors': [],
@@ -355,6 +483,8 @@ def main():
     cleanup, traffic, servers, handles = [], [], [], []
     provider = None
     capture = None
+    pulse = None
+    pressure_traffic = []
 
     def retune(frequency, restore=False):
         node, radio = nodes[-1], radios[-1]
@@ -507,8 +637,8 @@ def main():
                 time.sleep(2)
         provider = NativeLoadProvider(nodes[0], byte_counter_unit_bytes=1 if rdk else 1024)
         observer.ownership_observer = provider.observe_owners
-        configuration = load_policy(args.root / 'optimizer/configs/load-aware-policy.yaml')
         report['production_policy'] = asdict(configuration)
+        report['policy_path'] = str(policy_path)
         engine = policy_for(replace(configuration, expected_clients=2))
         policy_state = PolicyState()
         original_level = command('lxc', 'exec', clients[0], '--', 'wpa_cli', '-i', 'wlan0', 'log_level')
@@ -548,16 +678,55 @@ def main():
             servers.append(subprocess.Popen(['nsenter', '-t', str(processes[nodes[0]]), '-n', 'iperf3', '-s', '-1', '-B', gateway, '-p', port, '-J', '-i', '1'],
                                             stdout=server_output, stderr=subprocess.STDOUT))
             time.sleep(.3)
-            traffic.append(subprocess.Popen(['nsenter', '-t', str(processes[node]), '-n', 'iperf3', '-c', gateway, '-B', addresses[index], '-p', port, '-u', '-b', '12M', '-l', '1200', '-t', '85', '-J', '-i', '1'],
+            traffic.append(subprocess.Popen(['nsenter', '-t', str(processes[node]), '-n', 'iperf3', '-c', gateway, '-B', addresses[index], '-p', port, '-u', '-b', str(args.offered_mbps) + 'M', '-l', str(args.payload_bytes), '-t', '105', '-J', '-i', '1'],
                                             stdout=client_output, stderr=subprocess.STDOUT))
+        if args.counter_case != 'clear':
+            source_pid = processes[nodes[source_index]]
+            interface = source_radio['interface']
+            bridge = json.loads(net_command(source_pid, 'ip', '-j', 'link', 'show', interface))[0].get('master', interface)
+            if net_command(source_pid, 'ip', 'route', 'show', 'exact', addresses[0] + '/32').strip():
+                raise RuntimeError('pressure fixture host route already exists')
+            if net_command(processes[clients[0]], 'ss', '-H', '-lnu', 'sport = :55209').strip():
+                raise RuntimeError('pressure fixture UDP port already occupied')
+            net_command(source_pid, 'ip', 'route', 'add', addresses[0] + '/32', 'dev', bridge)
+            cleanup.append(('pressure host route', lambda: net_command(
+                source_pid, 'ip', 'route', 'del', addresses[0] + '/32', 'dev', bridge)))
+            endpoint = [sys.executable, str(args.root / 'tests/native-retry-counter-acceptance.py'),
+                        '--address', addresses[0], '--seconds', '105', '--port', '55209']
+            for mode, pid in (('receive', processes[clients[0]]), ('send', source_pid)):
+                log_path = args.output / ('pressure-' + mode + '.jsonl')
+                output = log_path.open('w')
+                handles.append(output)
+                child = subprocess.Popen(['nsenter', '-t', str(pid), '-n', *endpoint, '--endpoint', mode],
+                                         stdin=subprocess.DEVNULL, stdout=output, stderr=subprocess.STDOUT)
+                pressure_traffic.append(child)
+                if mode == 'receive':
+                    ready_deadline = time.monotonic() + 5
+                    while not log_path.read_text().startswith('ready\n'):
+                        if child.poll() is not None or time.monotonic() >= ready_deadline:
+                            raise RuntimeError('pressure receiver did not bind')
+                        time.sleep(.05)
+            strong = [row for row in updates if row['frequency_mhz'] == 2437
+                      and {row['source'], row['destination']} == {station_radios[0], source_radio['radio']}]
+            if args.counter_case == 'rescue':
+                strong = [{**row, 'value': 18} for row in strong]
+            impaired = [{**row, 'value': -5 if row['source'] == source_radio['radio'] else row['value']}
+                        for row in strong]
+            report['impairment'] = {'direction': 'AP to client; STA transmit signal remains unchanged',
+                                    'strong': strong, 'impaired': impaired, 'half_period_seconds': .25}
+            pulse = CounterPulse(control_path, strong, impaired)
+            pulse.thread.start()
         report['traffic_started_at'] = time.time()
         deadline = time.monotonic() + 65
         verified_monotonic = None
+        pressure_since = None
         negative_observations = []
         with (args.output / 'cycles.jsonl').open('w') as journal:
             cycle_index = 0
             while time.monotonic() < deadline:
-                require_running_traffic(traffic + servers)
+                require_running_traffic(traffic + servers + pressure_traffic)
+                if pulse is not None and pulse.error:
+                    raise RuntimeError(pulse.error)
                 cycle_index += 1
                 snapshot, evaluation, cycle = measured_cycle(
                     observer, provider, engine, policy_state, station_macs, journal, cycle_index)
@@ -568,6 +737,19 @@ def main():
                                   'activity': [(row.sta_mac, row.packets_per_second) for row in snapshot.client_activity],
                                   'decisions': [(row.sta_mac, row.reason) for row in evaluation.decisions]}), flush=True)
                 actions = [row for row in evaluation.decisions if row.action == 'steer']
+                if args.counter_case == 'pressure':
+                    observation = pressure_observation(snapshot, evaluation, configuration,
+                        station_macs[0], source_radio['bssid'], radios[-1]['bssid'])
+                    report['counter_observations'].append({'cycle_index': cycle_index, **observation})
+                    if observation['qualified']:
+                        stamp = observation['counter_guard']['evidence']['activity_observed_at']
+                        pressure_since = pressure_since or stamp
+                        if (verified_monotonic is None and
+                                (parse_time(stamp) - parse_time(pressure_since)).total_seconds() >= configuration.load_condition_hold_seconds):
+                            verified_monotonic = time.monotonic()
+                            deadline = verified_monotonic + 21
+                    else:
+                        pressure_since = None
                 if args.same_channel_negative:
                     if any(snapshot.client(station) is None or snapshot.client(station).connected_bssid != source_radio['bssid']
                            for station in station_macs):
@@ -581,8 +763,16 @@ def main():
                     if observation['qualified'] and verified_monotonic is None:
                         verified_monotonic = time.monotonic()
                 for decision in actions:
-                    if report['actions'] or decision.sta_mac != station_macs[0] or decision.target_bssid != radios[-1]['bssid'] or decision.reason != 'native_load_margin_hold_satisfied':
+                    expected_reason = 'threshold_margin_hold_satisfied' if args.counter_case == 'rescue' else 'native_load_margin_hold_satisfied'
+                    if report['actions'] or decision.sta_mac != station_macs[0] or decision.target_bssid != radios[-1]['bssid'] or decision.reason != expected_reason:
                         raise RuntimeError('unexpected or additional steering decision')
+                    if args.counter_case == 'rescue':
+                        pressure = counter_pressure(snapshot, configuration, decision.sta_mac, source_radio['bssid'])
+                        report['rescue_counter_guard'] = pressure
+                        if pressure['state'] != 'pressure' or decision.load_evidence is not None:
+                            raise RuntimeError('signal rescue was not observed with fresh native counter pressure')
+                    else:
+                        require_clear_counter_action(decision, configuration)
                     bsses = inventory(observer.last_raw)[0]
                     actuator = NativeSteerActuator({bssid: row['channel'] for bssid, row in bsses.items()}, base_url=base) if rdk else SteerActuator(
                         args.root / 'scripts/steer-client.sh', request_only=True, preview_seconds=0, timeout_seconds=20)
@@ -601,6 +791,7 @@ def main():
                     if not action['verification']['success']:
                         raise RuntimeError('native controller did not verify target association')
                     verified_monotonic = time.monotonic()
+                    deadline = verified_monotonic + 21
                     record_post_verify_freshness(action, snapshot, cycle, configuration)
                 if verified_monotonic is not None:
                     report['settling_observed_seconds'] = time.monotonic() - verified_monotonic
@@ -610,17 +801,38 @@ def main():
         if args.same_channel_negative:
             report['negative_observations'] = negative_observations
             report['negative_result'] = negative_summary(negative_observations, configuration.load_condition_hold_seconds)
+        elif args.counter_case == 'pressure':
+            if verified_monotonic is None:
+                raise RuntimeError('no sustained pressure veto with an otherwise eligible quieter target')
+            if report['actions'] or btm_events(capture_path.read_text()):
+                raise RuntimeError('counter-pressure negative observed a steering request')
         elif not report['actions']:
             raise RuntimeError('no qualified native load-driven action before deadline')
         if (not args.same_channel_negative or report['negative_result']['passed']) and report.get('settling_observed_seconds', 0) < 20:
             raise RuntimeError('full post-steer settling window was not observed')
-        for process in traffic + servers:
+        if pulse is not None:
+            pulse.close()
+            report['impairment_generations'] = pulse.generations
+            pulse = None
+        for process in traffic + servers + pressure_traffic:
             process.wait(timeout=95)
             if process.returncode:
                 raise RuntimeError('traffic process failed')
         for handle in handles:
             handle.flush()
         report['receiver_results'] = [json.loads((args.output / f'receiver-{index}.json').read_text()) for index in range(2)]
+        if args.counter_case != 'clear':
+            report['pressure_traffic'] = {mode: json.loads((args.output / ('pressure-' + mode + '.jsonl')).read_text().splitlines()[-1])
+                                          for mode in ('send', 'receive')}
+            if not 0 < report['pressure_traffic']['receive']['unique_packets'] <= report['pressure_traffic']['send']['packets']:
+                raise RuntimeError('pressure fixture lacks actual delivered downlink traffic')
+        for action in report['actions']:
+            action['btm_evidence'] = btm_events(capture_path.read_text(), action)
+            if not action['btm_evidence']:
+                raise RuntimeError('verified association lacks a matching captured native BTM transition')
+            action['post_steer_receiver_intervals'] = post_steer_delivery(report['receiver_results'][0], action['verified_at'])
+            if not action['post_steer_receiver_intervals']:
+                raise RuntimeError('no actual receiver traffic after native steering verification')
         if any(not row.get('end', {}).get('sum_received', row.get('end', {}).get('sum', {})).get('bits_per_second', 0) > 0 for row in report['receiver_results']):
             raise RuntimeError('no measured receiver goodput')
         report['state'] = report['negative_result']['state'] if args.same_channel_negative else 'passed'
@@ -628,6 +840,11 @@ def main():
         report['error'] = str(error)
         print(json.dumps({'phase': 'failed-restoring', 'error': str(error)}), flush=True)
     finally:
+        if pulse is not None:
+            try:
+                pulse.close()
+            except Exception as error:
+                report['restoration_errors'].append({'step': 'counter impairment', 'error': str(error)})
         if provider is not None:
             provider.close()
         if capture is not None:
@@ -638,7 +855,7 @@ def main():
                 stop_process(capture)
             if capture.returncode != 0 or '"kind": "end"' not in capture_path.read_text():
                 report['restoration_errors'].append({'step': 'supplicant capture', 'error': 'incomplete event capture'})
-        for process in traffic + servers:
+        for process in traffic + servers + pressure_traffic:
             stop_process(process)
         for handle in handles:
             handle.close()
@@ -660,7 +877,7 @@ def main():
                 report['final_private_radios'] = [private_radio(command('lxc', 'exec', node, '--', 'iw', 'dev')) for node in nodes]
                 if any(radio['frequency'] != 2437 for radio in report['final_private_radios']):
                     raise RuntimeError('same-channel negative changed an AP channel')
-                if report['actions'] or (capture is not None and 'BSS-TM-REQ' in capture_path.read_text()):
+                if report['actions'] or (capture is not None and btm_events(capture_path.read_text())):
                     raise RuntimeError('same-channel negative observed a steering request')
             except Exception as error:
                 report['restoration_errors'].append({'step': 'same-channel no-action audit', 'error': str(error)})

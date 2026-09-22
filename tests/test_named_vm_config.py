@@ -61,7 +61,7 @@ prplmesh_ensure_storage demo-pool
     def test_suite_list_is_offline_and_unknown_section_fails(self):
         result = self.shell('bash tests/run-prplmesh-suite.sh all --list')
         self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertEqual(result.stdout.splitlines(), ['static', 'webui', 'browser', 'rooms', 'live', 'soak'])
+        self.assertEqual(result.stdout.splitlines(), ['static', 'webui', 'browser', 'rf', 'rf-actions', 'rooms', 'live', 'soak'])
         self.assertEqual(self.shell('bash tests/run-prplmesh-suite.sh --list').stdout.strip(), 'static')
         self.assertNotEqual(self.shell('bash tests/run-prplmesh-suite.sh bad --list').returncode, 0)
 

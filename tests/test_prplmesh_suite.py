@@ -135,3 +135,27 @@ def test_rf_failed_manifest_restoration_blocks_native_counter_mutation(tmp_path)
     assert result == 1
     assert not any('native-retry-counter-acceptance.py' in str(command) for command in calls)
     assert report['results'][-1]['status'] == 'blocked'
+
+
+def test_rf_actions_run_in_order_without_full_pool_guard(tmp_path):
+    result, calls, report = run_fixture(tmp_path, sections=('rf-actions',))
+    assert result == 0
+    actions = [command for command in calls if '--counter-case' in command]
+    assert [command[command.index('--counter-case') + 1] for command in actions] == ['clear', 'pressure', 'rescue']
+    assert all('--policy' in command and '--yes-change-lab' in command for command in actions)
+    assert all(command[command.index('--payload-bytes') + 1] == '1400' for command in actions)
+    assert not any('acquire' in command or 'start' in command for command in calls)
+    assert report['results'][-1]['name'] == 'rf-actions/rescue'
+
+
+def test_rf_action_failure_blocks_following_mutations(tmp_path):
+    result, calls, _report = run_fixture(tmp_path, sections=('rf-actions',), fail='pressure')
+    assert result == 1
+    assert not any('rescue' in command for command in calls)
+
+
+def test_rf_actions_require_clean_matching_sources(tmp_path):
+    result, calls, report = run_fixture(tmp_path, sections=('rf-actions',), dirty=True)
+    assert result == 1
+    assert not any('--counter-case' in command for command in calls)
+    assert report['results'][-1]['name'] == 'rf-actions/live'

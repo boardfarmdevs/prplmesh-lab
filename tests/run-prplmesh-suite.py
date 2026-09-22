@@ -12,12 +12,12 @@ import time
 
 
 ROOT = Path(__file__).resolve().parents[1]
-PHASES = ('static', 'webui', 'browser', 'rf', 'rooms', 'live', 'soak')
+PHASES = ('static', 'webui', 'browser', 'rf', 'rf-actions', 'rooms', 'live', 'soak')
 
 
 def main():
     parser = argparse.ArgumentParser(description='Host-side prplMesh suite; defaults to offline static tests. Mutating tiers require --yes-act.')
-    parser.add_argument('sections', nargs='*', metavar='SECTION', help='static, webui, browser, rf, rooms, live, soak or all')
+    parser.add_argument('sections', nargs='*', metavar='SECTION', help='static, webui, browser, rf, rf-actions, rooms, live, soak or all')
     parser.add_argument('--yes-act', action='store_true')
     parser.add_argument('--install-browser-deps', action='store_true')
     parser.add_argument('--output', type=Path)
@@ -33,8 +33,8 @@ def main():
     if args.list:
         print('\n'.join(section for section in PHASES if section in chosen))
         return 0
-    if chosen & {'rf', 'rooms', 'live', 'soak'} and not args.yes_act:
-        parser.error('rf/rooms/live/soak change RF; use --yes-act on an idle test VM')
+    if chosen & {'rf', 'rf-actions', 'rooms', 'live', 'soak'} and not args.yes_act:
+        parser.error('rf/rf-actions/rooms/live/soak change RF; use --yes-act on an idle test VM')
     if not 1 <= args.churn_iterations <= 100:
         parser.error('--churn-iterations must be between 1 and 100')
     vm = os.environ.get('PRPLMESH_VM_NAME', 'prplmesh')
@@ -187,7 +187,7 @@ def main():
             else:
                 record('browser/tests', 'blocked', detail='browser dependencies unavailable')
         live_ok = True
-        if chosen & {'rf', 'rooms', 'live', 'soak'}:
+        if chosen & {'rf', 'rf-actions', 'rooms', 'live', 'soak'}:
             live_ok = not dirty and step('live/source-match', guest('bash', '-c',
                 'test "$(git -C /opt/prplmesh-lab rev-parse HEAD)" = "$1" && '
                 'test -z "$(git -C /opt/prplmesh-lab status --porcelain)"', 'source-check', revision))
@@ -203,6 +203,21 @@ def main():
                 room_url = endpoint('room-demo-viewer')
                 topology_url = endpoint('controller-ui')
                 console_url = endpoint('wmediumd-console')
+        if 'rf-actions' in chosen:
+            actions_ok = step('rf-actions/contracts', [sys.executable, '-m', 'pytest', '-q',
+                                                     'tests/test_load_acceptance.py'])
+            if live_ok and actions_ok:
+                for scenario in ('clear', 'pressure', 'rescue'):
+                    if not step('rf-actions/' + scenario, guest('env',
+                        'PYTHONPATH=/opt/prplmesh-lab/optimizer:/opt/prplmesh-lab/wmediumd/configurator',
+                        'python3', '/opt/prplmesh-lab/tests/load-policy-acceptance.py', '--stack', 'prpl',
+                        '--root', '/opt/prplmesh-lab', '--policy',
+                        '/opt/prplmesh-lab/optimizer/configs/load-counter-guard-policy.yaml',
+                        '--payload-bytes', '1400', '--counter-case', scenario, '--yes-change-lab', '--output',
+                        '/opt/prplmesh-lab/test-results/rf-actions-' + stamp + '-' + scenario), 600):
+                        break
+            else:
+                record('rf-actions/live', 'blocked', detail='contracts or clean matching checkouts required')
         if 'rf' in chosen:
             contracts_ok = step('rf/contracts', [sys.executable, '-m', 'pytest', '--import-mode=importlib', '-o', 'addopts=', '-q',
                 'optimizer/tests/test_counter_guard.py', 'optimizer/tests/test_counter_shadow.py',

@@ -6,12 +6,15 @@
 See [operation, supported profile and acceptance](#124-implemented-phases-12-survey-and-native-bss-load).
 The supported model remains legacy-rate, 20 MHz. The Phase 3 visibility profile
 is opt-in and conservative, not calibrated physical capacity or full DCF.
-**New source backport, pending live qualification:** room, optimizer, topology
+Room, optimizer, topology
 and Console NG share a typed RF catalog and fresh passive native observations,
 independent of candidate/steering success. prpl keeps its native adapter and
 1024-byte counter units. No new RF physics is claimed. See the
 [property guide](console-rf-properties.md) and [test tiers](../../docs/test/README.md).
-Earlier qualification below does not certify this backport or physical capacity.
+Development branch: `codex/0916-clean`. The
+[property-to-room coverage and live gates](rf-property-coverage.md#native-load-action-qualification)
+separate implementation, measured behavior and remaining qualification failures.
+Earlier qualification does not certify every backported mode or physical capacity.
 
 [Band steering](../optimizer/band-steering.md) and
 [namespace-safe cfg80211 cleanup](../../scripts/cfg80211/README.md) retain separate

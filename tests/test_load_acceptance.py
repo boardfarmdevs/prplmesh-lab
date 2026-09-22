@@ -31,6 +31,104 @@ def test_available_traffic_tools_pass(monkeypatch):
     DRIVER.require_traffic_tools()
 
 
+@pytest.mark.parametrize('failure', ['missing', 'disabled', 'pressure', 'incomplete', 'duplicate'])
+def test_guarded_action_requires_complete_clear_counters(failure):
+    evidence = {'counter_guard_enabled': True, 'counter_checks': [
+        {'property': name, 'state': 'within_limit'}
+        for name in ('retries_per_second', 'tx_errors_per_second', 'rx_errors_per_second')]}
+    configuration = SimpleNamespace(load_counter_guard_enabled=True)
+    DRIVER.require_clear_counter_action(SimpleNamespace(load_evidence=deepcopy(evidence)), configuration)
+    if failure == 'missing':
+        evidence = None
+    elif failure == 'disabled':
+        evidence['counter_guard_enabled'] = False
+    elif failure == 'pressure':
+        evidence['counter_checks'][0]['state'] = 'exceeded'
+    elif failure == 'incomplete':
+        evidence['counter_checks'].pop()
+    else:
+        evidence['counter_checks'].append(evidence['counter_checks'][0])
+    with pytest.raises(RuntimeError, match='clear native counter evidence'):
+        DRIVER.require_clear_counter_action(SimpleNamespace(load_evidence=evidence), configuration)
+
+
+def test_original_load_policy_does_not_require_optional_guard():
+    DRIVER.require_clear_counter_action(SimpleNamespace(load_evidence=None),
+                                       SimpleNamespace(load_counter_guard_enabled=False))
+
+
+def test_btm_capture_matches_actual_transition_owner_target_and_action_window():
+    action = {'decision': {'source_bssid': '02:00:00:00:00:01', 'target_bssid': '02:00:00:00:00:02'},
+              'started_at': 10, 'verified_at': 12}
+    row = {'received_at': 11, 'event': '<2>WNM: Transition to BSS 02:00:00:00:00:02 based on BSS Transition Management Request (old BSSID 02:00:00:00:00:01 after_new_scan=1)'}
+    assert DRIVER.btm_events(json.dumps(row), action) == [row]
+    assert DRIVER.btm_events(json.dumps(row)) == [row]
+    for bad in ({**row, 'received_at': 9}, {**row, 'received_at': 13},
+                {**row, 'event': row['event'].replace('00:01', '00:03')},
+                {**row, 'event': row['event'].replace('00:02', '00:03')},
+                {**row, 'event': '<3>CTRL-EVENT-CONNECTED - Connection to 02:00:00:00:00:02 completed'}):
+        assert not DRIVER.btm_events(json.dumps(bad), action)
+    explicit = {'event': '<3>BSS-TM-REQ dialog_token=1'}
+    assert DRIVER.btm_events(json.dumps(explicit)) == [explicit]
+    assert not DRIVER.btm_events(json.dumps(explicit), action)
+
+
+def test_post_steer_delivery_requires_receiver_data_after_verified_boundary():
+    interval = {'start': 4, 'bytes': 1200, 'packets': 1, 'sender': False, 'omitted': False}
+    receiver = {'start': {'timestamp': {'timesecs': 10}}, 'intervals': [{'sum': interval}]}
+    assert DRIVER.post_steer_delivery(receiver, 12) == [interval]
+    for field, value in (('start', 2), ('start', 3), ('bytes', 0), ('packets', 0),
+                         ('sender', True), ('omitted', True)):
+        changed = {**receiver, 'intervals': [{'sum': {**interval, field: value}}]}
+        assert not DRIVER.post_steer_delivery(changed, 12)
+    assert not DRIVER.post_steer_delivery({'intervals': receiver['intervals']}, 12)
+
+
+@pytest.mark.parametrize('failure', [None, 'instance', 'readback'])
+def test_counter_pulse_verifies_daemon_and_readback_and_stops(monkeypatch, failure):
+    writes = []
+    state = {'value': 55, 'generation': 1}
+    strong = [{'source': 'station', 'destination': 'ap', 'frequency_mhz': 2437, 'value': 55}]
+    impaired = [{**strong[0], 'value': -20}]
+
+    class Control:
+        def __init__(self, path):
+            assert path == '/test/control'
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *arguments):
+            return False
+
+        def status(self):
+            return SimpleNamespace(instance_id='new' if failure == 'instance' and writes else 'old',
+                                   generation=state['generation'])
+
+        def apply_frequency(self, generation, rows):
+            assert generation > state['generation']
+            state.update(generation=generation, value=rows[0]['value'])
+            writes.append(deepcopy(rows))
+
+        def get_frequency_link(self, *arguments):
+            return state['generation'], 0 if failure == 'readback' else state['value'], True
+
+    monkeypatch.setattr(DRIVER, 'ControlClient', Control)
+    pulse = DRIVER.CounterPulse('/test/control', strong, impaired)
+    monkeypatch.setattr(pulse.stopped, 'wait', lambda seconds: len(writes) >= 2)
+    pulse.thread.start()
+    pulse.thread.join(timeout=1)
+    assert not pulse.thread.is_alive()
+    if failure:
+        with pytest.raises(RuntimeError, match='counter impairment failed'):
+            pulse.close()
+        assert pulse.error
+    else:
+        pulse.close()
+        assert writes == [impaired, strong, strong]
+        assert pulse.generations == 2
+
+
 @pytest.fixture
 def same_channel_case(freshness_case):
     from optimizer.policy import PolicyConfig
@@ -113,6 +211,44 @@ def test_no_overload_is_explicit_unsupported_workload_not_pass(same_channel_case
     report = DRIVER.negative_summary([negative_observation((snapshot, *settings))], 5)
     assert report['state'] == 'unsupported_workload' and report['passed'] is False
     assert report['maximum_native_source_utilization'] == 10
+
+
+@pytest.fixture
+def pressure_case(same_channel_case):
+    snapshot, configuration, station, source, target = same_channel_case
+    configuration = replace(configuration, load_counter_guard_enabled=True)
+    snapshot = replace(snapshot,
+        bss_loads=(snapshot.bss_loads[0], replace(snapshot.bss_loads[1], channel=1)),
+        client_activity=(replace(snapshot.client_activity[0], retries_per_second=101,
+                                 tx_errors_per_second=0, rx_errors_per_second=0),))
+    return snapshot, configuration, station, source, target
+
+
+def test_live_pressure_requires_an_otherwise_safe_quieter_target(pressure_case):
+    snapshot, configuration, station, source, target = pressure_case
+    evaluation = DRIVER.policy_for(configuration).evaluate(snapshot)
+    result = DRIVER.pressure_observation(snapshot, evaluation, configuration, station, source, target)
+    assert result['qualified']
+    assert result['counter_guard']['state'] == 'pressure'
+    assert result['unguarded_selection']['target_bssid'] == target
+    assert result['decision']['reason'] == 'native_load_counter_pressure'
+
+
+@pytest.mark.parametrize('change', ['same_channel', 'no_load', 'clear', 'stale', 'wrong_owner', 'missing_signal'])
+def test_other_reasons_for_no_action_do_not_prove_counter_veto(pressure_case, change):
+    snapshot, configuration, station, source, target = pressure_case
+    if change == 'same_channel':
+        snapshot = replace(snapshot, bss_loads=(snapshot.bss_loads[0], replace(snapshot.bss_loads[1], channel=6)))
+    elif change == 'no_load':
+        snapshot = replace(snapshot, bss_loads=(replace(snapshot.bss_loads[0], utilization=10), snapshot.bss_loads[1]))
+    elif change == 'missing_signal':
+        snapshot = replace(snapshot, clients=(replace(snapshot.clients[0], rcpi=None),))
+    else:
+        fields = {'clear': {'retries_per_second': 0}, 'stale': {'observed_at': '1970-01-01T00:00:00Z'},
+                  'wrong_owner': {'bssid': '02:00:00:00:00:99'}}[change]
+        snapshot = replace(snapshot, client_activity=(replace(snapshot.client_activity[0], **fields),))
+    evaluation = DRIVER.policy_for(configuration).evaluate(snapshot)
+    assert not DRIVER.pressure_observation(snapshot, evaluation, configuration, station, source, target)['qualified']
 
 
 def test_missing_native_telemetry_is_failure_not_unsupported_workload():

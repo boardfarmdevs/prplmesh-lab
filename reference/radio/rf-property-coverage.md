@@ -252,6 +252,123 @@ original-code negative controls cover stale/unmatched queries, wrong owners,
 missing BSSs, departure and failure. This is separate from memory patches
 0026–0028. Initial failures remain evidence, not retroactive passes.
 
+## Native load action qualification
+
+The `rf-actions` suite section runs three separate bounded cases on healthy
+paused Default-20: guarded load balancing, retry-pressure suppression with an
+otherwise eligible quieter target, and weak-signal rescue despite pressure.
+Use `tests/load-policy-acceptance.py --help` for direct diagnostics.
+The optional `--policy` selects the checked-in counter-guard policy;
+`--counter-case clear|pressure|rescue` selects the case.
+
+Only the target private 2.4 GHz radio changes channel. Real UDP demand and
+read-back-verified pulsed downlink loss provide stimuli, never fabricated
+native utilization/counters. Thresholds and hold times remain unchanged.
+The driver requires fresh native evidence, captured source/target-specific
+BTM transitions, native ownership and receiver data after verified steering.
+Pressure must veto an otherwise safe target across advancing counter reports.
+Missing evidence or insufficient load cannot pass.
+
+The action deadline and the following twenty-second settling observation are
+separate bounded windows. Cleanup restores channel, exact RF overrides,
+client frequency lists/associations, owned traffic/routing and room service;
+fresh Default-20 and unchanged native process identities are required.
+Detailed JSON/JSONL remains in guest `test-results/rf-actions-*` when run by
+the suite. Earlier failed runs remain separate evidence.
+
+### Current action evidence and remaining gates
+
+September 22 diagnostics used unchanged native binaries and production policy
+thresholds. They are not clean-source release acceptance. Suite traffic uses
+two real 12 Mbps senders with 1,400-byte payloads; actual native occupancy,
+not requested traffic, determines eligibility.
+
+| Case | RDK | prpl |
+| --- | --- | --- |
+| Clear counters, quieter different-channel target | Saved evidence validates a matching native BTM, receiver delivery and 20.34 s settling; 0.957 s native verification. Original run failed a subsequently corrected event assertion and remains failed. A fresh attempt verified in 1.390 s, then failed native candidate HTTP 504. Repeatability remains open. | Pass: utilization 213→16, RCPI 148→144, matching BTM, 0.681 s native verification, 74 positive post-verification receiver intervals and 20.68 s settling. |
+| Retry-pressure veto | Native pressure occurred, but the impaired source was not sustainably overloaded with an otherwise eligible target; unqualified. | Same fixture limitation; unqualified. |
+| Weak-signal rescue during pressure | Client reached the target before any test-optimizer BTM; subsequent native queries failed. No rescue proof. | Client reached the target before any test-optimizer BTM; no qualified rescue action. |
+
+All action runs restored RF, channels, associations and Default-20 without
+native process changes. prpl's subsequent 90-second traffic/memory check,
+after 20 seconds warm-up, measured zero controller or fronthaul RSS growth:
+controller 43.07 MiB, fifteen fronthauls at most 14.36 MiB. This check had
+20 active clients, not a new 100-client qualification.
+
+Raw evidence is under `test-results/guarded-load-followup/` in each checkout.
+`rdk-clear-2-read-only-audit.json` replays the saved decisions and hashes the
+original evidence; it is not a fresh rerun. Next isolate background occupancy
+from the impaired subject and preserve its ownership long enough to observe
+the production hold. Never lower thresholds, fabricate load or credit an
+uncommanded roam. `rf-actions` remains a qualification gate with known failures,
+not an all-green regression claim.
+
+## Room catalog qualification and open failures
+
+The latest bounded room campaign checks **24 ordinary rooms plus three
+geometry/backhaul rooms** on each stack. Ordinary rooms exercise load, initial
+policy convergence, Play, native associations/traffic and the two browser views.
+Passing the configured steering policy does not mean every client must be on
+the mathematically strongest AP: hysteresis, eligibility and dwell still apply.
+
+| Gate | RDK | prpl |
+| --- | --- | --- |
+| Ordinary catalog | 24/24 passed in `catalog-rdk-2/report.json`, with healthy Default-20 restoration and unchanged native identities. Recovered native 503 queries remain recorded performance events. | 19/24 passed initially in `catalog-prpl/report.json`; all five failures then passed in `band-prpl-fixed/report.json`, including Default restoration and unchanged native identities. This is combined evidence, not one clean full-catalog pass. |
+| `backhaul-branch-formation` | Failed initial 60-second convergence **before Play**: ten clients present, only 36/40 candidate observations and nine clients checked at the deadline. Default restoration passed. | Feature checks passed in the combined geometry run. |
+| `backhaul-parent-handover` | Scenario and Default restoration passed. | Feature checks passed in the combined geometry run. |
+| `backhaul-isolation-recovery` | Failed initial convergence **before the outage was played**: incomplete candidate coverage (34/40, seven clients checked). Default restoration passed. This does not establish an outage-recovery failure. | Failed after return: nine of ten room clients reported; later Default only 17/20. Ext-4's reported 6 GHz inventory was absent and final recovery failed. |
+
+The prpl ordinary-room load failures affected `band-ap-counter-roam`,
+`band-upgrade-24-5`, `band-upgrade-5-6`,
+`received-discovery-recovery` and `received-same-band-roam`.
+Privileged clients share the guest's user namespace; blindly re-entering it
+with `nsenter --user` returns `EINVAL`. The shared band-settings fix compares
+namespace identities, omits that flag only for a verified shared namespace,
+and retains it for RDK's unprivileged clients. Missing identity fails closed;
+PID/start-time checks and mount/net/PID/root/working-directory entry remain.
+
+Both browser drivers now await completed fullscreen entry/exit. This prevents
+selecting the hidden Play button or toggling fullscreen back on during cleanup.
+The original prpl catalog also failed restoration through that harness race;
+a separate restoration receipt and targeted rerun record recovery. Original
+reports are not rewritten as passes.
+
+The prpl geometry failure is distinct from the repaired band-settings issue.
+All mesh nodes recovered connectivity and their fronthaul APs remained present.
+The three missing Default clients still had kernel links on Ext-4's 6 GHz BSSs
+and each passed three probes; reporting nevertheless omitted them. Native
+inventory versus adapter reconciliation remains unresolved, not an assumed
+RF/association loss. Manual restart of **Ext-4's native processes only** followed
+the failed run; subsequent room startup failed its inactive-client preflight.
+That manual action is not automatic recovery or test acceptance.
+
+Evidence in each checkout remains under `test-results/guarded-load-followup/`:
+ordinary reports above; RDK `backhaul-rdk/`,
+`backhaul-parent-handover-rdk/`, `backhaul-isolation-recovery-rdk/`;
+prpl `backhaul-prpl/`, `catalog-prpl-restoration.json`,
+`prpl-isolation-topology.json` and `prpl-manual-recovery.log`.
+These diagnostics used recorded working-tree fixes and are **not fresh-import,
+clean-source VM acceptance**. Preserve their identities and failed evidence.
+
+### Next build and test gates
+
+1. Build from committed matching source, with current RDK BPI images or prpl
+   native artifacts; never reuse an older binary solely because a checksum passes.
+2. Establish the new 100-client native baseline and prpl memory gate, then run
+   the ordinary catalog and geometry rooms without competing operators.
+3. Investigate RDK's incomplete fresh candidate snapshots and prpl's
+   post-isolation inventory/recovery; keep production policy and test deadlines.
+4. Qualify guarded-load repeatability and improve the pressure/rescue stimulus
+   without manufacturing utilization, relaxing thresholds or crediting an
+   unsolicited roam as optimizer action.
+5. Only after those gates, qualify optional medium visibility `-F` and priority
+   `-Q` modes separately. Both deployed binaries passed their isolated `-T`
+   selftests, but those do not enable or live-qualify either mode.
+
+The new checkpoint and optional remote-access tooling do not fix these remaining
+native/fixture issues. Full-suite failures remain visible; no known-failure
+exemptions, longer convergence windows or relaxed assertions are added here.
+
 ## Cold room initialization
 
 The first-switch failure was separate from native memory and model-path bugs.
