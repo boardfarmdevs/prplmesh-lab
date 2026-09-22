@@ -120,6 +120,7 @@ class NativeLoadProvider:
         self.ready = threading.Event()
         self.inspection_clients = ()
         self.inspection_inventory = {}
+        self.inspection_contexts = {}
         self.inspection_hops = {}
         self.inspection_at_ns = 0
         self.inspection_epoch = None
@@ -212,6 +213,12 @@ class NativeLoadProvider:
             resets = self._observe_owners_locked(clients, bsses, epoch, now_ns, complete=True)
             self.inspection_clients = clients
             self.inspection_inventory = {key: dict(value) for key, value in bsses.items()}
+            contexts = {}
+            for bssid, value in bsses.items():
+                identity = (epoch, value.get("device_id"), value.get("radio_id"), value.get("channel"), value.get("band"))
+                prior = self.inspection_contexts.get(bssid)
+                contexts[bssid] = (identity, prior[1] if prior and prior[0] == identity else now_ns)
+            self.inspection_contexts = contexts
             self.inspection_hops = dict(hops)
             self.inspection_at_ns = now_ns
         raw["load_collection"] = {
@@ -347,6 +354,13 @@ class NativeLoadProvider:
                             "backhaul_hops": None, "context_state": "unverified"}
                 else:
                     load["context_state"] = "verified"
+                candidate = context.get(bssid, {})
+                observed_context = self.inspection_contexts.get(bssid)
+                if (load["context_state"] == "unverified" and observed_context
+                        and row["monotonic_ns"] > observed_context[1]
+                        and candidate.get("device_id") == device
+                        and candidate.get("radio_id") and candidate.get("channel")):
+                    load.update(radio_id=candidate["radio_id"], channel=candidate["channel"], context_state="verified")
                 load["band"] = context.get(bssid, {}).get("band") if load["context_state"] == "verified" else None
                 load["frequency_mhz"] = frequency_for(load["band"], load["channel"])
                 loads.append(load)

@@ -265,6 +265,27 @@ counter units preserved. Live acceptance remains pending; no room-test pass is c
 
 ## Steering and properties not simulated
 
+### Native backhaul explanations
+
+The room RF inspector, topology node hover and Console NG Load tab share
+`easymesh.backhaul-observations.v1` under `rf_observations.backhaul`.
+They show the actual controller parent/path, wireless hops, frequency and
+fresh native signal/load where an exact parent-BSSID/device/context join exists.
+Missing parents, cycles, conflicting parents and stale topology invalidate the
+path. Retunes invalidate load joins until a new report arrives. Geometry and
+configured SNR never fill missing native measurements.
+
+The RDK adapter includes backhaul AP radio/channel identity in `/api/v1/bsses`;
+prpl uses its nested native radio/BSS inventory. Neither adapter may substitute
+a station-mode copy for an AP context or make it a client steering candidate.
+
+Repeated same-frequency hops flag potential contention, not additive utilization
+or an inferred capacity/bottleneck score. Backhaul traffic remains unavailable
+until a qualified backhaul counter window exists; client traffic is not a
+substitute. These cached joins issue no additional native queries and never
+change optimizer ranking. Signal values without measurement timestamps remain
+unknown even when the topology itself was just polled.
+
 BTM/non-BTM actions, roaming, parent choice and band steering are native mesh
 or optimizer decisions, not RF properties invented by the observer. Use the
 room/topology views for decisions and actual associations. Console NG explains

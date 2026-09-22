@@ -93,6 +93,11 @@ def main():
     def guest(*command):
         return ['lxc', 'exec', vm, '--', *command]
 
+    def install_helper(name):
+        command = ['lxc', 'exec', '--mode', 'non-interactive', vm, '--',
+                   'install', '-m', '0644', '/dev/stdin', '/tmp/' + name]
+        return ['bash', '-c', shlex.join(command) + ' < ' + shlex.quote(str(ROOT / 'tests' / name))]
+
     def native(script, *extra):
         return guest('env', 'PRPL_AGENT_COUNT=4', 'PRPL_CLIENT_COUNT=100', 'PRPL_TOPOLOGY=star',
                      'PROVISIONED_CLIENT_COUNT=100', 'HWSIM_RADIOS=120',
@@ -119,14 +124,19 @@ def main():
         if result.returncode or result.stdout.strip() not in ('active', 'inactive'):
             record('live/room-state', 'failed', detail='room must be active or cleanly stopped')
             return False
-        room_restore = result.stdout.strip() == 'active'
+        was_active = result.stdout.strip() == 'active'
         mask_state = subprocess.run(guest('systemctl', 'is-enabled', 'prplmesh-room-demo.service'),
                                     capture_output=True, text=True, timeout=30).stdout.strip()
         if mask_state.startswith('masked'):
             record('live/room-state', 'failed', detail='room was already masked; resolve this before testing')
             return False
+        if not step('live/install-room-guard', install_helper('suite-room-guard.sh')):
+            return False
+        if not step('live/guard-room', guest('bash', '/tmp/suite-room-guard.sh', 'acquire'), 60):
+            return False
         room_masked = True
-        if not step('live/stop-room', guest('systemctl', 'mask', '--runtime', '--now', 'prplmesh-room-demo.service'), 180):
+        room_restore = was_active
+        if not step('live/stop-room', guest('systemctl', 'stop', 'prplmesh-room-demo.service'), 180):
             return False
         return step('live/full-roster', guest('bash', '-c',
             'for attempt in $(seq 1 36); do '
@@ -194,12 +204,12 @@ def main():
                 console_url = endpoint('wmediumd-console')
         if 'rooms' in chosen:
             if live_ok and browser_ok:
-                helpers_ok = all([step('rooms/push-' + name, ['lxc', 'file', 'push', str(ROOT / 'tests' / name), vm + '/tmp/' + name])
+                helpers_ok = all([step('rooms/install-' + name, install_helper(name))
                                   for name in ('room-feature-guest-audit.py', 'backhaul-native-probe.py')])
                 if helpers_ok:
                     common = ['--host', 'local', '--vm', vm, '--flavor', 'prpl', '--room-url', room_url, '--topology-url', topology_url]
                     step('rooms/catalog-play', ['node', 'tests/room-feature-acceptance.js', *common,
-                         '--yes-act', '--worlds', str(ROOT / 'wmediumd/configurator/worlds'), '--output', str(output / 'rooms')], 14400)
+                         '--yes-act', '--worlds', str(ROOT / 'wmediumd/configurator/worlds/golden'), '--output', str(output / 'rooms')], 14400)
                     step('rooms/geometry-play', ['node', 'tests/room-backhaul-features.js', *common,
                          '--yes-act', 'true', '--output', str(output / 'backhaul')], 3600)
             else:
@@ -224,12 +234,12 @@ def main():
         record('suite/interrupted', 'failed', detail=str(error).replace('\n', ' '))
     finally:
         for needed, name, command, timeout in (
-            (room_masked, 'unmask-room', ('unmask', '--runtime'), 60),
-            (room_restore, 'start-room', ('start',), 180),
+            (room_masked, 'release-room-guard', guest('bash', '/tmp/suite-room-guard.sh', 'release'), 60),
+            (room_restore, 'start-room', guest('systemctl', 'start', 'prplmesh-room-demo.service'), 180),
         ):
             if needed:
                 try:
-                    step('restore/' + name, guest('systemctl', *command, 'prplmesh-room-demo.service'), timeout)
+                    step('restore/' + name, command, timeout)
                 except (OSError, subprocess.SubprocessError, KeyboardInterrupt) as error:
                     record('restore/' + name + '-error', 'failed', detail=str(error).replace('\n', ' '))
         print(f'\nResults: {output / "summary.json"}', flush=True)

@@ -443,13 +443,21 @@ class EventStore:
         with self._condition:
             inspection = copy.deepcopy(self._state["rf_observations"])
         if inspection.get("published_at") and "observations" not in inspection:
-            from optimizer.model import parse_time
             from optimizer.rf_observations import observation_envelope
             loads = inspection.get("bss_loads", [])
             inspection["observations"] = observation_envelope(
                 loads, inspection.get("client_activity", []), inventory={row["bssid"]: row for row in loads},
-                now=parse_time(inspection["published_at"]), error=inspection.get("error"))
+                error=inspection.get("error"))
+        inspection["backhaul"] = self.backhaul_observations(inspection)
         return inspection
+
+    def backhaul_observations(self, inspection):
+        from optimizer.backhaul_observations import backhaul_observations
+        with self._condition:
+            network = self._state["network"]
+            projection = {"observed_at": network.get("observed_at"),
+                          "mesh": copy.deepcopy(network.get("mesh", {}))}
+        return backhaul_observations(projection, inspection)
 
     def mesh_layout(self) -> dict[str, Any]:
         with self._condition:
@@ -480,6 +488,7 @@ class EventStore:
                   "error": str(observations.get("error") or "")[:256],
                   "maximum_age_seconds": observations.get("maximum_age_seconds", 5),
                   "bss_loads": copy.deepcopy(loads),
+                  "backhaul": copy.deepcopy(observations.get("backhaul")),
                   "observations": copy.deepcopy(envelope),
                   "published_at": observations.get("published_at"),
                   "inventory_age_seconds": observations.get("inventory_age_seconds")}

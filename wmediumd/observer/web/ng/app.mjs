@@ -280,6 +280,23 @@ function renderLoad(host, radio, frequency) {
     properties(host, [['BSSID', record.bssid], ['Native report freshness', sample.valid ? age(record.observed_at) : 'stale / unknown'], ['Channel utilization byte', byte], ['Byte / 255', byte == null ? 'Unavailable' : `${decimal(Number(byte) * 100 / 255)}%`], ['Station count', sample.station_count], ['Source / transport', `${record.source || 'unknown'} / ${record.transport || 'unknown'}`], ['Epoch', record.epoch]]);
   }
   if (native) raw(host, 'Shared RF observations · not decision-used values', native.observations || native);
+  const backhaul = native?.backhaul?.paths?.find(row => row.role === radio?.roleState?.role);
+  if (backhaul) {
+    heading(host, 'Native backhaul path · inspection only');
+    const seconds = (Date.now() - Date.parse(backhaul.observed_at)) / 1000;
+    const validPath = result?.roomValid && backhaul.state === 'valid' && seconds >= 0 && seconds <= 5;
+    properties(host, [['Actual path', validPath ? backhaul.path.join(' → ') : 'Unavailable / stale'],
+      ['Wireless hops', validPath ? backhaul.wireless_hops : null]]);
+    if (validPath) for (const link of backhaul.links || []) {
+      const value = record => {
+        const elapsed = (Date.now() - Date.parse(record?.observed_at)) / 1000;
+        return record?.state === 'valid' && elapsed >= 0 && elapsed <= 5 ? `${record.value} ${record.unit}` : 'Unavailable';
+      };
+      properties(host, [['Hop', `${link.role} → ${link.parent_role}`], ['Frequency MHz', link.frequency_mhz],
+        ['Native signal', value(link.signal)], ['AP utilization', value(link.utilization)], ['Backhaul traffic', value(link.traffic)]]);
+    }
+    notice(host, 'Same-frequency hops may contend. Load is not additive; this explanation neither estimates capacity nor changes steering.');
+  }
   if (native?.error) notice(host, native.error);
   heading(host, 'Advertised beacon BSS Load');
   let advertised = false;

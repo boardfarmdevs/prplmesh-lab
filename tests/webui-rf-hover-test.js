@@ -48,4 +48,15 @@ const follower = {snapshot: {rf_observations: observations}, fresh(requireFollow
   return false;
 }};
 assert.match(Follower.prototype.rfHTML.call(follower, node), /Room telemetry unavailable/);
+const backhaul = {paths: [{device_id: 'ap', role: 'extender_1', state: 'valid',
+  observed_at: report.observed_at, path: ['extender_1', '<gateway>'], wireless_hops: 1,
+  links: [{role: 'extender_1', parent_role: '<gateway>', frequency_mhz: 5180,
+    signal: {state: 'valid', value: -40, unit: 'dBm', observed_at: report.observed_at}}]}]};
+const pathHTML = rfHTML(node, {...observations, backhaul}, now);
+assert.match(pathHTML, /Native backhaul · inspection only/);
+assert.match(pathHTML, /-40 dBm/);
+assert.match(pathHTML, /&lt;gateway&gt;/);
+assert.doesNotMatch(rfHTML(node, {...observations, backhaul}, now + 6000), /-40 dBm/);
+assert.match(rfHTML(node, {...observations, backhaul}, now + 6000), /Path unavailable\/stale/);
+assert.doesNotMatch(rfHTML(node, {...observations, backhaul}, now, false), /-40 dBm/);
 console.log('PASS: AP RF hover handles raw/percent load, stations, bands, age, missing/stale/invalid reports, isolation and escaping');

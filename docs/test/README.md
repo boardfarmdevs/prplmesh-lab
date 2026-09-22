@@ -6,6 +6,27 @@ Run the suite **on the outer LXD host**, from the matching checkout. It enters
 the selected VM itself; do not install browser tools inside client containers.
 No tests in this guide export, delete or rebuild the VM.
 
+The live/soak tiers hold the room stopped with an owned runtime systemd
+condition, including when its installed unit lives under `/etc`. They restore
+the prior active state only after native tests finish. Cleanup failures count
+as failures. Room tests use `worlds/golden`, not the source-world directory.
+
+For RF checks, set `ROOM_URL` to the live-room URL from
+`bash deploy/lxd-vm/build.sh urls`. Proxies usually bind the LAN IP, not localhost:
+
+```sh
+python3 tests/rf-access-smoke.py \
+  --room-url "$ROOM_URL" \
+  --output "test-results/rf-access-$(date -u +%Y%m%dT%H%M%SZ).json"
+```
+
+This is not convergence or physics qualification. Independent power/noise/CCA
+currently has only an offline reference contract; live activation is unavailable.
+Add `--require-backhaul-load` on a healthy connected room to require fresh
+native utilization for every reported wireless backhaul hop. Unknown context
+fails rather than borrowing a fronthaul sample. Room drivers install their
+native audit helpers automatically, replacing old operator-owned `/tmp` copies.
+
 ## Prepare
 
 Have Python 3.10+, pytest, a C/C++ compiler, Go 1.22+, Node 22+, npm and LXD
@@ -57,7 +78,7 @@ bash tests/run-prplmesh-suite.sh all --yes-act --install-browser-deps
 Actual URLs are read from the selected VM's proxy devices. The runner pushes
 the read-only room audit helpers, runs locally without SSH, and stores separate
 ordinary-room and geometry-room reports. Each room driver restores the default
-world. Native tiers stop/mask the room **once**, require the full 100-client
+world. Native tiers guard/stop the room **once**, require the full 100-client
 baseline, hold that state across acceptance and churn, and restore the prior
 service state in cleanup, including reported restoration failures.
 

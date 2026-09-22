@@ -20,6 +20,14 @@ for (const changes of [{utilization: null}, {utilization: 256}, {utilization: -1
 assert.match(describe({...input, observations: {...input.optimizer.rf_observations, error: 'closed'}}),
   /Utilization \(0–255\): — unavailable\/stale/);
 assert.doesNotMatch(describe({...input, selected: 'other'}), /BSSID ap/);
+const pathInput = {...input, selected: 'extender_1', observations: {backhaul: {paths: [
+  {role: 'extender_1', state: 'valid', observed_at: observation.observed_at, path: ['extender_1', 'gateway'],
+    wireless_hops: 1, links: [{role: 'extender_1', parent_role: 'gateway', frequency_mhz: 5180,
+      signal: {state: 'valid', value: -40, unit: 'dBm', observed_at: observation.observed_at}}]}]}}};
+assert.match(describe(pathInput), /Native path: extender_1 → gateway/);
+assert.match(describe(pathInput), /Native signal: -40 dBm/);
+assert.doesNotMatch(describe({...pathInput, now: now + 6000}), /-40 dBm/);
+assert.match(describe({...pathInput, now: now + 6000}), /Native path: — unavailable\/stale/);
 assert.match(describe({...input, optimizer: {}, world: {utilization: 255}}), /collector unavailable/);
 const received = {...input, selected: 'client', optimizer: {client_decisions: [
   {role: 'client', sta_mac: 'client-mac', current_rcpi: 120,

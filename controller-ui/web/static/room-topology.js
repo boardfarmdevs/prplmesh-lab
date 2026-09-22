@@ -191,7 +191,21 @@
       if (!previous || Date.parse(row.observed_at) > Date.parse(previous.observed_at)) reports.set(key, row);
       if (!expected.has(key)) expected.set(key, {bssid: row.bssid, ssid: 'BSS'});
     }
-    if (!expected.size) return '';
+    const backhaul = observations.backhaul?.paths?.find(row => identity(row.device_id) === identity(node.id));
+    const pathAge = (now - Date.parse(backhaul?.observed_at)) / 1000;
+    const pathFresh = available && backhaul?.state === 'valid' && Number.isFinite(pathAge) && pathAge >= 0 && pathAge <= 5;
+    const pathValue = record => {
+      const age = (now - Date.parse(record?.observed_at)) / 1000;
+      return pathFresh && record?.state === 'valid' && Number.isFinite(record.value) && age >= 0 && age <= 5
+        ? escapeHTML(record.value + ' ' + record.unit) : '— unavailable';
+    };
+    const pathHTML = !backhaul ? '' : '<section class="topology-rf"><b>Native backhaul · inspection only</b><small>' +
+      (pathFresh ? escapeHTML(backhaul.path.join(' → ')) + ' · ' + backhaul.wireless_hops + ' wireless hops' : 'Path unavailable/stale') + '</small>' +
+      (pathFresh ? (backhaul.links || []).map(link => '<small>' + escapeHTML(link.role + ' → ' + link.parent_role) +
+        ' · ' + escapeHTML(link.frequency_mhz ?? 'unknown') + ' MHz · signal ' + pathValue(link.signal) +
+        ' · utilization ' + pathValue(link.utilization) + ' · traffic ' + pathValue(link.traffic) + '</small>').join('') : '') +
+      '<small>Same-frequency hops may contend; load is not additive. No capacity inferred.</small></section>';
+    if (!expected.size) return pathHTML;
     const ageLimit = Number.isFinite(observations.maximum_age_seconds) && observations.maximum_age_seconds > 0
       ? Math.min(5, observations.maximum_age_seconds) : 5;
     const bands = {0: '2.4 GHz', 1: '5 GHz', 3: '6 GHz'};
@@ -227,7 +241,7 @@
       ? 'Native AP metrics collector unavailable.' : 'Native AP metrics · report receipt age.';
     const publication = observations.published_at ? '<small>Shared RF observations · independent publication. ' +
       (observations.policy_enabled ? 'Load policy enabled; decision evidence is separate.' : 'Inspection only; load policy disabled.') + '</small>' : '';
-    return '<section class="topology-rf"><b>AP-reported BSS load</b>' + publication + '<table>' +
+    return pathHTML + '<section class="topology-rf"><b>AP-reported BSS load</b>' + publication + '<table>' +
       '<thead><tr><th>BSS / radio</th><th>Channel use</th><th>STAs</th><th>Age</th></tr></thead><tbody>' +
       rows + '</tbody></table><small>' + escapeHTML(status) + '</small>' +
       '<small>Shared-radio utilization is not additive. Not a beacon capture or physical capacity.</small>' +

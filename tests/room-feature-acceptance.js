@@ -6,7 +6,7 @@ const {performance} = require('node:perf_hooks');
 const {execFile} = require('node:child_process');
 const {promisify} = require('node:util');
 const execFileAsync = promisify(execFile);
-const {startHostMonitor, hostCommand} = require('./room-host-monitor.js');
+const {startHostMonitor, hostCommand, guestAuditInstallCommand} = require('./room-host-monitor.js');
 const pause = milliseconds => new Promise(resolve => setTimeout(resolve, milliseconds));
 const lower = value => String(value || '').toLowerCase();
 const same = (left, right) => JSON.stringify(left) === JSON.stringify(right);
@@ -306,6 +306,7 @@ function argumentsFrom(argv) {
 }
 
 async function run(args) {
+  await execFileAsync(...guestAuditInstallCommand(args.host, args.vm), {timeout: 30000, maxBuffer: 1048576});
   const {chromium} = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
   const directory = path.resolve(args.output);
   if (fs.existsSync(directory) && fs.readdirSync(directory).length) throw new Error('Use a new, empty output directory to preserve previous evidence');

@@ -1,8 +1,26 @@
 # EasyMesh RF laboratory: assessment and prioritized development plan
 
 Date: 14 September 2026  
-Status: Proposed development plan; no implementation or lab changes made  
+Status: Shared RF/backhaul inspection implemented; live qualification pending
 Audience: RF lab, RDK, prplMesh, optimizer and room-viewer developers
+
+## Current implementation order
+
+This update supersedes the first-work ordering in the original proposal below;
+its historical source baseline is not current release qualification.
+
+The shared RF catalog, cached native observations, independent publication and
+room/topology/Console NG inspection are implemented. Native backhaul paths and
+exact-context load are observation-only; missing traffic counters stay unknown.
+See the [maintained assessment](../radio/virtual-rf-assessment.md#94-shared-consumer-access-and-next-rf-increment).
+
+1. Build a fresh prpl VM and qualify shared access, load/discovery and backhaul
+   rooms with bounded tests. Source tests do not establish live qualification.
+2. Retain RDK's remaining handover-metrics and isolated-backhaul-AP failures as
+   acceptance gates; do not weaken them to enable new models.
+3. Implement independent power/noise/CCA only after both-stack qualification,
+   with negotiated apply/readback, native reporting and room restoration.
+   `wmdcfg/rf_environment.py` is an offline reference contract, not actuation.
 
 ## 1. Objective and assessment
 

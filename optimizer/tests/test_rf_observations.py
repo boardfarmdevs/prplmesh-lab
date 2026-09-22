@@ -126,3 +126,23 @@ def test_snapshot_projection_does_not_change_load_policy_decisions():
     before = engine.evaluate(snapshot)
     snapshot.rf_observations()
     assert engine.evaluate(snapshot) == before
+
+
+def test_backhaul_context_join_is_inspection_only_and_resets_on_retune(monkeypatch):
+    monkeypatch.setattr("optimizer.load_observer.provenance", lambda *_args: "epoch")
+    provider = NativeLoadProvider()
+    snapshot = loaded()
+    owner = snapshot.clients[0].connected_device_id
+    raw = {"topology": {"nodes": [{"id": owner}], "edges": []}, "bsses": {"bsses": [
+        {"bssid": SOURCE, "device_id": owner, "radio_id": SOURCE, "channel": 36, "band": 1,
+         "ssid": "mesh_backhaul"}]}}
+    provider.observe_owners((), raw, now_ns=1000000000)
+    provider.ingest({"source": owner, "monotonic_ns": 2000000000,
+                     "received_at": parse_time(snapshot.observed_at).timestamp(),
+                     "loads": [{"bssid": SOURCE, "utilization": 0, "station_count": 0}], "traffic": []})
+    assert provider.inspection(now_ns=2000000000)["bss_loads"][0]["frequency_mhz"] == 5180
+    assert provider.contexts == {}
+    raw["bsses"]["bsses"][0]["channel"] = 44
+    provider.observe_owners((), raw, now_ns=3000000000)
+    load = provider.inspection(now_ns=3000000000)["bss_loads"][0]
+    assert load["context_state"] == "unverified" and load["frequency_mhz"] is None

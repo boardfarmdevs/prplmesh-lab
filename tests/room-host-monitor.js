@@ -10,6 +10,16 @@ function hostCommand(host, command) {
   return ['ssh', ['-o', 'BatchMode=yes', '-o', 'ConnectTimeout=5', '--', host, command]];
 }
 
+function guestAuditInstallCommand(host, vm) {
+  if (!/^[a-zA-Z0-9][a-zA-Z0-9_.-]*$/.test(vm)) throw new Error('Invalid VM name');
+  const commands = ['room-feature-guest-audit.py', 'backhaul-native-probe.py'].map(name => {
+    const encoded = fs.readFileSync(path.join(__dirname, name)).toString('base64');
+    return 'printf %s ' + encoded + ' | base64 -d | lxc exec --mode non-interactive ' + vm +
+      ' -- install -m 0644 /dev/stdin /tmp/' + name;
+  });
+  return hostCommand(host, 'set -euo pipefail; ' + commands.join('; '));
+}
+
 class HostMonitor {
   constructor(child, filename) {
     this.child = child;
@@ -73,4 +83,4 @@ async function startHostMonitor(host, directory, options = {}) {
   catch (error) { await monitor.stop(); throw error; }
 }
 
-module.exports = {HostMonitor, startHostMonitor, hostCommand};
+module.exports = {HostMonitor, startHostMonitor, hostCommand, guestAuditInstallCommand};

@@ -7,7 +7,7 @@ const {execFile} = require('child_process');
 const {promisify} = require('util');
 const {kernelClientAudit} = require('./room-feature-acceptance.js');
 const execute = promisify(execFile);
-const {hostCommand} = require('./room-host-monitor.js');
+const {hostCommand, guestAuditInstallCommand} = require('./room-host-monitor.js');
 const rooms = ['backhaul-branch-formation', 'backhaul-parent-handover', 'backhaul-isolation-recovery'];
 const delay = milliseconds => new Promise(resolve => setTimeout(resolve, milliseconds));
 
@@ -85,6 +85,7 @@ async function run(options) {
   const directory = path.resolve(options.output);
   assert.ok(!fs.existsSync(directory), 'Use a new output directory');
   fs.mkdirSync(directory, {recursive: true});
+  await execute(...guestAuditInstallCommand(options.host, options.vm), {timeout: 30000, maxBuffer: 1048576});
   const save = (name, value) => fs.writeFileSync(path.join(directory, name), JSON.stringify(value, null, 2) + '\n');
   const report = {flavor, started: new Date().toISOString(), scope: 'Geometry-room playback, native parent/traffic convergence and restoration; bounded, not a soak',
     rooms: [], errors: [], featureChecksPassed: false, recoveryPassed: false};

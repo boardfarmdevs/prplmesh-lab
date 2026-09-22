@@ -48,8 +48,8 @@ def test_native_steps_hold_room_stopped_until_after_churn(tmp_path):
     assert result == 0
     names = [row['name'] for row in report['results']]
     assert names.index('live/stop-room') < names.index('live/native-acceptance') < names.index('soak/churn')
-    assert names.index('soak/churn') < names.index('restore/unmask-room') < names.index('restore/start-room')
-    assert sum('mask' in command for command in calls) == 1
+    assert names.index('soak/churn') < names.index('restore/release-room-guard') < names.index('restore/start-room')
+    assert sum('acquire' in command for command in calls) == 1
     assert sum('start' in command for command in calls) == 1
     readiness = next(command for command in calls if 'wmediumd/observer/check-ready.py' in command)
     assert 'http://192.0.2.1:42001/' in readiness
@@ -67,7 +67,7 @@ def test_inactive_room_is_not_started_by_cleanup(tmp_path):
     result, calls, _report = run_fixture(tmp_path, state='inactive')
     assert result == 0
     assert not any('start' in command for command in calls)
-    assert any('unmask' in command for command in calls)
+    assert any('release' in command for command in calls)
 
 
 def test_roster_gate_failure_never_runs_native_checks(tmp_path):
@@ -87,3 +87,18 @@ def test_restore_failure_is_a_suite_failure(tmp_path):
     result, _calls, report = run_fixture(tmp_path, fail='start')
     assert result == 1
     assert report['results'][-1]['status'] == 'failed'
+
+
+def test_failed_guard_acquisition_never_changes_another_suites_room(tmp_path):
+    result, calls, report = run_fixture(tmp_path, fail='acquire')
+    assert result == 1
+    assert not any(any(operation in command for operation in ('start', 'stop', 'release')) for command in calls)
+    assert not any(row['name'].startswith('restore/') for row in report['results'])
+
+
+def test_guard_installation_can_replace_an_operator_owned_tmp_file(tmp_path):
+    result, calls, _report = run_fixture(tmp_path)
+    assert result == 0
+    installation = next(command for command in calls if command[:2] == ['bash', '-c'])
+    assert 'exec --mode non-interactive fixture -- install -m 0644 /dev/stdin /tmp/suite-room-guard.sh' in installation[2]
+    assert not any(command[:3] == ['lxc', 'file', 'push'] for command in calls)

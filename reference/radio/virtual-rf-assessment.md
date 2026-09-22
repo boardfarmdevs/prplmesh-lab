@@ -72,26 +72,21 @@ Calibrated PHY service, hidden nodes and demand/capacity remain future work.
 
 ## 2. Evidence and deployed architecture
 
-### 2.1 Deployed architecture
+### 2.1 Source architecture
 
-| Item | RDK on rev140 | prpl on rev150 |
+| Item | RDK | prpl |
 | --- | --- | --- |
-| Running VM | `rdkeasymesh-20-0908` | `prplmesh-20-0908` |
-| Canonical repository | `/home/rev/yocto/rdkb-bpi-nosrc-vcpe-0908-clean/meta-cmf-bananapi-vcpe` | `/home/rev/git/prplmesh-lab` |
-| Prior qualification checkpoint | `0d9cde2` | `e70a431` |
 | Guest kernel | `7.0.0-30-generic` | `7.0.0-30-generic` |
-| Loaded/on-disk hwsim srcversion, patch 0010 | `542E9DB26233E9A8439431A`, matching | Same, matching |
-| Configured radio pool / channel contexts | 32 / 3 | 40 / 3 |
+| Default radio pool / channel contexts | 128 / 3 | 120 / 3 |
 | Mesh radio ownership | One wiphy per mesh container, concurrent band-specific VAPs | Three wiphys per mesh container |
-| Default active radio requirement | 5 mesh + 20 client = 25 | 15 mesh + 20 client = 35 |
+| Bound radios, full client pool | 5 mesh + 100 client = 105 | 15 mesh + 100 client = 115 |
 | Logical mesh roles | Controller plus colocated Agent-1 and four extenders | Same logical arrangement |
 | Selected medium | Userspace wmediumd; `kernel_medium=N` | Userspace wmediumd; `kernel_medium=N` |
 | Startup signal model | `snr`, default SNR 40 dB | Same |
 | Radio regulatory test setting | `regtest=5` | Same |
 
-The pool totals are not counts of independent RF channels. Nor are six
-logical mesh roles six physical mesh containers. Recheck spare radio ownership
-before adding foreign APs; do not reload hwsim during a room transition.
+VM names/ports are operator-selected. Rooms select presence without deleting
+radios or reloading hwsim. Pool size is not channel count.
 
 Both build scripts pin wmediumd to
 `717e5d7fcc23eecbc8e32bd897a8fd4b1e3ba640`. The hwsim patch sets are identical
@@ -111,23 +106,10 @@ this is not a byte-for-byte rebuild comparison of every appliance component.
 
 ### 2.2 Evidence baseline
 
-The initial audit remains outside the repository under
-`/home/rev/work/rf-phase0-0910/`. Its relevant findings were:
-
-- **E01/E12:** userspace medium and matching module identity; monitor ACK
-  channel-context fix present.
-- **E02–E06:** dummy/absent surveys, missing prpl BSS-load configuration and
-  RDK HAL no-op survey methods. Phases 1–2 replace these.
-- **E07:** legacy PHY approximations, fixed RX metadata and global queue
-  reservations; Phase 3 addresses sections 4.5–4.7's bounded subset.
-- **E08/E10:** idealized candidate metrics and signal-only optimizer inputs.
-- **E09:** prpl noise/ESP placeholders and zero-to-10 scan rewrite; the rewrite
-  is removed, unsupported noise/ESP remain unqualified.
-- **E11:** documented RDK rate/storage limitations, not a reproduced overflow.
-
-Old dummy values are not current measurements. Empty, unsupported, stale and
-measured idle remain distinct. Current contracts and acceptance below supersede
-historical source observations.
+Initial audit IDs E01–E12 identify historical findings, not current measurements.
+Phases 1–2 replace absent surveys and dummy load; Phase 3 addresses bounded
+legacy PHY/queue behavior. Candidate modeling and noise/ESP/capacity limits
+remain explicit below. Empty, unsupported, stale and measured idle differ.
 
 ### 2.3 Three separate planes
 
@@ -570,6 +552,28 @@ holds are legitimate. Unbounded queues, artificial replay waits and accidental
 serialization are not. “Instant” should mean bounded measured overhead,
 not removal of every meaningful timing mechanism.
 
+### 9.4 Shared consumer access and next RF increment
+
+Both source trees publish cached native RF independently of optimizer work,
+with explicit freshness, context and provenance. Native backhaul explanations
+join actual parent paths, timestamped signal and exact parent-BSSID load in the
+room, topology and Console NG. Missing/ambiguous parents, stale samples and
+retunes fail closed. Shared-frequency hops indicate possible contention, not
+capacity. Backhaul traffic remains unavailable without qualified counter windows;
+client counters are not substituted. Policy inputs/ranking are unchanged.
+
+Run `tests/rf-access-smoke.py` for bounded GET-only access checks. This does not
+replace low/high/off traffic, received-discovery and branch-room qualification.
+No prpl runtime deployment or new live room pass is claimed by this source port.
+
+The next power/noise/CCA increment has an opt-in input contract and executable
+reference model in `wmdcfg/rf_environment.py`, **not live actuation**. Default
+−91 dBm noise reference and −90 dBm CCA preserve the legacy calculation.
+Noise changes decode SNR independently of received power; CCA separately
+classifies a frame's energy. It synthesizes no background traffic or measured
+noise. Runtime activation fails closed. Negotiated apply/readback, native
+context reporting, room restoration and bounded qualification remain required.
+
 ## 10. Phased delivery
 
 Effort: **S** bounded adapter work, **M** cross-component, **L** core model;
@@ -743,10 +747,9 @@ scenarios and discovery/contention fidelity levels; it does not replace the
 lower-layer measurement work here. Treat old proposal observations as
 historical unless rechecked against the pinned implementation.
 
-When a phase lands, replace the relevant proposed item with its implemented
-contract, source pointer and compact validation summary. Remove superseded
-claims rather than appending another dated report. Update both mirrored copies
-and both radio indexes; preserve independent release/build instructions.
+When a phase lands, replace proposals with contracts, sources and validation.
+Remove superseded claims. Update both copies and indexes; preserve separate
+release/build instructions.
 
 ### 12.3 Implemented Phase 0: truthfulness baseline
 
@@ -1254,11 +1257,9 @@ The current counter/inspection work remains observation-only:
   receiver/source, scan identity and two-second per-neighbor freshness.
   Stale counters stay hidden; shared-radio utilization is not additive.
 
-Next:
-
-1. **Add backhaul path evidence:** join native backhaul RCPI, radio load and
-   traffic into explanations before target ranking consumes it.
-2. **Separate noise/interference/CCA:** version received power, noise and sensed
-   undecodable energy; this is the next foundational model change.
+Next: qualify the shared RF/backhaul observations on a running prpl VM.
+Native path/load joins are implemented; traffic remains unavailable without
+qualified counter windows. Independent power/noise/CCA follows this gate,
+with negotiated control, restoration and native reporting, not guessed values.
 
 Modern PHY/aggregation, ESP and full collision/DCF calibration remain later.

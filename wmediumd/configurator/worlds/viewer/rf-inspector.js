@@ -109,6 +109,27 @@
       } else lines.push('No load-policy evidence; signal/capability policy may be active.');
     } else {
       lines.push('NATIVE OBSERVATIONS — never filled from geometry or modeled busy time');
+      const backhaul = observations.backhaul;
+      const path = backhaul?.paths?.find(row => row.role === input.selected);
+      if (path) {
+        const fresh = path.state === 'valid' && age(path.observed_at) !== null && age(path.observed_at) <= 5;
+        lines.push('BACKHAUL — inspection only, not target ranking',
+          'Native path: ' + (fresh ? path.path.join(' → ') : '— unavailable/stale'),
+          'Wireless hops: ' + (fresh ? path.wireless_hops : 'unknown'));
+        if (fresh) {
+          for (const link of path.links || []) {
+            const value = record => record?.state === 'valid'
+              ? measured(record.value, record.observed_at, 5, number => number + ' ' + record.unit) : '— ' + (record?.reason || 'unavailable');
+            lines.push(link.role + ' → ' + link.parent_role + ' · ' + (link.frequency_mhz || 'unknown') + ' MHz',
+              'Native signal: ' + value(link.signal), 'AP utilization: ' + value(link.utilization),
+              'Backhaul traffic: ' + value(link.traffic));
+          }
+          for (const [frequency, count] of Object.entries(path.shared_frequency_hops || {})) {
+            lines.push(count + ' hops share ' + frequency + ' MHz; potential contention, not additive load.');
+          }
+        } else if (path.reason) lines.push(path.reason);
+        lines.push('No physical capacity or bottleneck score is inferred.');
+      }
       if (decision) lines.push(
         'Serving RCPI: ' + measured(decision.current_rcpi, decision.metric_observed_at,
           decision.measurement_source === 'client_nl80211_received_scan' ? 2 : 5),

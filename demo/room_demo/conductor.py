@@ -992,10 +992,11 @@ class LiveConductor:
                 inspection = {"schema": "easymesh.rf-inspection.v2", "enabled": True,
                               "error": str(error), "bss_loads": [], "client_activity": []}
             inspection["policy_enabled"] = self._rf_policy_enabled
+            inspection["backhaul"] = self.store.backhaul_observations(inspection)
             for row in inspection["bss_loads"]:
                 row["role"] = self._ap_role_by_bssid.get(row["bssid"])
             signature = json.dumps({key: inspection.get(key) for key in (
-                "enabled", "policy_enabled", "error", "context_state", "bss_loads", "client_activity")}, sort_keys=True)
+                "enabled", "policy_enabled", "error", "context_state", "bss_loads", "client_activity", "backhaul")}, sort_keys=True)
             if (epoch, signature) != previous and self.store.publish_rf_observations(inspection, self._time(), epoch):
                 previous = (epoch, signature)
             if self.stop_event.wait(0.5):
