@@ -236,6 +236,8 @@ def test_main_keeps_gates_failure_evidence_and_default_restart_order(tmp_path, m
     monkeypatch.setattr(HELPER.subprocess, "Popen", spawn)
     monkeypatch.setattr(HELPER, "shutdown_manifest", shutdown)
     monkeypatch.setattr(HELPER, "restored_journal", baseline)
+    monkeypatch.setattr(HELPER, "prepare_subject", lambda *_args: None)
+    monkeypatch.setattr(HELPER, "restore_subject", lambda *_args: None)
     monkeypatch.setattr(HELPER.ROOMS, "traffic_errors", lambda *_args: ["cancelled"] if failure == "traffic" else [])
     result = HELPER.main()
     report = json.loads((output / "report.json").read_text())
@@ -249,6 +251,15 @@ def test_main_keeps_gates_failure_evidence_and_default_restart_order(tmp_path, m
         assert report["counter_guard_enabled"] == (failure != "configuration")
     if failure is None:
         assert calls.index(["shutdown"]) < next(index for index, command in enumerate(calls) if "start" in command)
+
+
+def test_traffic_fixture_requires_one_exact_native_ssid_frequency_ap():
+    interface = "Interface wlan1\n addr 02:00:00:00:01:00\n ssid private_ssid\n type AP\n channel 36 (5180 MHz)\n"
+    assert HELPER.fixture_bssid(interface, "private_ssid", 5180) == "02:00:00:00:01:00"
+    for invalid in (interface.replace("type AP", "type managed"), interface * 2,
+                    interface.replace("5180", "2437"), interface.replace("private_ssid", "iot_ssid")):
+        with pytest.raises(RuntimeError, match="one native AP"):
+            HELPER.fixture_bssid(invalid, "private_ssid", 5180)
 
 
 def test_manifest_cohorts_match_bound_world_clients_not_pool_headcount():

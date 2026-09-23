@@ -138,6 +138,9 @@ def main():
         room_restore = was_active
         if not step('live/stop-room', guest('systemctl', 'stop', 'prplmesh-room-demo.service'), 180):
             return False
+        if not step('live/prepare-backhaul', guest('python3', '/opt/prplmesh-lab/tests/prepare-native-baseline.py',
+                                                 '--yes-act', '--agents', '4'), 120):
+            return False
         return step('live/full-roster', guest('bash', '-c',
             'for attempt in $(seq 1 36); do '
             'python3 /opt/prplmesh-lab/tests/topology-acceptance.py --agents 4 --clients 100 --topology star && exit 0; '

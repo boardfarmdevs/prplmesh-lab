@@ -2,8 +2,7 @@
 
 [Build guide](../build/README.md) · [Detailed test tools](../../tests/README.md)
 
-Run from the matching **outer-host checkout**. Existing VMs are reused;
-browser tools stay on the host.
+Run from the matching **outer-host checkout**; reuse existing VMs.
 
 Live/soak tiers guard/stop the room until native tests finish, then restore its
 prior active state. Cleanup failures fail qualification. Room tests use `worlds/golden`.
@@ -26,6 +25,14 @@ native audit helpers automatically, replacing old operator-owned `/tmp` copies.
 
 ## Prepare
 
+Activate the host test environment:
+
+```sh
+python3 -m venv "$HOME/.venvs/prplmesh-tests"
+source "$HOME/.venvs/prplmesh-tests/bin/activate"
+python3 -m pip install -r tests/requirements.txt
+```
+
 Have Python 3.10+, pytest, a C/C++ compiler, Go 1.22+, Node 22+, npm and LXD
 access. Ubuntu's default Node may be too old; use a supported Node installation.
 The browser tiers need Playwright Core, Chromium and its Linux shared libraries.
@@ -41,8 +48,7 @@ unset DISPLAY WAYLAND_DISPLAY
 bash tests/run-prplmesh-suite.sh static webui browser --install-browser-deps
 ```
 
-Default: `static`; `--list` lists tiers. Activate your Python virtual environment
-with pytest first. Tool installation is opt-in.
+Default: `static`; `--list` lists tiers. Tool installation is opt-in.
 
 ## Tiers
 
@@ -79,12 +85,11 @@ bash tests/run-prplmesh-suite.sh rooms live --yes-act --install-browser-deps
 bash tests/run-prplmesh-suite.sh all --yes-act --install-browser-deps
 ```
 
-Actual URLs are read from the selected VM's proxy devices. The runner pushes
-the read-only room audit helpers, runs locally without SSH, and stores separate
-ordinary-room and geometry-room reports. Each room driver restores the default
-world. Native tiers guard/stop the room **once**, require the full 100-client
-baseline, hold that state across acceptance and churn, and restore the prior
-service state in cleanup, including reported restoration failures.
+URLs come from the selected VM's proxies; audit helpers install automatically.
+Room drivers restore Default and report ordinary/geometry rooms separately.
+Native tiers guard/stop the room **once**, restore root parents as an explicit
+test fixture (not optimizer steering), and require 100 clients throughout
+acceptance/churn. Cleanup restores the prior service state; restoration errors fail.
 
 ```sh
 bash tests/run-prplmesh-suite.sh soak --yes-act --churn-iterations 10

@@ -14,7 +14,7 @@ async function test() {
   const installation = guestAuditInstallCommand('local', 'fixture');
   assert.equal(installation[0], 'bash');
   assert.match(installation[1][1], /set -euo pipefail;/);
-  for (const name of ['room-feature-guest-audit.py', 'backhaul-native-probe.py'])
+  for (const name of ['room-feature-guest-audit.py', 'room-feature-rf-audit.py', 'backhaul-native-probe.py'])
     assert.ok(installation[1][1].includes('install -m 0644 /dev/stdin /tmp/' + name));
   assert.throws(() => guestAuditInstallCommand('local', '-x'), /Invalid VM/);
   assert.throws(() => guestAuditInstallCommand('local', 'vm; false'), /Invalid VM/);

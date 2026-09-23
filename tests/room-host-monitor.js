@@ -12,7 +12,7 @@ function hostCommand(host, command) {
 
 function guestAuditInstallCommand(host, vm) {
   if (!/^[a-zA-Z0-9][a-zA-Z0-9_.-]*$/.test(vm)) throw new Error('Invalid VM name');
-  const commands = ['room-feature-guest-audit.py', 'backhaul-native-probe.py'].map(name => {
+  const commands = ['room-feature-guest-audit.py', 'room-feature-rf-audit.py', 'backhaul-native-probe.py'].map(name => {
     const encoded = fs.readFileSync(path.join(__dirname, name)).toString('base64');
     return 'printf %s ' + encoded + ' | base64 -d | lxc exec --mode non-interactive ' + vm +
       ' -- install -m 0644 /dev/stdin /tmp/' + name;

@@ -407,6 +407,13 @@ gate; these timings describe native roster readiness, not optimal-AP proof.
 
 ### Direct prpl diagnostic checks
 
+The recommend-only counter-manifest helper explicitly associates its traffic
+subject with the room's nearby Ext-1 before Play, using the bound AP's native
+SSID/frequency/BSSID. It verifies physical and controller ownership and restores
+the original association after RF recovery. This is fixture setup, **not** an
+optimizer action or a steering qualification. Without it, an inherited distant
+owner can make the deliberately asymmetric uplink completely unusable.
+
 On an authorized dirty diagnostic runtime, do not bypass the suite's clean
 source gate. Use these direct helpers after the memory/full-roster work has
 finished, the room service is active and Default is healthy/paused at zero,

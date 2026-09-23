@@ -6,6 +6,7 @@ import importlib.util
 import json
 import os
 from pathlib import Path
+import re
 import signal
 import subprocess
 import sys
@@ -117,6 +118,59 @@ def guard_observation(current, inspection):
     return {"counter_guard_enabled": configured, "observed_load_decisions": decisions}
 
 
+def fixture_bssid(interfaces, ssid, frequency):
+    matches = []
+    for block in re.split(r"\bInterface\s+", interfaces)[1:]:
+        address = re.search(r"(?m)^\s*addr ([0-9a-f:]{17})\s*$", block)
+        name = re.search(r"(?m)^\s*ssid (.+)$", block)
+        channel = re.search(r"\((\d+) MHz\)", block)
+        if (address and name and channel and name[1].strip() == ssid
+                and int(channel[1]) == frequency and re.search(r"(?m)^\s*type AP\s*$", block)):
+            matches.append(address[1])
+    if len(matches) != 1:
+        raise RuntimeError("fixture requires one native AP with the subject's SSID and frequency")
+    return matches[0]
+
+
+def prepare_subject(request, hero, fixture, ap_container):
+    from wmdcfg.rf_qualify import association_identity
+    from wmdcfg.rf_spatial import roam_client
+    from wmdcfg.rf_validate import command
+
+    container = hero["container"]
+    original = association_identity(command("lxc", "exec", container, "--", "iw", "dev", "wlan0", "link"))
+    if original is None:
+        raise RuntimeError("manifest traffic subject has no physical association")
+    fixture.update(container=container, original=list(original), verified=False,
+                   ap_role="extender_1", ap_container=ap_container,
+                   method="explicit pre-play supplicant fixture; not an optimizer action")
+    target = fixture_bssid(command("lxc", "exec", ap_container, "--", "iw", "dev"),
+                           hero["expected_ssid"], original[1])
+    fixture["target_bssid"] = target
+    roam_client(container, target, original[1])
+    deadline = time.monotonic() + 30
+    while time.monotonic() < deadline:
+        current = request("current")
+        optimizer = current.get("optimizer", {})
+        if optimizer.get("mode") != "recommend" or optimizer.get("actions_used", 0) != 0:
+            raise RuntimeError("fixture requires recommend mode with zero optimizer actions")
+        if any(row.get("role") == hero["role"] and row.get("container") == container
+                 and row.get("band") == hero["expected_band"] and row.get("connected_bssid") == target
+                 for row in current.get("network", {}).get("clients", [])):
+            fixture["verified"] = True
+            return
+        time.sleep(.5)
+    raise RuntimeError("physical/controller traffic fixture did not converge")
+
+
+def restore_subject(fixture):
+    from wmdcfg.rf_spatial import roam_client
+
+    if fixture.get("original"):
+        roam_client(fixture["container"], *fixture["original"])
+        fixture["restored"] = True
+
+
 def main():
     parser = argparse.ArgumentParser(description="Bounded opt-in manifest operation; no steering or pressure guarantee")
     parser.add_argument("--stack", choices=("rdk", "prpl"), required=True)
@@ -181,6 +235,10 @@ def main():
                 "--recovery-file", str(journal)], cwd=ROOT, stdin=subprocess.DEVNULL, stdout=log,
                 stderr=subprocess.STDOUT, start_new_session=True)
             report["initial"] = healthy(10, 60)
+            report["traffic_fixture"] = {}
+            manifest = json.loads((prefix / "demo/manifests/native-counter-guard-room-profile.json").read_text())
+            bindings = json.loads((ROOT / manifest["bindings"]).read_text())["roles"]
+            prepare_subject(request, manifest["hero"], report["traffic_fixture"], bindings["extender_1"])
             token = request("interactions/lease", {"owner": "counter-guard-manifest-smoke"})["token"]
             room = request("interactions")
             request("playback", {"token": token, "action": "play"}, room["revision"])
@@ -229,6 +287,7 @@ def main():
             if stopped:
                 if not baseline_restored:
                     raise RuntimeError("baseline recovery unverified; Default service left stopped for operator recovery")
+                restore_subject(report.get("traffic_fixture", {}))
                 if Path("/run/easymesh-suite-room-guard").exists():
                     raise RuntimeError("external suite acquired room during cleanup")
                 require_inactive(service)
