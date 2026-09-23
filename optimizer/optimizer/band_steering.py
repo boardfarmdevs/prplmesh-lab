@@ -35,10 +35,10 @@ def same_band_received(profile):
 
 def band_policy(config, *, same_band=False):
     if same_band:
-        return BandThresholdPolicy(replace(config, band_upgrade_enabled=False, load_aware_enabled=False,
+        return BandThresholdPolicy(replace(config, band_upgrade_enabled=False, load_aware_enabled=False, load_counter_guard_enabled=False,
                                            condition_hold_seconds=1, minimum_dwell_seconds=3,
                                            reject_stale_metrics_after_seconds=2))
-    return BandThresholdPolicy(replace(config, band_upgrade_enabled=True, load_aware_enabled=False,
+    return BandThresholdPolicy(replace(config, band_upgrade_enabled=True, load_aware_enabled=False, load_counter_guard_enabled=False,
                                    current_rcpi_below=100, minimum_target_gain_rcpi=4,
                                    minimum_band_upgrade_target_rcpi=120, maximum_band_upgrade_loss_rcpi=16,
                                    condition_hold_seconds=1, minimum_dwell_seconds=3,

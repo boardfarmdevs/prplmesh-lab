@@ -27,6 +27,7 @@ class StreamingCandidateProvider:
         self.telemetry = telemetry or (lambda _value: None)
         self._executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="native-candidate-stream")
         self._messages = SimpleQueue()
+        self._deferred = []
         self._future = None
         self._cancel = threading.Event()
         self._closed = False
@@ -77,6 +78,7 @@ class StreamingCandidateProvider:
             self._cancel.set()
             self._cache.clear()
             self._rejections.clear()
+            self._deferred.clear()
             self._queried.clear()
             self._identity = identity
         owners = {client.sta_mac: (RollingCandidateProvider._owner(client),
@@ -95,16 +97,24 @@ class StreamingCandidateProvider:
                     and 0 <= (now - parse_time(timestamp)).total_seconds() <= self.maximum_age_seconds)
 
         self.last_raw = []
+        messages, self._deferred = self._deferred, []
         while True:
             try:
-                source_identity, versions, measured, rejected, transaction, ready_at = self._messages.get_nowait()
+                messages.append(self._messages.get_nowait())
             except Empty:
                 break
+        for message in messages:
+            source_identity, versions, measured, rejected, transaction, ready_at = message
+            finished = parse_time(transaction["finished_at"])
+            if source_identity == identity and 0 < (finished - now).total_seconds() <= self.maximum_age_seconds:
+                self._deferred.append(message)
+                continue
             accepted = 0
             if source_identity == identity:
                 for item in measured:
                     key = (item.sta_mac, item.bssid)
-                    if valid(key, versions.get(item.sta_mac), item.metric_observed_at):
+                    if (valid(key, versions.get(item.sta_mac), item.metric_observed_at)
+                            and parse_time(item.metric_observed_at) <= finished):
                         self._cache[key] = (versions[item.sta_mac], item)
                         self._rejections.pop(key, None)
                         accepted += 1

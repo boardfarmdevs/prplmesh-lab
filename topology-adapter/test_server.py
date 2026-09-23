@@ -58,6 +58,9 @@ class SnapshotProjectionTests(unittest.TestCase):
         objects = {
             server.ROOT + ".": {"ControllerID": "02:00:00:27:01:01"},
             device + ".": {"ID": "02:00:00:27:01:01"},
+            device + ".MultiAPDevice.Backhaul.": {"MACAddress": "02:00:00:30:01:00"},
+            device + ".MultiAPDevice.Backhaul.Stats.": {"SignalStrength": 86,
+                                                      "TimeStamp": "2026-09-08T00:00:00Z"},
             radio + ".": {"ID": "02:00:00:00:01:00"},
             radio + ".CurrentOperatingClassProfile.1.": {"Class": 115, "Channel": 36},
             bss + ".": {"BSSID": "02:00:00:00:01:00", "SSID": "private_ssid", "FronthaulUse": True},
@@ -68,9 +71,15 @@ class SnapshotProjectionTests(unittest.TestCase):
             value = server.topology()
         self.assertEqual(native.call_count, 3)
         native.assert_any_call(server.ROOT, "_get", {"rel_path": "", "depth": 0})
-        native.assert_any_call(device, "_get", {"rel_path": "", "depth": 4})
+        native.assert_any_call(server.ROOT, "_get", {"rel_path": "Device.1.", "depth": 4})
+        self.assertTrue(all(call.args[0] == server.ROOT for call in native.call_args_list))
         native.assert_any_call(server.ROOT, "_get", {"rel_path": "Device.*.Radio.*.BSS.*.STA.", "depth": 1})
         self.assertEqual(len(value["devices"]), 1)
+        backhaul = value["devices"][0]["backhaul"]
+        self.assertEqual(backhaul["station_mac"], "02:00:00:30:01:00")
+        self.assertEqual(backhaul["signal_dbm"], -67)
+        self.assertEqual(backhaul["signal_updated_at"], "2026-09-08T00:00:00Z")
+        self.assertIsNone(server.rcpi_dbm(True))
         observed = value["devices"][0]["radios"][0]["bsses"][0]["clients"][0]
         self.assertEqual(observed["signal_raw"], 122)
         self.assertEqual(observed["signal_updated_at"], "2026-09-08T00:00:00Z")
@@ -80,12 +89,16 @@ class SnapshotProjectionTests(unittest.TestCase):
         barrier = threading.Barrier(len(devices), timeout=2)
 
         def read_device(path, method, arguments):
+            self.assertEqual(path, server.ROOT)
             self.assertEqual(method, "_get")
-            if path == server.ROOT:
+            if arguments["rel_path"] == "":
                 return {server.ROOT + ".": {"ControllerID": "02:00:00:27:01:01"}}
+            if arguments["rel_path"] == "Device.*.Radio.*.BSS.*.STA.":
+                return {}
             self.assertEqual(arguments["depth"], 4)
             barrier.wait()
-            return {path + ".": {"ID": path}}
+            device = server.ROOT + "." + arguments["rel_path"]
+            return {device: {"ID": device.rstrip(".")}}
 
         with patch.object(server, "instances", return_value=devices), patch.object(server, "ubus", side_effect=read_device):
             value = server.topology()
@@ -103,11 +116,12 @@ class SnapshotProjectionTests(unittest.TestCase):
                                  bss + ".": {"BSSID": bss, "SSID": "private_ssid"},
                                  bss + ".STA.1.": station}
         def read(path, method, arguments):
-            if path == server.ROOT:
-                if arguments["rel_path"] == "":
-                    return {server.ROOT + ".": {"ControllerID": "02:00:00:27:01:01"}}
+            self.assertEqual(path, server.ROOT)
+            if arguments["rel_path"] == "":
+                return {server.ROOT + ".": {"ControllerID": "02:00:00:27:01:01"}}
+            if arguments["rel_path"] == "Device.*.Radio.*.BSS.*.STA.":
                 return {target + ".STA.1.": station}
-            return snapshots[path]
+            return snapshots[server.ROOT + "." + arguments["rel_path"].rstrip(".")]
         with patch.object(server, "instances", return_value=list(snapshots)), patch.object(server, "ubus", side_effect=read):
             value = server.topology()
         owners = [(bss["bssid"], client["id"]) for device in value["devices"] for radio in device["radios"]

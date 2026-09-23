@@ -8,6 +8,8 @@ assert.ok(harness.includes("document.fullscreenElement ? '#fullscreenPlay' : '#p
 assert.match(harness, /const returned = entry => ready\(entry, profile.healthNodes\)[\s\S]*?entry.native.parents.extender_3 === 'extender_1'[\s\S]*?edge.child_role === 'extender_3' && edge.parent_role === 'extender_1'/);
 assert.ok(harness.includes('upperRelayRestored'));
 assert.match(harness, /async function load\(id\)[\s\S]*?fullscreenElement[\s\S]*?#roomFullscreen[\s\S]*?changed = true/);
+assert.match(harness, /await roomPage\.waitForFunction\(\(\) => !document\.fullscreenElement\);\s*changed = true/);
+assert.match(harness, /await roomPage\.waitForFunction\(\(\) => document\.fullscreenElement\?\.id === 'roomView'\);\s*return result/);
 const {interfaceState, summarizeNative, stackProfile, ready, nativeCycles} = require('./room-backhaul-features.js');
 assert.deepEqual(nativeCycles({first: 'root', second: 'first', isolated: null}), []);
 assert.deepEqual(nativeCycles({first: 'second', second: 'first'}), [['first', 'second']]);

@@ -63,7 +63,8 @@ def test_observation_snapshot_does_not_replace_policy_measurement_time():
         observer._observe_rf(original, {}, True)
 
 
-def test_independent_worker_coalesces_cache_without_policy_or_controller_calls(tmp_path):
+@pytest.mark.parametrize("guard_enabled", [False, True])
+def test_independent_worker_coalesces_cache_without_policy_or_controller_calls(tmp_path, guard_enabled):
     observer = conductor()
     observer.store = EventStore("rf-test", {"name": "test", "duration_ms": 1000, "tick_ms": 100},
                                 tmp_path / "events.jsonl", persist=False)
@@ -71,7 +72,8 @@ def test_independent_worker_coalesces_cache_without_policy_or_controller_calls(t
     observer._active = Mock(return_value=True)
     observer._time = Mock(return_value=0)
     observer._ap_role_by_bssid = {}
-    observer._rf_policy_enabled = False
+    observer._rf_policy_enabled = guard_enabled
+    observer._rf_counter_guard_enabled = guard_enabled
     observer.stop_event = Mock(is_set=Mock(return_value=False), wait=Mock(side_effect=[False, True]))
     observer._load_provider = Mock(inspection=Mock(return_value={
         "schema": "easymesh.rf-inspection.v2", "enabled": True, "bss_loads": [], "client_activity": []}))
@@ -81,4 +83,5 @@ def test_independent_worker_coalesces_cache_without_policy_or_controller_calls(t
     observer._load_provider.inspection.assert_called_with(include_envelope=False)
     publish.assert_called_once()
     observer._load_provider.enrich.assert_not_called()
-    assert observer.store.rf_observations()["policy_enabled"] is False
+    assert observer.store.rf_observations()["policy_enabled"] is guard_enabled
+    assert observer.store.rf_observations()["counter_guard_enabled"] is guard_enabled

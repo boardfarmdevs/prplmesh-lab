@@ -7,8 +7,13 @@ The deployed golden files determine exact roles, RF values and timing. Start
 paused, wait for load/roster/measurement readiness, then press Play at 1×.
 Watch actual ownership in both views, not just the simulated candidate line.
 
+See [RF property coverage](../radio/rf-property-coverage.md) for per-property
+stimulus, native inputs, optimizer decisions/abstentions and validation limits.
+
 | World ID | Script | Clients / expected behavior |
 | --- | ---: | --- |
+| `rf-packet-size-counters` | 30 s | 10; equal offered UDP bitrate with 256/1200-byte payloads; inspect native packet/byte windows, no capacity inference |
+| `rf-asymmetric-ack` | 30 s | 10; weaker station→AP SNR and bounded echoes; native counter guard is opt-in, pressure is not guaranteed |
 | `fifty-client-counter-roam` | 36 s | 50; two walkers swap Ext-1/Ext-2 regions while 48 peers stay fixed; pause at 18 s, then return |
 | `band-upgrade-24-5` | 30 s | Same-AP 2.4/5 GHz upgrade/fallback; pinned client remains on 2.4 GHz |
 | `band-upgrade-5-6` | 30 s | Same-AP 5/6 GHz steering; inspect native BSSID, frequency and traffic |
@@ -27,7 +32,7 @@ Watch actual ownership in both views, not just the simulated candidate line.
 | `home-a-private-client-room-walk` | 240 s | 20; default narrated walker with nineteen reference clients |
 | `home-a-slow-walk-ten` | 60 s | 20; ten walkers plus ten static clients |
 | `home-b-slow-walk-ten` | 60 s | 20; changed AP geometry; compare serving APs without assuming adaptive backhaul |
-| `backhaul-branch-formation` | 24 s | 10; geometry-driven backhaul; remote extenders lose direct gateway reachability and recover through relays |
+| `backhaul-branch-formation` | 24 s | 10; geometry-driven backhaul; a branch-divider wall gives roles 1/2 a 13 dB advantage over every alternative for roles 3/4; weak gateway paths remain |
 | `backhaul-parent-handover` | 24 s | 10; role 3 and a nearby client move between upper/lower relay regions; observe native parent choice |
 | `backhaul-isolation-recovery` | 24 s | 10; extender 4 loses upstream RF while its APs remain enabled, then returns |
 

@@ -57,6 +57,32 @@ def test_validated_result_is_actionable_before_slow_round_finishes(streaming):
     assert provider.last_selection["collection_in_flight"]
 
 
+def test_publication_after_snapshot_waits_without_losing_previous_fresh_evidence(streaming):
+    provider, delegate = streaming
+    collect(provider)
+    assert delegate.published.wait(1)
+    assert collect(provider) == list(snapshot(0).candidates)
+    newer = snapshot(1)
+    provider._messages.put((provider._identity, dict(provider._versions), newer.candidates, set(),
+                            {"finished_at": newer.observed_at}, time.monotonic()))
+    assert collect(provider) == list(snapshot(0).candidates)
+    assert collect(provider, newer) == list(newer.candidates)
+
+
+def test_deferred_result_cannot_survive_roaming_away_and_back(streaming):
+    provider, delegate = streaming
+    collect(provider)
+    assert delegate.published.wait(1)
+    collect(provider)
+    newer = snapshot(1)
+    provider._messages.put((provider._identity, dict(provider._versions), newer.candidates, set(),
+                            {"finished_at": newer.observed_at}, time.monotonic()))
+    collect(provider)
+    moved = replace(newer, clients=(replace(newer.clients[0], connected_bssid="02:00:00:aa:aa:02"),))
+    assert collect(provider, moved) == []
+    assert collect(provider, newer) == []
+
+
 def test_cache_expires_while_collection_is_blocked(streaming):
     provider, delegate = streaming
     collect(provider)

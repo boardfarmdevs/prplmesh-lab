@@ -1,114 +1,111 @@
 # Current prplMesh lab
 
-Reviewed 17 September 2026. This is a deployment summary, not a live health
-monitor; use [operations](operations.md) for current service checks.
+Reviewed 22 September 2026. This is the source/checkpoint and last-tested
+deployment summary, not a live health monitor. See [operations](operations.md).
 
 ## Identity and release status
 
 | Item | Current value |
 | --- | --- |
 | Canonical branch | `codex/0916-clean` |
-| Canonical checkout | `rev150:/home/rev/git/prplmesh-lab-0916-clean` |
-| Candidate appliance | `rev150:prplmesh-0916-repair-02` |
-| Packaged source and clean medium build | `79c547e55f5385c32d9ab4673c5ce7b71ac51244` |
-| Preserved native runtime archive | SHA-256 prefix `65a8ee22`; separate original build provenance |
-| Original native build source | Dirty checkout based on `5c998803568467ce8c7a164b3074535bbccccec7` |
+| Development checkout | `rev150:/home/rev/git/prplmesh-lab-0916-clean` |
+| Last-tested build host checkout | `rev120:/home/rev/git/prplmesh-lab` |
+| Last-tested VM | `rev120:demo-prpl` |
 | Guest checkout | `/opt/prplmesh-lab` |
-| Platform | Ubuntu 24.04 / Linux 7 radio host, userspace wmediumd |
-| Fixed pool | 100 clients; five mesh containers / six logical roles |
-| Release classification | 0916 candidate with known issues; not newly full-catalog-qualified |
-| RDK peer | Separate repository and appliance on rev140 |
+| Platform | Ubuntu 24.04 / Linux 7 radio host, native prplMesh, userspace wmediumd |
+| Fixed pool | 100 clients; five mesh containers / six displayed roles |
+| Current classification | Development checkpoint; fresh-VM/full-suite acceptance pending |
+| RDK peer | Separate repository; last-tested VM `rev140:demo-a` |
 
-The default room selects ten private and ten IoT clients. Loading a room does
-not resize containers or radio identities. Outer VM autostart is disabled.
-Documentation commits after the packaged source do not imply native rebuilds.
-
-**The current appliance combines multiple build origins.** Its clean medium
-build is not evidence that the native prplMesh archive was rebuilt from the
-same clean source. Original native build records, approved source-inventory
-differences and actual binary hashes remain authoritative.
+Default selects ten private and ten IoT clients. Room loading changes presence,
+not permanent container/radio identities. Preserve disabled VM autostart.
 
 ## Qualification and remaining gaps
 
-The latest normal lifecycle passes 105 containers and the independent audit of
-exactly 100 unique clients, each receiving all three probe packets. Native
-files and container identities remain unchanged. Default-20/frontend restoration
-and the bounded zero-additional-medium-receive-drop observation pass.
+The ordinary catalog has passing evidence for **24 rooms across two runs**:
+19/24 initially, followed by successful targeted reruns of all five failures.
+The five failures came from re-entering the same user namespace in privileged
+client containers; the checked-in fix skips that operation only when namespace
+identity is verified. Browser fullscreen cleanup was also repaired. The original
+failed report remains failed; this is not one all-green full-catalog run.
 
-Earlier native-runtime campaigns passed complete catalogs, including proactive
-backhaul handover. **The latest combined source/medium has not completed a new
-22-client-room + 3-geometry-room campaign.** This is a qualification gap, not a
-claim that all current rooms pass or fail. Earlier passes are limited to their
-recorded source/runtime.
+| Remaining gate | Last observation |
+| --- | --- |
+| Geometry branch formation | Scenario checks passed. |
+| Geometry parent handover | Scenario checks passed. |
+| Geometry isolation/recovery | Failed: Ext-4's reported 6 GHz inventory disappeared after isolation; room and Default recovery remained incomplete. |
+| Guarded load steering | Passed with matching native BTM, 0.681-second native verification and post-steer receiver delivery. |
+| Pressure veto / weak-signal rescue | No complete live proof; stimulus/ownership conditions did not qualify the required policy decision. |
 
-An earlier thin candidate exhausted backing storage while reconstructing the
-client pool. Template sanitation and capacity corrections are now included;
-the old failed import is not acceptance of a new archive. Respect the import
-storage guard: compressed download size does not represent expanded storage.
+After isolation, three clients still had native wireless links and successful
+traffic, but were absent from the reported inventory. The exact native-model
+versus adapter cause is unresolved. A subsequent **manual Ext-4 native-process
+restart** is recovery work, not a passing isolation test. The last observed room
+restart failed its inactive-client preflight and reached the service restart
+limit; do not assume the old room viewer is ready.
 
-The owner requested completing known-issues packaging on 17 September without
-further debugging. Failed evidence stays retained; no test gate is reclassified
-as passing. Exact-archive fresh-import acceptance must have its own receipt.
+The earlier memory runaway remains repaired in the bounded follow-up:
+controller RSS approximately 43–44 MiB, with zero growth during the 90-second
+20-active-client measurement. This is not a new 100-client/long-duration memory
+qualification. Keep native patches 0026–0031 and dependency provenance together.
 
-Evidence on rev150 is under `/home/rev/work/release-0916/`, particularly:
+See the [maintained RF qualification record](../reference/radio/rf-property-coverage.md#room-catalog-qualification-and-open-failures)
+for exact reports and evidence boundaries. The `rf-actions` tier is included in
+`all`; incomplete or failed qualification remains nonzero. Optional live
+visibility/priority modes are deferred; offline medium selftests are not live
+mode acceptance.
 
-- `prpl-native-roaming/medium-success-ack/lifecycle-02/`
-- `prpl-native-roaming/medium-success-ack/combined-clean-build-draft.json`
-- `evidence/prpl-native-roaming-release-input-4b5ce43-v1/build.json`
+## Rebuild checkpoint
 
-The combined record's filename is not a claim of a single clean native build.
+Pull the current branch into a **clean** checkout and regenerate the native
+artifacts before building the new VM. Reuse the documented native build cache,
+but do not substitute old runtime archives merely because their checksum is
+valid. Native artifacts must include the current memory/model repairs and match
+their embedded provenance. **prpl does not use BPI images or Yocto.**
+
+Follow [build native artifacts, then VM](build/README.md), then
+[the test suite](test/README.md). Check the fresh 100-client baseline and bounded
+controller-memory gate before treating broader room results as qualification.
+Preserve the old VM stopped and keep its failed evidence until the replacement
+passes. A fresh build tests reproducibility; it does not automatically repair
+the known isolation/reporting issue.
+
+This checkpoint creates no thin archive or release promotion. The optional
+Tailscale session gateway was added to the RDK repository only; no remote
+access service was installed on this prpl host.
 
 ## Access and distribution
 
-Candidate forwarding is configured for these addresses. Packaging temporarily
-stops services; an address is not a promise of current health.
+These are the last-tested VM's configured addresses, not a health promise:
 
-| View | rev150 prplMesh |
+| View | prplMesh |
 | --- | --- |
-| Live room | <http://192.168.2.150:19892/> |
-| Network topology | <http://192.168.2.150:19891/> |
-| wmediumd console | <http://192.168.2.150:19890/> |
+| Live room | <http://192.168.2.120:49428/> |
+| Network topology | <http://192.168.2.120:49426/> |
+| Console NG | <http://192.168.2.120:49427/> |
 
-Packaging alone does not promote production ports 18891/8091/8090 or enroll
-monitoring on 18892/18893. See [monitoring](../reference/observability/monitoring.md)
-for nested containers and the outer VM. The native adapter remains guest-loopback
-8092. Room URLs need no `?mode=`. Proxies survive reboot; use a trusted LAN/VPN.
+The room endpoint may remain unavailable after the failed recovery described
+above. New VM names receive independent ports. Proxies survive VM restart;
+use a trusted LAN/VPN. See [monitoring](../reference/observability/monitoring.md)
+for nested containers and the outer VM.
 
-### Post-export appliance state
-
-The 0916 export thinned and then restored the qualification appliance through
-its normal fixed-100-client first-boot path. That restoration completed with
-exit status zero on 17 September; `prplmesh-lab.service` is active and
-`prplmesh-room-demo.service` is running. This confirms only post-export service
-restoration, not fresh-import or full room-catalog acceptance.
-
-The 0916 thin distribution belongs under `/home/rev/releases/0916/`. Adjacent
-SHA-256 files, `release.json`, `KNOWN-ISSUES-0916.md` and packaging receipts
-record exact inputs, checks and outstanding gaps. Presence of a tar does not
-establish fresh-import, room-catalog or monitoring acceptance.
-See [release information](release-notes.md); prpl has no VirtualBox distribution.
-
-The original stopped 0913 VM was retired after verifying a cold rollback on
-rev140. That archive remains at
-`/home/rev/work/release-0916/private-rollback/prpl-0913-before-0916/cold-rollback.tar.gz`;
-its SHA-256 starts `14adffcaa55f`. The verified rollback-check VM is stopped
-with autostart disabled. Redundant rev150 release/backup files were removed only
-after verifying retained rev140 copies; unique evidence remains.
-
-A fresh import needs at least 200 GiB free backing storage plus retained
-VM/export space; a compressed download may allocate the entire 160-GiB disk.
+Older 0916 downloads under `/home/rev/releases/0916/` are separately identified
+candidates, not builds of this checkpoint. Original archive manifests retain
+their mixed-source/native-artifact provenance and fresh-import limitations;
+new source commits do not rewrite those receipts.
+See [release information](release-notes.md). prpl has no VirtualBox distribution.
+Allow the [documented build/import space](build/README.md), rather than using
+compressed archive size as a storage estimate.
 
 ## Boundaries
 
-- The external reference optimizer supplies client policy; native NBAPI/BTM
-  provide observations and actuation. This is not native autonomous client policy.
-- Most rooms protect startup backhaul. Three geometry rooms change AP-to-AP RF,
-  not parent configuration. Native proactive steering and loss recovery differ.
-- Candidate metrics require native timestamp advancement, correct radio identity
-  and current RF/association epochs. Retrying must not make stale data fresh.
-- Convergence includes membership, native ownership, fresh candidates and traffic;
-  an accepted BTM request or green badge alone is insufficient.
-- Keep cooling and observer load separately attributed. Guest Grafana metrics do
-  not measure physical-host totals or subsecond steering performance.
+- The external optimizer supplies client policy; native NBAPI/BTM provide
+  observations and actuation, not native autonomous client policy.
+- Most rooms protect startup backhaul. Geometry rooms change AP-to-AP RF,
+  not prescribed parent configuration.
+- Candidates need advancing native timestamps and valid identity/RF epochs;
+  retries do not make stale data fresh.
+- Convergence includes native membership, ownership, measurements and traffic.
+- Guest resource metrics do not measure host cooling or subsecond roam latency.
 - [Neighbor-network rooms](../reference/proposals/neighbor-rooms/design.md)
   remain proposed.

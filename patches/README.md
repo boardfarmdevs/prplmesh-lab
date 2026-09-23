@@ -49,7 +49,58 @@ control/observer readers without blocking radio processing. Higher-priority
 timers retain precedence. `wmediumd -T` covers priority order, callback removal,
 listener initialization and backpressure; it does not alter RF airtime/retries.
 
+`wmediumd/0035-wmediumd-linear-frequency-slot-allocation.patch` removes cubic
+free-slot reservation during cold room initialization. One monotonic cursor
+reserves inactive slots without changing active state until validation passes.
+The compiled regression covers a 3,060-key room, sparse/full tables and rejected
+transactions. It preserves RF semantics and atomic generation application.
+
 ## prplMesh native-platform correction
+
+`prplmesh/0030-owned-candidate-event.patch` uses a typed shared pointer for
+unassociated-station metrics containing a vector. Type erasure in the event
+queue preserves its destructor; moving the vector avoids an intermediate copy.
+`prplmesh/0031-scope-neighbor-cache.patch` scopes libnl neighbor-cache ownership,
+including empty tables and exception paths. Compiled tests with allocation
+accounting and unpatched negative controls cover both fixes; neither changes
+candidate values, native timing or ARP filtering.
+
+`prplmesh/0029-repair-connected-station-model-path.patch` repairs an empty
+NBAPI path for a station that the native database still marks connected.
+It requires the same current BSS, no departure barrier, and a matched topology
+query newer than the association event. Repair republishes the existing
+station without inventing a connection, clearing counters or changing its
+native association-event timestamp. Matching-owner metrics request that query
+when the connected station's model path is missing; requests are batched once
+per metrics message, rather than manufacturing ownership from signal reports.
+The compiled regression includes stale, foreign-owner,
+departed-client and original-code negative controls.
+
+`prplmesh/0026-bound-ambiorix-signal-dispatch.patch` drains at most 256 queued
+notifications or two milliseconds per callback under the existing mutex.
+Events are preserved and the loop yields at the budget. It is paired with
+0028's producer-side reconciliation; draining alone failed matched-load RSS
+qualification. See [controller memory](../reference/testing/controller-memory.md)
+for negative controls, native evidence and the bounded regression command.
+
+`prplmesh/0027-release-nbapi-action-allocations.patch` gives temporary variants
+scoped cleanup in scan, BTM, spatial-reuse and VBSS actions and releases the
+independent string returned by `amxc_var_dyncast`. Success, early returns and
+exception unwinding release owned allocations without changing action behavior
+or native reporting policy. `pytest -q tests/test_nbapi_action_memory.py`
+compiles the affected native function bodies with allocation accounting;
+unpatched negative controls demonstrate the leaks and both versions retain
+the same return statuses and controller-call behavior.
+
+`prplmesh/0028-reconcile-native-tid-queue-instances.patch` preserves native TID
+instance identities across repeated and reordered reports, changes only updated
+queue sizes, and reconciles sparse or empty reports. New rows initialize unique
+TID and Size together; duplicate input is rejected before data-model mutation.
+`pytest -q tests/test_native_tid_reconciliation.py` compiles the patch's native
+reconciliation and DB code against a transactional AMXD fake, checking creation
+notifications, stable indices, failure cleanup and retries. Compiled negative
+controls detect replacement churn, split creation, accepted duplicates and
+missing transaction cleanup; native integration remains a separate check.
 
 `prplmesh/0020-controller-defer-registration-collection.patch` adds an optional
 NBAPI `defer_query` argument. The default still queries immediately; opt-in

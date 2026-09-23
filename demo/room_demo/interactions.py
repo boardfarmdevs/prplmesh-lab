@@ -792,14 +792,20 @@ class InteractiveMediumSession:
         if self._traffic_experiment is None:
             return
         phase = phase_at(self._playback_world.get("traffic_experiment"), self._playback_time_ms)
-        if (phase is None or self._closing or self._faulted or self._lease is None
-                or self._playback_status != "playing" or not self._roles[phase[1]["role"]]["present"]):
+        if (self._closing or self._faulted or self._lease is None
+                or self._playback_status not in {"playing", "completed"}
+                or (phase is not None and not self._roles[phase[1]["role"]]["present"])):
             self._traffic_experiment.sync(None)
+            return
+        complete_through = (self._playback_world["golden_sha256"], self._traffic_run, self._playback_time_ms)
+        if phase is None or self._playback_status == "completed":
+            self._traffic_experiment.sync(None, complete_through=complete_through)
             return
         index, settings = phase
         self._traffic_experiment.sync(
             (self._playback_world["golden_sha256"], self._traffic_run, index), settings,
-            self.plan["bindings"][settings["role"]]["container"], settings["end_ms"] - self._playback_time_ms)
+            self.plan["bindings"][settings["role"]]["container"], settings["end_ms"] - self._playback_time_ms,
+            complete_through=complete_through)
 
     def _validate_playback(self) -> None:
         try:

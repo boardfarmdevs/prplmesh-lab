@@ -1,0 +1,36 @@
+{
+  "schema": "easymesh.room-demo.v1",
+  "name": "native-counter-guard-room-profile",
+  "description": "Opt-in native counter guard in the asymmetric ACK room; use recommend mode for shadow operation. Traffic loss alone never substitutes for native pressure.",
+  "world": "wmediumd/configurator/worlds/golden/rf-asymmetric-ack.world.json",
+  "bindings": "demo/bindings/private-client-room-walk.json",
+  "policy": "optimizer/configs/load-counter-guard-policy.yaml",
+  "hero": {
+    "role": "sta_static_03",
+    "container": "prpl-client-05",
+    "friendly_name": "Counter-Guard-Client",
+    "expected_ssid": "private_ssid",
+    "expected_band": "5"
+  },
+  "optimizer": {
+    "interval_seconds": 5,
+    "action_window_ms": [0, 30000],
+    "max_actions": 1,
+    "interactive_action_batch_size": 1,
+    "allow_simulated_candidates": true,
+    "request_only": true
+  },
+  "traffic": {"target": "192.168.77.1", "interval_seconds": 2, "timeout_seconds": 2},
+  "health": {
+    "interval_seconds": 5,
+    "expected_mesh_devices": 5,
+    "expected_clients": 10,
+    "expected_private_clients": 9,
+    "expected_iot_clients": 1
+  },
+  "narrative": [
+    {"time_ms": 0, "label": "Native counters only: zero is valid, missing abstains"},
+    {"time_ms": 5000, "label": "Bidirectional echo traffic starts; inspect guard and real ownership"},
+    {"time_ms": 23000, "label": "Experimental traffic off; preserve counter windows and recovery evidence"}
+  ]
+}

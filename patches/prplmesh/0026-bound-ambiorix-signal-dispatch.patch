@@ -1,0 +1,40 @@
+From: EasyMesh Lab
+Subject: [PATCH] nbapi: drain signal bursts with an event-loop fairness budget
+
+One AP metrics response updates many station objects and can enqueue thousands
+of Ambiorix notifications. Dispatching only one notification per epoll turn
+allows continuous native reports to outrun the consumer. The 100-client
+traffic regression accumulates 198686 pending events and over 100 MiB of RSS
+in its measured window, with growth continuing after traffic stops.
+
+Drain up to 256 notifications or two milliseconds per callback, retaining
+the shared reader mutex. The existing level-triggered signal descriptor
+remains readable when work remains. No notification is discarded, no native
+reporting period changes, and the event loop regains control at the budget.
+
+diff --git a/framework/platform/nbapi/ambiorix_impl.cpp b/framework/platform/nbapi/ambiorix_impl.cpp
+--- a/framework/platform/nbapi/ambiorix_impl.cpp
++++ b/framework/platform/nbapi/ambiorix_impl.cpp
+@@ -15,6 +15,7 @@
+ #include <amxd/amxd_transaction.h>
+ 
+ #include <bcl/network/network_utils.h>
++#include <chrono>
+ #include <mapf/common/utils.h>
+ #include <tlvf/tlvftypes.h>
+ 
+@@ -218,7 +219,13 @@ bool AmbiorixImpl::init_signal_loop()
+         .on_read =
+             [&](int fd, EventLoop &loop) {
+                 std::lock_guard<std::mutex> guard(amxp_signal_read_mutex);
+-                amxp_signal_read();
++                const auto deadline = std::chrono::steady_clock::now() + std::chrono::milliseconds(2);
++                for (unsigned dispatched = 0; dispatched < 256; ++dispatched) {
++                    if (amxp_signal_read() != 0 ||
++                        std::chrono::steady_clock::now() >= deadline) {
++                        break;
++                    }
++                }
+                 return true;
+             },
+         // Not implemented

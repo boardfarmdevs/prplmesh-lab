@@ -42,6 +42,16 @@ requires traffic. This classification does not repair RF loss or force roaming.
 
 ## Opt-in Native Load Policy
 
+`configs/load-counter-guard-policy.yaml` adds native retry/TX-failure/RX-drop
+limits while preserving the default signal policy and all ownership/context
+gates. Missing counters abstain; excessive rates veto load balancing, not weak
+signal rescue. The checked-in `demo/manifests/native-counter-guard-room-profile.json`
+operates `rf-asymmetric-ack`; after stopping the existing room service, select it
+with `demo/room-demo interactive --mode recommend --profiling --manifest ...`.
+Restart the unchanged room service afterward. See [RF coverage](../reference/radio/rf-property-coverage.md)
+for direct native shadow qualification and the distinction between counter
+eligibility and an actual load-steering decision.
+
 The default remains signal-only. Use `configs/load-aware-policy.yaml` instead
 of `configs/threshold-policy.yaml` for an explicitly enabled experiment.
 Live recommendation/action requires root in the lab VM and

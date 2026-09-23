@@ -22,6 +22,9 @@ def test_easy_mesh_band_values_are_normalized():
     assert normalize_band(1) == "5"
     assert normalize_band(3) == "6"
     assert normalize_band("6GHz") == "6"
+    assert normalize_band("2.4 GHz") == "2.4"
+    assert normalize_band("5 GHz") == "5"
+    assert normalize_band("6 GHz") == "6"
     assert normalize_band(None) is None
     with pytest.raises(ValueError, match="invalid Wi-Fi band"):
         normalize_band("60GHz")

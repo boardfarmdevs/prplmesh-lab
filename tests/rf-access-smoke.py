@@ -31,7 +31,7 @@ def validate(catalog, inspection, layout, *, now=None, require_backhaul_load=Fal
             age = now - datetime.fromisoformat(record["observed_at"].replace("Z", "+00:00")).timestamp()
             if not 0 <= age <= record["maximum_age_seconds"] + 1:
                 errors.append("valid record exceeded freshness budget")
-        except (ValueError, TypeError, KeyError):
+        except (ValueError, TypeError, KeyError, AttributeError):
             errors.append("valid record lacks freshness identity")
         if record.get("property") == "native_utilization":
             if type(record.get("value")) is not int or not 0 <= record["value"] <= 255:
@@ -68,7 +68,7 @@ def validate(catalog, inspection, layout, *, now=None, require_backhaul_load=Fal
                     age = now - datetime.fromisoformat(load["observed_at"].replace("Z", "+00:00")).timestamp()
                     if not 0 <= age <= load["maximum_age_seconds"] + 1:
                         errors.append("backhaul load exceeded freshness budget")
-                except (ValueError, TypeError, KeyError):
+                except (ValueError, TypeError, KeyError, AttributeError):
                     errors.append("backhaul load lacks freshness identity")
     return errors
 

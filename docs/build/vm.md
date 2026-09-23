@@ -23,6 +23,14 @@ hwsim/wmediumd, topology, room and **Console NG**. Native acceptance runs before
 success; no room campaign or long soak runs during the build. Preserve the
 build log on failure; do not treat an existing VM as an accepted build.
 
+Unattended guest commands and container creation close stdin explicitly; they
+must not wait for keyboard input when output is logged through `tee`. Older
+builders can stall after `Built .../wmediumd` while `lxc init` awaits optional
+YAML on stdin. If that exact wait is confirmed, send Ctrl-D on an empty line
+in the original terminal to continue; do not delete the VM. Runtime image setup
+logs to `/tmp/prpl-runtime-image-build.log` inside the VM
+(`RUNTIME_IMAGE_BUILD_LOG` overrides it for standalone runs).
+
 Native artifacts are built in Ubuntu 22.04. The radio VM is Ubuntu 24.04 with
 the pinned Linux 7 kernel. VM creation does not require Go, Node or Chromium on
 the outer host. The repository includes the static Console binary and vendored

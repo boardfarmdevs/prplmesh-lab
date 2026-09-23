@@ -35,7 +35,36 @@ def settings_with_native_commands(state=None):
     with patch("room_demo.band_profiles._command", side_effect=command) as native:
         settings = ClientBandSettings()
     settings._start_ticks = Mock(return_value=100)
+    settings._user_namespace_arguments = Mock(return_value=("--user",))
     return settings, native
+
+
+@pytest.mark.parametrize("shared,expected", [(True, ()), (False, ("--user",))])
+def test_only_distinct_user_namespace_is_entered(shared, expected):
+    with patch("room_demo.band_profiles.Path.samefile", return_value=shared) as samefile:
+        assert ClientBandSettings._user_namespace_arguments(1234) == expected
+    samefile.assert_called_once_with("/proc/self/ns/user")
+
+
+def test_shared_user_namespace_keeps_mount_network_pid_and_root_entry():
+    settings, native = settings_with_native_commands()
+    settings._user_namespace_arguments.return_value = ()
+    native.side_effect = [json.dumps({"pid": 1234, "status": "Running"}), "OK"]
+    assert settings.control(CONTAINER, "status") == "OK"
+    assert native.call_args.args[:9] == (
+        "nsenter", "--target", "1234", "--mount", "--net", "--pid", "--root", "--wd", "--")
+    assert "--user" not in native.call_args.args
+
+
+@pytest.mark.parametrize("error", [FileNotFoundError(), PermissionError()])
+def test_unreadable_user_namespace_fails_before_execution(error):
+    settings, native = settings_with_native_commands()
+    settings._user_namespace_arguments = ClientBandSettings._user_namespace_arguments
+    with patch("room_demo.band_profiles.Path.samefile", side_effect=error):
+        with pytest.raises(ActuatorError, match="user namespace is unavailable"):
+            settings.control(CONTAINER, "status")
+    assert native.call_count == 1
+    assert not hasattr(settings._sessions, "current")
 
 
 def test_capture_discovers_only_selected_instance_once_and_uses_native_cli():

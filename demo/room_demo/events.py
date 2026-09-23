@@ -485,6 +485,7 @@ class EventStore:
                             "truncated": envelope.get("truncated", False) or len(records) > 192}
             rf = {"enabled": observations.get("enabled") is True,
                   "policy_enabled": observations.get("policy_enabled") is True,
+                  "counter_guard_enabled": observations.get("counter_guard_enabled") is True,
                   "error": str(observations.get("error") or "")[:256],
                   "maximum_age_seconds": observations.get("maximum_age_seconds", 5),
                   "bss_loads": copy.deepcopy(loads),

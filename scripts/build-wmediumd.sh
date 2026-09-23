@@ -42,6 +42,7 @@ PATCHES=(
     0032-wmediumd-disable-netlink-success-acks.patch
     0033-wmediumd-console-ng-detail.patch
     0034-wmediumd-expose-rf-model-profile.patch
+    0035-wmediumd-linear-frequency-slot-allocation.patch
 )
 
 case "${1:-}" in

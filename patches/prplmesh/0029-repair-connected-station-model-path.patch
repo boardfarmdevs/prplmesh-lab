@@ -1,0 +1,70 @@
+Subject: [PATCH] topology: repair missing NBAPI paths for connected stations
+
+A station may remain connected in the native database while its NBAPI path is
+empty, for example when association publication races BSS reconstruction.
+The infrastructure-recovery gate does not apply after a successful association,
+so an older association-age timestamp prevents subsequent snapshots repairing
+the missing model entry.
+
+Allow only a correlated, fresh topology response requested after the latest
+association event to repair the already-connected station's same-owner path.
+Keep the client-departure barrier and require the current BSS object. Do not
+change ownership, association time, steering state or traffic statistics.
+
+Matching-owner metrics must also request reconciliation when the connected
+station has no model path. Otherwise the repair waits indefinitely for an
+unrelated topology query. Batch that request once per metrics message, as for
+conflicting ownership, and do not derive membership from metrics.
+
+--- a/controller/src/beerocks/master/db/topology_query_tracker.h
++++ b/controller/src/beerocks/master/db/topology_query_tracker.h
+@@ -28,6 +28,8 @@
+ 
+     bool may_restore() const { return infrastructure_loss && !departure_barrier; }
+ 
++    bool may_repair_connected_path() const { return !departure_barrier; }
++
+ private:
+     bool infrastructure_loss = false;
+     bool departure_barrier   = false;
+--- a/controller/src/beerocks/master/tasks/topology_task.cpp
++++ b/controller/src/beerocks/master/tasks/topology_task.cpp
+@@ -878,6 +878,22 @@
+                 !station->dm_path.empty()) {
+                 continue;
+             }
++            if (station->state == beerocks::STATE_CONNECTED && station->dm_path.empty() &&
++                TopologyQueryTracker::restores_same_owner(
++                    bss && station->get_bss() == bss &&
++                        station->parent_mac == tlvf::mac_to_string(connected.second),
++                    true, station->association_recovery.may_repair_connected_path(),
++                    station->association_event_time, query_sent, now)) {
++                if (!database.add_station(agent.al_mac, connected.first, connected.second)) {
++                    return false;
++                }
++                if (!station->dm_path.empty()) {
++                    LOG(INFO) << "Native topology query repairs connected station model "
++                              << connected.first << " on " << connected.second
++                              << " mid=" << cmdu_rx.getMessageId();
++                }
++                continue;
++            }
+             restored = TopologyQueryTracker::restores_same_owner(
+                 station->parent_mac == tlvf::mac_to_string(connected.second),
+                 station->state != beerocks::STATE_CONNECTED || station->dm_path.empty(),
+--- a/controller/src/beerocks/master/controller.cpp
++++ b/controller/src/beerocks/master/controller.cpp
+@@ -2392,6 +2392,13 @@
+             needs_topology_query = true;
+             continue;
+         }
++        auto station = database.get_station(sta_link_metric->sta_mac());
++        if (station && station->state == beerocks::STATE_CONNECTED &&
++            station->dm_path.empty() &&
++            station->association_recovery.may_repair_connected_path()) {
++            needs_topology_query = true;
++            continue;
++        }
+         if (!database.dm_set_sta_link_metrics(sta_link_metric->sta_mac(),
+                                               bssid_info.downlink_estimated_mac_data_rate_mbps,
+                                               bssid_info.uplink_estimated_mac_data_rate_mbps,

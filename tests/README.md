@@ -5,6 +5,17 @@ named VM, keeps the full-pool baseline stable across native tiers, restores
 the room once and records results. The individual tools below are for focused
 diagnostics; run mutating ones only in the documented command context.
 
+`live/controller-memory` follows native acceptance and precedes any soak:
+90-second RSS sampling, 100-client traffic and one-second native metrics.
+See [controller-memory contract](../reference/testing/controller-memory.md).
+The suite requires clean matching sources; direct native helpers may run on an
+authorized dirty diagnostic runtime without weakening that source gate.
+
+For the two new RF rooms and native counter guard, use the focused `rf` tier
+or [direct bounded checks](../reference/radio/rf-property-coverage.md#direct-prpl-diagnostic-checks).
+These retain native evidence and failure/restoration records; no long catalog
+or soak is needed. Backported code and RDK evidence do not qualify prpl live behavior.
+
 Room/topology UI regression checks (no live RF changes):
 
 ```sh
@@ -39,6 +50,23 @@ after installation; old deployment evidence does not qualify a new checkout.
 
 Documentation-only check (no lab access): `python3 tests/test_documentation.py`.
 This checks local files/anchors, navigation, guide sizes and packaged manual inputs.
+
+`python3 tests/unattended-lxd.py` uses mocked LXD commands and keeps caller stdin
+open to detect builder hangs without creating instances. It also checks that
+guest setup failure prevents publishing an image.
+
+`python3 tests/test_steering_model.py` checks the native steering verifier with
+mocked LXD calls (`jq` required). Each ownership lookup uses two bounded native
+reads: a station snapshot and its parent BSS, instead of one LXD execution per
+station. Missing/duplicate ownership, malformed replies and query failures fail
+closed. Physical association and successful BTM-response gates are unchanged;
+faster verification is not evidence of faster native steering.
+
+`python3 -m pytest -q tests/test_nbapi_btm.py` checks stable-root BTM dispatch:
+one bounded native request, closed stdin, unchanged BTM arguments and a required
+native acknowledgement. Missing per-station bus registration no longer blocks
+existing data-model stations. Transport errors/timeouts are not retried; malformed,
+missing or nonzero acknowledgements fail. Both steering entrypoints use this path.
 
 The asymmetric RF audit samples only native link readbacks. It retries at most
 three complete snapshots when playback changes the environment epoch or native

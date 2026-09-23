@@ -7,16 +7,18 @@ import hashlib
 import json
 import signal
 import shutil
+import subprocess
 import sys
 import threading
 import time
 from pathlib import Path
 
+from optimizer.candidates import CandidateMetricsUnavailable
 from wmdcfg.actuator import ActuatorError, ControlClient
 from wmdcfg.compiler import compile_scenario
 from wmdcfg.inventory import discover
 from wmdcfg.model import ScenarioError
-from wmdcfg.observers import mesh_health
+from wmdcfg.observers import TOPOLOGY_URL, mesh_health
 from wmdcfg.parser import parse
 from wmdcfg.runner import Runner
 from wmdcfg.rf_contract import capability_manifest
@@ -284,16 +286,20 @@ def _run(args) -> int:
 
 
 def _interactive_preflight(conductor, expected_agents, expected_clients, recovered, stop_event):
-    deadline = time.monotonic() + (30 if recovered else 0)
+    deadline = time.monotonic() + 30
     while True:
         try:
             health = mesh_health(expected_agents, expected_clients)
             Runner._require_healthy(health, "interactive preflight")
             conductor.preflight()
             return health
-        except (ActuatorError, RuntimeError) as error:
-            expected_failure = isinstance(error, ActuatorError) or str(error).startswith("demo preflight failed:")
-            if not recovered or not expected_failure or time.monotonic() >= deadline:
+        except (ActuatorError, RuntimeError, subprocess.SubprocessError) as error:
+            unavailable = isinstance(error, CandidateMetricsUnavailable) or (
+                isinstance(error, subprocess.SubprocessError)
+                and getattr(error, "cmd", None) in (("curl", "-fsS", TOPOLOGY_URL),
+                                                   ["curl", "-fsS", TOPOLOGY_URL]))
+            expected_failure = unavailable or isinstance(error, ActuatorError) or str(error).startswith("demo preflight failed:")
+            if not (recovered or unavailable) or not expected_failure or time.monotonic() >= deadline:
                 raise
             if stop_event.wait(0.5):
                 raise ActuatorError("recovery preflight cancelled") from error

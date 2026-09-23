@@ -4,6 +4,7 @@ set -euo pipefail
 ROOT=$(cd "$(dirname "$0")/.." && pwd)
 # shellcheck source=lib/observer-status.sh
 source "$ROOT/scripts/lib/observer-status.sh"
+source "$ROOT/scripts/lib/nbapi-btm.sh"
 CONTROLLER=prpl-controller
 request_only=0
 if [[ ${1:-} == --request-only ]]; then
@@ -54,9 +55,9 @@ printf -v container 'prpl-client-%02d' "$ordinal"
 
 station_object()
 {
-    lxc exec "$CONTROLLER" -- ubus -t 5 call \
+    lxc exec --mode non-interactive "$CONTROLLER" -- timeout -k 1 8 ubus -t 5 call \
         Device.WiFi.DataElements.Network _get \
-        '{"rel_path":"Device.*.Radio.*.BSS.*.STA.","depth":0}' |
+        '{"rel_path":"Device.*.Radio.*.BSS.*.STA.","depth":0}' </dev/null |
         python3 "$ROOT/scripts/lib/nbapi-station.py" "$mac"
 }
 
@@ -65,8 +66,9 @@ model_bssid()
     local station bss value
     station=$(station_object) || return 1
     bss=${station%.STA.*}
-    value=$(lxc exec "$CONTROLLER" -- ubus call "$bss" _get \
-        '{"rel_path":"","depth":0}' 2>/dev/null || true)
+    value=$(lxc exec --mode non-interactive "$CONTROLLER" -- timeout -k 1 8 ubus -t 5 call \
+        Device.WiFi.DataElements.Network _get \
+        "{\"rel_path\":\"${bss#Device.WiFi.DataElements.Network.}.\",\"depth\":0}" </dev/null) || return
     printf '%s\n' "$value" | sed -n 's/.*"BSSID": "\([^"]*\)".*/\1/p'
 }
 
@@ -104,8 +106,7 @@ if [ "$source" != "$target" ]; then
     status_wait_seconds "$preview_seconds" "highlighting $client_name in the topology before it moves"
     announce_steering moving
     status_action "Sending the NBAPI BTM request for $mac to $target."
-    lxc exec "$CONTROLLER" -- ubus call "${object}.MultiAPSTA" \
-        BTMRequest "$request" >/dev/null
+    nbapi_btm_request "$object" "$request"
     if ((request_only)); then
         status_pass "The prplMesh NBAPI accepted the BTM request; verification is delegated to the caller."
         echo "PASS: BTM request submitted for $client_name to $target"

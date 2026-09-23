@@ -234,7 +234,7 @@ create_node()
 {
     local name=$1 first_radio=$2 backhaul=$3
     if ! lxc info "$name" >/dev/null 2>&1; then
-        lxc init "$RUNTIME_IMAGE" "$name" -c security.privileged=true
+        lxc init "$RUNTIME_IMAGE" "$name" -c security.privileged=true </dev/null
     fi
     [ "$(instance_state "$name")" != RUNNING ] || {
         echo "$name must be stopped before provisioning" >&2
@@ -257,7 +257,7 @@ create_client()
 {
     local name=$1 radio=$2
     if ! lxc info "$name" >/dev/null 2>&1; then
-        lxc init "$RUNTIME_IMAGE" "$name" -c security.privileged=true
+        lxc init "$RUNTIME_IMAGE" "$name" -c security.privileged=true </dev/null
     fi
     [ "$(instance_state "$name")" != RUNNING ] || {
         echo "$name must be stopped before provisioning" >&2

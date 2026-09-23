@@ -41,6 +41,10 @@ class PolicyConfig:
     load_maximum_age_seconds: float = 5
     load_maximum_report_skew_seconds: float = 1
     load_minimum_activity_packets_per_second: float = 10
+    load_counter_guard_enabled: bool = False
+    load_maximum_retries_per_second: float = 100
+    load_maximum_tx_errors_per_second: float = 10
+    load_maximum_rx_errors_per_second: float = 10
 
     def __post_init__(self) -> None:
         if self.policy_version != 1:
@@ -49,6 +53,10 @@ class PolicyConfig:
             raise ValueError("require_complete_client_roster must be boolean")
         if type(self.load_aware_enabled) is not bool:
             raise ValueError("load_aware_enabled must be boolean")
+        if type(self.load_counter_guard_enabled) is not bool:
+            raise ValueError("load_counter_guard_enabled must be boolean")
+        if self.load_counter_guard_enabled and not self.load_aware_enabled:
+            raise ValueError("load_counter_guard_enabled requires load_aware_enabled")
         for name in ("load_high_utilization", "load_maximum_target_utilization", "load_minimum_advantage"):
             if type(getattr(self, name)) is not int or not 0 <= getattr(self, name) <= 255:
                 raise ValueError(f"{name} must be a utilization octet")
@@ -385,9 +393,12 @@ class ThresholdPolicy:
         condition_since = old.condition_since if same_condition else snapshot.observed_at
         held = (now - parse_time(condition_since)).total_seconds()
         required_hold = self.config.load_condition_hold_seconds if load else self.config.condition_hold_seconds
-        new_report_needed = bool(load and required_hold > 0 and min(
-            parse_time(load["evidence"]["current_observed_at"]),
-            parse_time(load["evidence"]["target_observed_at"])) <= parse_time(condition_since))
+        report_times = ([load["evidence"]["current_observed_at"], load["evidence"]["target_observed_at"]]
+                        if load else [])
+        if load and self.config.load_counter_guard_enabled:
+            report_times.append(load["evidence"]["activity_observed_at"])
+        new_report_needed = bool(load and required_hold > 0 and
+                                 min(parse_time(value) for value in report_times) <= parse_time(condition_since))
         if held < required_hold or new_report_needed:
             new = ClientPolicyState(
                 sta_mac=client.sta_mac,

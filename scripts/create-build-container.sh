@@ -27,7 +27,7 @@ if ! lxc info "$BUILD_CONTAINER" >/dev/null 2>&1; then
     if [ -n "${PRPL_BUILD_STORAGE:-}" ]; then
         set -- "$@" --storage "$PRPL_BUILD_STORAGE"
     fi
-    lxc launch "$@"
+    lxc launch "$@" </dev/null
 fi
 
 lxc config set "$BUILD_CONTAINER" boot.autostart false

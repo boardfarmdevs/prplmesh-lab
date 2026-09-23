@@ -1,9 +1,13 @@
 from __future__ import annotations
 
 from typing import Any
+from datetime import datetime, timezone
+
+from optimizer.model import parse_time
 
 
-def project_topology(topology: dict[str, Any] | None, roles_by_bssid: dict[str, str]) -> dict:
+def project_topology(topology: dict[str, Any] | None, roles_by_bssid: dict[str, str], *, now=None) -> dict:
+    now = now or datetime.now(timezone.utc)
     result = {
         "source": "prplmesh_nbapi",
         "available": topology is not None,
@@ -56,6 +60,20 @@ def project_topology(topology: dict[str, Any] | None, roles_by_bssid: dict[str, 
             upstream = ""
         radio = radios_by_bssid.get(upstream, {})
         band = str(radio.get("band") or "").replace(" GHz", "") or None
+        signal = {}
+        if upstream and str(backhaul.get("type") or "").lower() == "wi-fi":
+            timestamp = backhaul.get("signal_updated_at")
+            rssi = backhaul.get("signal_dbm")
+            status = "invalid"
+            try:
+                age = (now - parse_time(timestamp)).total_seconds()
+                if type(rssi) in (int, float) and -110 <= rssi <= 0 and age >= 0:
+                    status = "fresh" if age <= 5 else "stale"
+            except (ValueError, TypeError, AttributeError, OverflowError):
+                pass
+            signal = {"status": status, "observed_at": timestamp,
+                      "rssi_dbm": rssi if status == "fresh" else None,
+                      "source": "prplmesh_nbapi_backhaul_stats"}
         result["backhaul_edges"].append({
             "parent_role": parent,
             "child_role": child,
@@ -63,8 +81,8 @@ def project_topology(topology: dict[str, Any] | None, roles_by_bssid: dict[str, 
             "band": band,
             "channel": radio.get("channel"),
             "upstream_bssid": upstream,
-            "backhaul_sta": "",
-            "signal": {},
+            "backhaul_sta": str(backhaul.get("station_mac") or "").lower(),
+            "signal": signal,
         })
     result["nodes"].sort(key=lambda item: item["role"])
     result["backhaul_edges"].sort(key=lambda item: (item["parent_role"], item["child_role"]))

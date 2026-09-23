@@ -1,0 +1,42 @@
+Subject: [PATCH] nl80211: retain typed ownership of candidate event payloads
+
+Candidate metrics place a vector in a zeroed byte array whose shared-pointer
+deleter only deletes the array. The vector is never constructed or destroyed,
+and its final backing allocation leaks after every nonempty response.
+
+Construct the typed payload and move the collected statistics into it. Passing
+its shared_ptr through the event queue's shared_ptr<void> preserves the typed
+destructor, including when callbacks copy or retain ownership. Allocation
+failure propagates as std::bad_alloc, as with existing make_shared usage;
+scoped owners release their contents during unwinding.
+
+--- a/common/beerocks/bwl/nl80211/mon_wlan_hal_nl80211.cpp
++++ b/common/beerocks/bwl/nl80211/mon_wlan_hal_nl80211.cpp
+@@ -23,6 +23,7 @@
+ #include <sys/time.h>
+ #include <sys/un.h>
+ #include <unistd.h>
++#include <utility>
+ 
+ extern "C" {
+ #include <wpa_ctrl.h>
+@@ -915,16 +916,8 @@
+     if (stats.empty()) {
+         return false;
+     }
+-    sUnassociatedStationsStats stats_out{stats};
+-    auto msg_buff = ALLOC_SMART_BUFFER(sizeof(stats_out));
+-    if (!msg_buff) {
+-        LOG(FATAL) << "Memory allocation failed for sUnassociatedStationsStats";
+-        return false;
+-    }
+-    auto msg = reinterpret_cast<sUnassociatedStationsStats *>(msg_buff.get());
+-    memset(msg_buff.get(), 0, sizeof(stats_out));
+-    std::copy(stats_out.un_stations_stats.begin(), stats_out.un_stations_stats.end(),
+-              back_inserter(msg->un_stations_stats));
+-    event_queue_push(Event::Unassociation_Stations_Stats, msg_buff);
++    auto msg = std::make_shared<sUnassociatedStationsStats>();
++    msg->un_stations_stats = std::move(stats);
++    event_queue_push(Event::Unassociation_Stations_Stats, msg);
+     return true;
+ }

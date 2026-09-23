@@ -12,6 +12,12 @@ const lower = value => String(value || '').toLowerCase();
 const same = (left, right) => JSON.stringify(left) === JSON.stringify(right);
 const quote = value => "'" + String(value).replaceAll("'", "'\\''") + "'";
 
+async function worldApplyResponse(response, selection) {
+  if (!response.url().endsWith('/api/demo/world/apply') || response.request().method() !== 'POST') return false;
+  if (response.request().postDataJSON()?.world !== selection) return false;
+  return !(response.status() === 409 && (await response.json()).error === 'stale_revision');
+}
+
 function expectedFrame(world, timeMs) {
   const frame = world.generations.findLast(item => item.time_ms <= timeMs) || world.generations[0];
   const next = world.generations.find(item => item.time_ms > timeMs);
@@ -388,7 +394,7 @@ async function run(args) {
     return response.json();
   }
   async function guest(operation, payload) {
-    const command = 'lxc exec ' + quote(args.vm) + ' -- python3 /tmp/room-feature-guest-audit.py ' + quote(operation) + ' ' + quote(payload);
+    const command = 'lxc exec --mode non-interactive ' + quote(args.vm) + ' -- python3 /tmp/room-feature-guest-audit.py ' + quote(operation) + ' ' + quote(payload);
     const started = performance.now();
     try {
       return JSON.parse((await execFileAsync(...hostCommand(args.host, command), {timeout: 45000, maxBuffer: 8 * 1024 * 1024})).stdout);
@@ -529,12 +535,22 @@ async function run(args) {
       firstRosterSeconds: firstRoster, firstConvergenceSeconds: firstConvergence, samples, final: lastSample?.result};
   }
   async function screenshot(label) {
+    const captured = lastSample;
+    if (args.screenshots === 'false') {
+      save(activeRoom.id + '-' + label + '.json', captured);
+      return;
+    }
     await room.bringToFront();
     await room.screenshot({path: path.join(directory, activeRoom.id + '-' + label + '-room.png')});
     await topology.bringToFront();
     await topology.screenshot({path: path.join(directory, activeRoom.id + '-' + label + '-topology.png')});
     await room.bringToFront();
-    save(activeRoom.id + '-' + label + '.json', lastSample);
+    save(activeRoom.id + '-' + label + '.json', captured);
+  }
+  async function exitRoomFullscreen() {
+    await room.bringToFront();
+    if (await room.evaluate(() => Boolean(document.fullscreenElement))) await room.locator('#roomFullscreen').click();
+    await room.waitForFunction(() => !document.fullscreenElement);
   }
   async function loadWorld(id) {
     await room.bringToFront();
@@ -542,7 +558,7 @@ async function run(args) {
     const started = performance.now();
     const clickedAt = Date.now();
     const [response] = await Promise.all([
-      room.waitForResponse(response => response.url().endsWith('/api/demo/world/apply'), {timeout: 45000}),
+      room.waitForResponse(response => worldApplyResponse(response, id), {timeout: 45000}),
       room.locator('#world').selectOption(id),
     ]);
     const body = await response.json();
@@ -679,6 +695,7 @@ async function run(args) {
     const preferred = ['home-a-stationary', 'home-a-one-client-handover', 'large-room-extender-evacuation', 'large-room-perimeter-counter-roam'];
     const names = args.world || [...preferred.filter(name => catalog.some(item => item.id === name)), ...catalog.map(item => item.id).filter(name => !preferred.includes(name))];
     for (const id of names) {
+      let movingCapture = null;
       activeRoom = {id, started: new Date().toISOString(), samples: [], errors: [], checkpoints: []};
       sampleOutput = fs.createWriteStream(path.join(directory, id + '-samples.jsonl'));
       phase = 'loading';
@@ -696,6 +713,7 @@ async function run(args) {
         await screenshot('loaded');
         await room.bringToFront();
         if (!await room.evaluate(() => Boolean(document.fullscreenElement))) await room.locator('#roomFullscreen').click();
+        await room.waitForFunction(() => document.fullscreenElement?.id === 'roomView');
         phase = 'playing';
         await clickPlay();
         const playStarted = performance.now();
@@ -715,7 +733,8 @@ async function run(args) {
               const audit = JSON.parse((await execFileAsync(...hostCommand(args.host, command), {timeout: 30000})).stdout);
               save('../asymmetric-rf-audit.json', audit);
             }
-            await screenshot('moving'); middleCaptured = true;
+            movingCapture = screenshot('moving').catch(error => activeRoom.errors.push({phase: 'screenshot', message: error.message}));
+            middleCaptured = true;
           }
           if (result.playback.status === 'completed') { completed = true; break; }
           if (result.playback.status === 'paused') {
@@ -727,6 +746,7 @@ async function run(args) {
             settled.kernel = await auditKernel(settled.final);
             settled.passed &&= settled.kernel.passed;
             activeRoom.checkpoints.push({timeMs: checkpoint, ...settled});
+            await movingCapture;
             await screenshot('checkpoint-' + checkpoint);
             await clickPlay(); checkpointMs += performance.now() - started;
           }
@@ -737,11 +757,13 @@ async function run(args) {
         if (!completed) throw new Error('Playback exceeded bounded wall-clock deadline');
         activeRoom.final = await settle(world, Number(args['final-timeout'] || 120), 'final');
         activeRoom.kernel = await auditKernel(activeRoom.final.final);
+        await movingCapture;
         await screenshot('final');
       } catch (error) {
         activeRoom.errors.push({phase, message: error.stack});
       } finally {
-        if (await room.evaluate(() => Boolean(document.fullscreenElement)).catch(() => false)) await room.locator('#roomFullscreen').click().catch(() => {});
+        await movingCapture;
+        await exitRoomFullscreen().catch(error => activeRoom.errors.push({phase: 'fullscreen-exit', message: error.stack}));
         activeRoom.finished = new Date().toISOString();
         summarizeRoom(activeRoom);
         sampleOutput.end(); sampleOutput = null;
@@ -762,7 +784,7 @@ async function run(args) {
   } finally {
     phase = 'restore'; activeRoom = null;
     try {
-      if (await room.evaluate(() => Boolean(document.fullscreenElement)).catch(() => false)) await room.locator('#roomFullscreen').click();
+      await exitRoomFullscreen();
       if (token) {
         const [response] = await Promise.all([
           room.waitForResponse(response => response.url().endsWith('/api/demo/world/apply'), {timeout: 45000}),

@@ -451,10 +451,9 @@ def test_phase_is_launched_once_and_cancellation_reaps_the_owned_process():
 
 @pytest.mark.parametrize("change", [
     {"_closing": True}, {"_faulted": "medium changed"}, {"_lease": None},
-    {"_playback_status": "paused"}, {"_playback_status": "completed"},
-    {"_roles": {"client": {"present": False}}}, {"_playback_time_ms": 10000},
+    {"_playback_status": "paused"}, {"_roles": {"client": {"present": False}}},
 ])
-def test_session_traffic_gate_cancels_for_pause_expiry_fault_offline_or_phase_end(change):
+def test_session_traffic_gate_cancels_for_pause_expiry_fault_or_offline(change):
     from room_demo.interactions import InteractiveMediumSession
     actor = Mock()
     session = SimpleNamespace(_traffic_experiment=actor, _playback_world={**WORLD, "golden_sha256": "world"},
@@ -462,7 +461,8 @@ def test_session_traffic_gate_cancels_for_pause_expiry_fault_offline_or_phase_en
                               _playback_status="playing", _roles={"client": {"present": True}},
                               _traffic_run=1, plan={"bindings": {"client": {"container": "wlan-client"}}})
     InteractiveMediumSession._sync_traffic(session)
-    actor.sync.assert_called_once_with(("world", 1, 0), PHASE, "wlan-client", 4000)
+    actor.sync.assert_called_once_with(("world", 1, 0), PHASE, "wlan-client", 4000,
+                                       complete_through=("world", 1, 6000))
     actor.reset_mock()
     for field, value in change.items():
         setattr(session, field, value)
@@ -572,3 +572,255 @@ def test_real_session_lifecycle_revokes_and_joins_udp_worker(tmp_path, operation
     finally:
         session.close()
     assert actor.snapshot()["history"][-1]["state"] == "cancelled"
+
+
+def traffic_session(actor):
+    from room_demo.interactions import InteractiveMediumSession
+    session = SimpleNamespace(_traffic_experiment=actor,
+                              _playback_world={**copy.deepcopy(WORLD), "golden_sha256": "world"},
+                              _playback_time_ms=6000, _closing=False, _faulted=None, _lease={},
+                              _playback_status="playing", _roles={"client": {"present": True}},
+                              _traffic_run=1, plan={"bindings": {"client": {"container": "wlan-client"}}})
+    session.sync = lambda: InteractiveMediumSession._sync_traffic(session)
+    return session
+
+
+@pytest.fixture
+def ping_runtime(monkeypatch):
+    from room_demo import traffic_experiment as module
+    state = SimpleNamespace(clock=100.0, processes=[], signals=[], launches=[], expected_results=1,
+                            finished=Event(), transition=None, cleanup=None,
+                            output="535 packets transmitted, 534 received")
+    monkeypatch.setattr(module, "time", SimpleNamespace(**vars(module.time)))
+    monkeypatch.setattr(module.time, "monotonic", lambda: state.clock)
+
+    def launch(container, target, phase, remaining_ms, *, admit):
+        with admit():
+            process = Mock(pid=999999, returncode=None)
+            process.poll.side_effect = lambda: process.returncode
+            def communicate(**_options):
+                if state.cleanup:
+                    state.cleanup()
+                return state.output, None
+            process.communicate.side_effect = communicate
+            state.processes.append(process)
+            state.launches.append((container, remaining_ms, state.clock))
+            return process, 536
+
+    def publish(value):
+        if value["state"] == "running":
+            state.transition(value)
+        if len(value["history"]) == state.expected_results:
+            state.finished.set()
+
+    def stop(process, signum):
+        state.signals.append((process, signum, state.clock))
+        process.returncode = 130
+
+    state.actor = TrafficExperiment("192.168.77.1", publish, launcher=launch)
+    state.actor._signal = stop
+    state.session = traffic_session(state.actor)
+    yield state
+    state.actor.close()
+    assert all(process.returncode is not None for process in state.processes)
+
+
+@pytest.mark.parametrize("ending", ["deadline", "phase-end", "playback-end"])
+def test_ping_natural_completion_keeps_actual_counts_and_stops_at_boundary(ping_runtime, ending):
+    state = ping_runtime
+    def transition(_value):
+        state.clock = 104.0 if ending == "deadline" else 103.9
+        if ending != "deadline":
+            state.session._playback_time_ms = 10000 if ending == "phase-end" else 30000
+            if ending == "playback-end":
+                state.session._playback_status = "completed"
+            state.session.sync()
+    state.transition = transition
+    state.session.sync()
+    assert state.finished.wait(2)
+    result = state.actor.snapshot()["history"][-1]
+    assert result["state"] == "completed"
+    assert result["requested_packets"] == 536 and result["transmitted_packets"] == 535
+    assert result["received_echo_replies"] == 534
+    assert len(state.launches) == 1 and state.launches[0][1] == 4000
+    assert state.signals and all(when <= 104 for _process, _signum, when in state.signals)
+    assert state.processes[0].communicate.call_count == 1
+    with pytest.raises(TrafficCancelled), state.actor._admit(1, 104):
+        pytest.fail("ended phase admitted more traffic")
+
+
+def test_adjacent_phase_completes_old_job_and_launches_new_job_once(ping_runtime):
+    state = ping_runtime
+    state.expected_results = 2
+    following = {**PHASE, "start_ms": 10000, "end_ms": 15000}
+    state.session._playback_world["traffic_experiment"]["phases"].append(following)
+    def transition(value):
+        if value["key"][-1] == 0:
+            state.clock = 103.9
+            state.session._playback_time_ms = 10000
+            state.session.sync()
+            state.session.sync()
+        else:
+            state.clock = 108.9
+            state.session._playback_time_ms = 15000
+            state.session.sync()
+    state.transition = transition
+    state.session.sync()
+    assert state.finished.wait(2)
+    history = state.actor.snapshot()["history"]
+    assert [result["key"][-1] for result in history] == [0, 1]
+    assert [result["state"] for result in history] == ["completed", "completed"]
+    assert [launch[1] for launch in state.launches] == [4000, 5000]
+    assert all(process.communicate.call_count == 1 for process in state.processes)
+
+
+@pytest.mark.parametrize("interruption", ["pause", "fault", "lease", "offline", "world", "run", "close"])
+def test_early_cancellation_is_not_relabelled_by_late_cleanup(ping_runtime, interruption):
+    state = ping_runtime
+    def transition(_value):
+        state.clock = 101
+        if interruption == "pause":
+            state.session._playback_status = "paused"
+        elif interruption == "fault":
+            state.session._faulted = "medium changed"
+        elif interruption == "lease":
+            state.session._lease = None
+        elif interruption == "offline":
+            state.session._roles["client"]["present"] = False
+        elif interruption == "world":
+            state.session._playback_world["golden_sha256"] = "other-world"
+        elif interruption == "run":
+            state.session._traffic_run += 1
+        else:
+            state.session._closing = True
+        state.session.sync()
+        state.actor.sync(None)
+    def cleanup():
+        state.clock = 110
+        state.actor.sync(None, complete_through=("world", 1, 10000))
+    state.transition, state.cleanup = transition, cleanup
+    state.session.sync()
+    assert state.finished.wait(2)
+    result = state.actor.snapshot()["history"][-1]
+    assert result["state"] == "cancelled" and result["elapsed_seconds"] == 10
+    assert result["transmitted_packets"] == 535 and result["received_echo_replies"] == 534
+    assert len(state.launches) == 1
+    assert state.signals and state.signals[0][2] == 101
+
+
+@pytest.mark.parametrize("ended", ["deadline", "phase-end", "process-exit"])
+@pytest.mark.parametrize("cleanup_action", ["pause", "world"])
+def test_completed_ping_is_not_retroactively_cancelled_during_cleanup(ping_runtime, ended, cleanup_action):
+    state = ping_runtime
+    def transition(_value):
+        if ended == "process-exit":
+            state.clock = 103
+            state.processes[0].returncode = 0
+        elif ended == "deadline":
+            state.clock = 104
+        else:
+            state.clock = 103.9
+            state.session._playback_time_ms = 10000
+            state.session.sync()
+    def cleanup():
+        if cleanup_action == "world":
+            state.session._playback_world["golden_sha256"] = "other-world"
+        else:
+            state.session._playback_status = "paused"
+        state.session.sync()
+        state.actor.sync(None)
+        state.clock = 110
+    state.transition, state.cleanup = transition, cleanup
+    state.session.sync()
+    assert state.finished.wait(2)
+    assert state.actor.snapshot()["history"][-1]["state"] == "completed"
+    assert len(state.launches) == 1
+
+
+@pytest.mark.parametrize("context", [("other-world", 1, 10000), ("world", 2, 10000), ("world", 1, 9999)])
+def test_phase_completion_requires_matching_world_run_and_elapsed_phase(ping_runtime, context):
+    state = ping_runtime
+    def transition(_value):
+        state.clock = 101
+        state.actor.sync(None, complete_through=context)
+    state.transition = transition
+    state.session.sync()
+    assert state.finished.wait(2)
+    assert state.actor.snapshot()["history"][-1]["state"] == "cancelled"
+
+
+def test_natural_deadline_without_ping_summary_does_not_fabricate_counts(ping_runtime):
+    state = ping_runtime
+    state.output = "ping failed before producing counters"
+    state.transition = lambda _value: setattr(state, "clock", 104)
+    state.session.sync()
+    assert state.finished.wait(2)
+    result = state.actor.snapshot()["history"][-1]
+    assert result["state"] == "failed"
+    assert result["transmitted_packets"] is result["received_echo_replies"] is None
+
+
+@pytest.mark.parametrize("cancel_early", [False, True])
+def test_deadline_during_setup_never_launches_or_hides_prior_cancellation(ping_runtime, cancel_early):
+    state = ping_runtime
+    def launch(container, target, phase, remaining_ms, *, admit):
+        if cancel_early:
+            state.clock = 101
+            state.actor.sync(None)
+        state.clock = 110
+        with admit():
+            pytest.fail("setup launched traffic after its deadline")
+    state.actor.launcher = launch
+    state.session.sync()
+    assert state.finished.wait(2)
+    result = state.actor.snapshot()["history"][-1]
+    assert result["state"] == ("cancelled" if cancel_early else "expired")
+    assert result["transmitted_packets"] is result["received_echo_replies"] is None
+    assert not state.processes
+
+
+@pytest.mark.parametrize("ending", ["phase-end", "deadline", "pause", "world", "late-pause"])
+@pytest.mark.parametrize("outcome", ["complete", "partial", "failed", "cleanup-failed"])
+def test_udp_phase_end_preserves_measured_endpoint_and_failure_status(monkeypatch, ending, outcome):
+    from room_demo import traffic_experiment as module
+    clock = SimpleNamespace(now=100.0)
+    monkeypatch.setattr(module, "time", SimpleNamespace(**vars(module.time)))
+    monkeypatch.setattr(module.time, "monotonic", lambda: clock.now)
+    result = {"state": "completed" if outcome == "complete" else "cancelled" if outcome == "partial" else "failed"}
+    for endpoint, sender in (("sender", True), ("receiver", False)):
+        result[endpoint] = {**udp_endpoint_record(json.dumps(udp_output(sender)), sender), "returncode": 0}
+    if outcome == "partial":
+        result["receiver"].update(status="partial", returncode=130)
+    if outcome == "cleanup-failed":
+        result["cleanup_errors"] = ["owned firewall rule remains"]
+    expected = copy.deepcopy(result)
+    actor = TrafficExperiment("192.168.77.1", Mock())
+    job = {"key": ("world", 1, 0), "phase": UDP_PHASE, "container": "wlan-client", "deadline": 105}
+    actor._desired = job
+    def runner(*_args, **_kwargs):
+        clock.now = 104
+        if ending in {"phase-end", "late-pause"}:
+            actor.sync(None, complete_through=("world", 1, 10000))
+        elif ending == "pause":
+            actor.sync(None)
+        elif ending == "world":
+            actor.sync(None, complete_through=("other-world", 1, 10000))
+        clock.now = 110
+        if ending == "late-pause":
+            actor.sync(None)
+        return result
+    actor.udp_runner = runner
+    try:
+        actor._udp_job(job, 0)
+        actual = actor.snapshot()["history"][-1]
+        if outcome in {"failed", "cleanup-failed"}:
+            assert actual["state"] == "failed"
+        elif ending in {"pause", "world"}:
+            assert actual["state"] == "cancelled"
+        else:
+            assert actual["state"] == ("completed" if outcome == "complete" else "failed")
+        assert actual["sender"] == expected["sender"]
+        assert actual["receiver"] == expected["receiver"]
+        assert actual.get("cleanup_errors") == expected.get("cleanup_errors")
+    finally:
+        actor.close()

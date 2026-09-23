@@ -2,54 +2,61 @@
 
 [Testing reference](README.md) · [Expected room features](../rooms/catalog.md)
 
-Run every advertised room sequentially within each lab; independent RDK and
-prpl runs may overlap across hosts. This is bounded feature testing, not a soak
-or intrinsic stack-speed ranking. A targeted `--world` run is not full coverage.
+Run rooms sequentially per lab. Targeted checks are not full-catalog coverage
+or soaks.
 
 ## 0916 release recovery checks
 
-The previous client-policy run passes **22/22** on `a9ee070`, with independent
-report validation, unchanged native identities and default twenty restoration.
-Evidence: `/home/rev/work/release-0916/evidence/prpl-clients-final/`.
+`demo-prpl`: `da72869` plus Python/verifier/room overlays; unchanged native binaries.
+Initial evidence: `test-results/rf-prpl-built-20260922T045334Z/`.
+The original build's 6 GHz BTM failure remains recorded.
+Branch-divider initial/branch/return, kernel ownership, both views and default
+twenty restoration pass with unchanged identities/policy. Five strict load/RSSI
+samples and Console NG's 115-radio room/survey checks also pass.
 
-Native proactive steering passes **3/3 geometry rooms** on 16 September:
-branch formation, both-direction parent handover, and isolation/recovery.
-All original roster/kernel/traffic/view gates, unchanged native identities,
-no sampled cycles and Default twenty-client restoration pass. Evidence:
-`/home/rev/work/release-0916/evidence/prpl-native-roaming-geometry-reconciliation/`.
-Native bundle SHA256:
-`74bd45051c514eafc822092365277ec91f4e8b67f2464899d1f3a4f9cef832e1`.
+Follow-up: `test-results/prpl-startup-followup/`. Per-station ubus dispatch returns
+`Not found` despite the station existing through root `_get`. Root `_exec`
+submits identical native BTM arguments. Both steering entrypoints now require
+one bounded, acknowledged root dispatch: no retries or forced associations.
+Topology/BSS reads likewise avoid ephemeral bus endpoints without weaker
+freshness. Focused regressions: **49 passed, 23 subtests passed**.
 
-The controller proactively moves ext3→ext2 and back ext3→ext1; wire captures
-show standard 1905 requests and successful matching responses (MIDs `0x8003`,
-`0x8004`). Request-to-verified-native-topology times are **1.208 s / 1.158 s**;
-wire request-to-response times are **81.0 ms / 81.6 ms**. These exclude eligibility
-dwell and are not full RF-change-to-client-convergence latency guarantees.
-Continuous and rotated controller logs are retained. No geometry/gate changes,
-external BSSID forcing or synthetic client reassociation are used.
+Acceptance initially fails its strict star gate after a retained branch; the VM
+later becomes unresponsive. User-approved restart reuses the build; cold startup
+takes **12.2 minutes**. Expanded acceptance then **passes in 359 seconds**:
+100-client star/metrics, 5 GHz/private and 6 GHz/IoT physical/NBAPI/native-response
+BTM, all-client traffic, deepest-path traffic and process/resource gates.
+Native identities are unchanged during checks, not across reboot.
+
+The subsequent controller OOM (6.95 GiB anonymous RSS) is isolated to native
+notification backlog plus separate action-allocation leaks. Patches 0026–0028
+bound dispatch, preserve TID row identities and release owned variants/strings.
+The first matched 100-client/one-second/traffic regression passes at 47.781 MiB
+peak with zero measured growth; drain-only failed. Partial-roster restarts
+were rejected, not used as memory evidence. See [controller memory](controller-memory.md)
+for retained failures, repeat/room qualification and exact workload boundaries.
+
+Historical **22/22** client rooms on `a9ee070`:
+`/home/rev/work/release-0916/evidence/prpl-clients-final/`; **3/3** geometry rooms:
+`prpl-native-roaming-geometry-reconciliation/` alongside it. Not fresh coverage.
 
 **Release remains held pending a fresh full 22+3 run on this native build.**
 [Native policy and guards](../rooms/architecture.md#native-backhaul-roaming-0916-qualification)
 describe native scans, rooted safety, reachability probes and reconciliation.
 
-The candidate collector refreshes native device/radio paths before each collection.
-Agent reconnection can recreate NBAPI instances with new numbers even when the
-radio MACs are unchanged. A changed identity-to-path map invalidates candidate
-registrations before registering against the current objects; unchanged maps
-retain registrations and capability discovery. Regression tests cover device
-recreation, radio reordering and interrupted rediscovery. This fixes permanent
-`AddUnassociatedStation` failures against deleted paths, not native radio policy.
+Candidate collection refreshes native device/radio paths. Reconnection can
+renumber NBAPI instances without changing MACs; changed mappings invalidate
+registrations, unchanged mappings retain discovery. Regressions cover recreation,
+radio reordering and interrupted discovery. This fixes stale-path
+`AddUnassociatedStation` failures, not native radio policy.
 
-A query sent during a backhaul outage can also be lost without any NBAPI path
-change. The collector retries the native update after 2, 4 and 8 additional
-seconds while measurements remain missing (at most three retries within the
-original timeout). It retains the original timestamp baseline, publishes each
-fresh result once and stops on world supersession. It does not substitute old
-metrics, extend the deadline or force a parent change. A retained isolation-room
-failure had two consecutive 30-second query timeouts despite restored traffic;
-the bounded repaired branch/isolation run passes. Missing metrics during the
-intentional outage still time out honestly; retries cannot make an isolated
-agent reachable.
+Backhaul outages can lose queries without changing NBAPI paths. The collector
+retries native updates after 2, 4 and 8 additional seconds, within the original
+deadline and timestamp baseline. Fresh results publish once; superseded worlds
+cancel collection. No stale substitution, forced parent change or timeout
+extension. Retained isolation evidence shows two 30-second query failures despite
+restored traffic; the repaired bounded branch/isolation run passes. Isolated
+agents still fail honestly when unreachable.
 
 The topology adapter identifies the controller by native `Network.ControllerID`,
 not by a temporarily missing `BackhaulDeviceID`. Parentless/reconnecting agents

@@ -10,6 +10,11 @@ const input = {now, selected: 'gateway', view: 'native',
 assert.match(describe(input), /Utilization \(0–255\): 0 · received/);
 assert.match(describe(input), /Associated stations: 0 · received/);
 assert.match(describe(input), /Sample window: unknown/);
+const configured = {...input, observations: {...input.optimizer.rf_observations,
+  schema: 'easymesh.rf-inspection.v2', policy_enabled: true, counter_guard_enabled: true}};
+assert.match(describe(configured), /Native counter guard: configured for load balancing; weak-signal rescue bypasses it/);
+assert.match(describe({...configured, observations: {...configured.observations, counter_guard_enabled: false}}),
+  /Native counter guard: not enabled; counters remain available for inspection/);
 assert.match(describe({...input, now: now + 6000}), /Utilization \(0–255\): — unavailable\/stale/);
 for (const changes of [{utilization: null}, {utilization: 256}, {utilization: -1},
   {utilization: true}, {utilization: '0'}, {source: 'fixture'}, {transport: 'unknown'},

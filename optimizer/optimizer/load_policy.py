@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import replace
+from .counter_guard import evaluate_counter_guard
 from .model import parse_time
 from .policy import Evaluation, ThresholdPolicy, _fresh
 from .state import PolicyState
@@ -12,6 +13,7 @@ class LoadAwarePolicy(ThresholdPolicy):
             return None
         evidence = {"policy": "native-load-v1", "utilization_unit": "octet-0..255",
                     "capacity_estimate": False,
+                    "counter_guard_enabled": self.config.load_counter_guard_enabled,
                     "maximum_report_age_seconds": self.config.load_maximum_age_seconds,
                     "maximum_report_skew_seconds": self.config.load_maximum_report_skew_seconds,
                     "required_hold_seconds": self.config.load_condition_hold_seconds,
@@ -35,6 +37,15 @@ class LoadAwarePolicy(ThresholdPolicy):
         if activity is None:
             return hold("native_load_activity_unavailable")
         evidence.update(client_packets_per_second=activity.packets_per_second, activity_interval_seconds=activity.interval_seconds)
+        evidence.update(activity_observed_at=activity.observed_at, activity_transport=activity.transport,
+                        client_bytes_per_second=activity.bytes_per_second,
+                        counter_guard_enabled=self.config.load_counter_guard_enabled)
+        if self.config.load_counter_guard_enabled:
+            guard = evaluate_counter_guard(activity, current, station=client.sta_mac,
+                                           bssid=client.connected_bssid, now=now, config=self.config)
+            evidence.update(guard["evidence"])
+            if guard["state"] != "clear":
+                return hold(guard["reason"])
         if activity.packets_per_second < self.config.load_minimum_activity_packets_per_second:
             return hold("native_load_client_idle")
         choices = []
@@ -52,6 +63,7 @@ class LoadAwarePolicy(ThresholdPolicy):
             else:
                 checks = (
                     (target.epoch != current.epoch, "provider_epoch_mismatch"),
+                    (self.config.load_counter_guard_enabled and target.transport != current.transport, "transport_mismatch"),
                     (target.device_id != candidate.device_id, "target_identity_mismatch"),
                     (target.radio_id == current.radio_id, "same_radio"),
                     (target.channel == current.channel, "same_channel"),

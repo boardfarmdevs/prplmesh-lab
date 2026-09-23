@@ -393,7 +393,7 @@ def test_failed_query_records_agent_radio_and_failed_transaction():
             (client(),), (inventory(),), bsses(), "2026-08-21T20:00:01.000Z"
         ))
     assert [{key: value for key, value in transaction.items()
-             if key not in {"requested_at", "finished_at", "elapsed_ms"}}
+             if key not in {"requested_at", "finished_at", "elapsed_ms", "request_timing"}}
             for transaction in provider.last_raw] == [{
         "request": {
             "AlMac": AGENT,
@@ -405,6 +405,10 @@ def test_failed_query_records_agent_radio_and_failed_transaction():
         "query_radio": RADIO,
         "error": "HTTP 504",
     }]
+    timing = provider.last_raw[0]["request_timing"]
+    assert timing["error_type"] == "CandidateMetricsError"
+    assert timing["error"] == "HTTP 504"
+    assert timing["elapsed_ms"] >= 0
 
 
 def test_partial_success_response_is_rejected():

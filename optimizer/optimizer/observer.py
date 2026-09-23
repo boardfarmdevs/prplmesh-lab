@@ -71,6 +71,10 @@ def _bss_inventory(
     return result
 
 
+class ControllerInventoryUnavailable(ValueError):
+    """A controller response cannot currently supply a usable inventory."""
+
+
 class ControllerObserver:
     """Read and normalize controller APIs without consulting simulator truth."""
 
@@ -94,7 +98,15 @@ class ControllerObserver:
         self.last_raw: dict[str, Any] | None = None
 
     def _get(self, path: str) -> dict[str, Any]:
-        return self.fetcher(f"{self.base_url}{path}")
+        payload = self.fetcher(f"{self.base_url}{path}")
+        if not isinstance(payload, dict):
+            raise ControllerInventoryUnavailable(f"controller response unavailable: {path}")
+        field = {"topology": "nodes", "clients": "clients", "devices": "devices", "bsses": "bsses"}.get(path.rsplit("/", 1)[-1])
+        if field:
+            rows = payload.get(field, [])
+            if not isinstance(rows, list) or any(not isinstance(row, dict) for row in rows):
+                raise ControllerInventoryUnavailable(f"controller {field} inventory unavailable or malformed")
+        return payload
 
     def observe(self) -> Snapshot:
         sample_started_at = format_time(self.clock())
