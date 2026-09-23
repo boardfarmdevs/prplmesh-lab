@@ -66,7 +66,7 @@ def test_delayed_or_future_native_reports_cannot_be_retimestamped_as_fresh(wall)
 
 
 @pytest.mark.parametrize("offset,format,value", [
-    (0, "<I", 0), (4, "<I", 2), (8, "<I", 8193), (8, "<I", 47),
+    (0, "<I", 0), (4, "<I", 2), (8, "<I", PrplBrokerDecoder.MAX_MESSAGE_SIZE + 1), (8, "<I", 47),
     (12, "B", 1), (33, "B", 3), (28, "<H", 0), (30, "<H", 0),
     (40, "<H", 1), (54, ">H", 0x800D),
 ])
@@ -79,7 +79,31 @@ def test_wrong_abi_or_unexpected_message_fails_closed(offset, format, value):
 
 def test_native_stream_memory_is_bounded():
     with pytest.raises(ValueError, match="budget"):
-        feed(PrplBrokerDecoder(), bytes(20000))
+        feed(PrplBrokerDecoder(), bytes(2 * PrplBrokerDecoder.MAX_MESSAGE_SIZE
+                                       + PrplBrokerDecoder.HEADER.size + 1))
+
+
+@pytest.mark.parametrize("split", [1, 8192, 10000])
+def test_full_roster_report_over_old_limit_preserves_every_station(split):
+    stations = [bytes((2, 0, 0, 16, index, 0)) for index in range(1, 101)]
+    payload = b"".join(tlv(0xA2, station + struct.pack("!IIIIIII", index, 0, 7, 8, 0, 0, 0))
+                       + tlv(0x96, station + bytes(20))
+                       + tlv(0xB0, station + bytes(30))
+                       for index, station in enumerate(stations)) + bytes(3)
+    original = native_message()
+    metadata = bytearray(original[12:52])
+    cmdu = original[52:60] + payload
+    struct.pack_into("<H", metadata, 28, len(cmdu))
+    body = metadata + cmdu
+    assert 8192 < len(body) < PrplBrokerDecoder.MAX_MESSAGE_SIZE
+    wire = PrplBrokerDecoder.HEADER.pack(PrplBrokerDecoder.MAGIC, 1, len(body)) + body
+    decoder = PrplBrokerDecoder()
+    assert feed(decoder, wire[:split]) == []
+    reports = feed(decoder, wire[split:])
+    assert len(reports) == 1
+    assert [row["sta_mac"] for row in reports[0]["traffic"]] == [
+        ":".join(f"{octet:02x}" for octet in station) for station in stations]
+    assert [row["bytes_sent"] for row in reports[0]["traffic"]] == list(range(100))
 
 
 def test_duplicate_tick_or_older_report_does_not_refresh_load_or_activity():

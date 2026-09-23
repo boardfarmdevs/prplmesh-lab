@@ -1,0 +1,48 @@
+Subject: [PATCH] transport: accommodate full-roster AP metrics reports
+
+The fixed 100-client lab can concentrate most stations on one agent. Its
+monitor reports fit individually, but aggregating traffic, link, extended link
+and Wi-Fi 6 status TLVs exceeds the 8 KiB agent buffer. Allocation fails before
+send, so the controller receives no station measurements from that agent.
+Concentration on a single radio can also exceed the monitor's old buffer.
+
+Raise the bounded application and broker frame capacities together to 32 KiB.
+This retains one complete response with its original MID and all station TLVs;
+the existing transport fragments at TLV boundaries for Ethernet. The limit
+remains below the 64 KiB reassembly budget and 16-bit CMDU length field. No
+reporting frequency, measurement, policy or wire format changes. Rebuild and
+deploy every mesh node, including its transport process, as one artifact.
+
+The lab's native broker observer must accept the same bounded frame size.
+The capacity regression serializes and parses 100 stations with their traffic,
+link, extended-link and eight-TID status TLVs using production TLVF classes.
+Run tests/test_native_metrics_capacity.py with PRPL_NATIVE_INSTALL pointing to
+the built native install. Its original 8 KiB negative control must fail; 100
+stations across 1, 9 and 15 BSSes require 10,299-10,985 bytes and must round-trip
+without losing MID, counters, RCPI or any TID entries. The passive decoder tests
+separately cover split stream delivery above 8 KiB and oversized rejection.
+Live qualification still requires full-roster fresh metrics, native counter
+trials and the existing memory gate; serialization alone is not sufficient.
+
+--- a/common/beerocks/bcl/include/bcl/beerocks_defines.h
++++ b/common/beerocks/bcl/include/bcl/beerocks_defines.h
+@@ -151,7 +151,7 @@
+ enum eMessageConsts {
+     MESSAGE_VERSION       = 6,
+     MESSAGE_MAGIC         = 0x55CDABEF,
+-    MESSAGE_BUFFER_LENGTH = 8192,
++    MESSAGE_BUFFER_LENGTH = 32768,
+ };
+ } //namespace message
+ 
+--- a/framework/transport/ieee1905_transport/include/mapf/transport/ieee1905_transport_messages.h
++++ b/framework/transport/ieee1905_transport/include/mapf/transport/ieee1905_transport_messages.h
+@@ -69,7 +69,7 @@
+ class Message {
+ public:
+     static constexpr uint32_t kMessageMagic   = 0xB8C16F47;
+-    static constexpr uint32_t kMaxFrameLength = 8192;
++    static constexpr uint32_t kMaxFrameLength = 32768;
+ 
+     class Frame {
+     public:
