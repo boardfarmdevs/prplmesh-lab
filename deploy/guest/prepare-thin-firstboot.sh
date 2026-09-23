@@ -7,6 +7,7 @@ REPORT=${PRPLMESH_THIN_REPORT:-/var/lib/prplmesh-lab/thin-firstboot-report.txt}
 LXC_BIN=${PRPLMESH_LXC_BIN:-lxc}
 RADIO_LAB=${PRPLMESH_RADIO_LAB:-$ROOT/scripts/radio-lab.sh}
 RUNTIME_IMAGE=${PRPLMESH_RUNTIME_IMAGE:-prpl-runtime-local}
+CLIENT_IMAGE=${PRPLMESH_CLIENT_IMAGE:-prpl-client-local}
 CAPACITY_STATE=${PRPLMESH_THIN_CAPACITY_STATE:-/var/lib/prplmesh-lab/thin-image-capacity.json}
 ACTION=${1:-prepare}
 
@@ -94,7 +95,10 @@ install -d -m 0755 "$(dirname "$REPORT")"
 capacity_report=$(mktemp "${REPORT}.capacity.XXXXXX.json")
 PRPLMESH_LXC_BIN="$LXC_BIN" python3 "$ROOT/deploy/guest/thin-image-guard.py" firstboot-check \
     --state "$CAPACITY_STATE" --image "$RUNTIME_IMAGE" --existing "$before" \
-    --expected "$expected" > "$capacity_report"
+    --client-image "$CLIENT_IMAGE" --expected "$expected" > "$capacity_report"
+if [[ $(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["schema_version"])' "$CAPACITY_STATE") != 3 ]]; then
+    CLIENT_IMAGE=$RUNTIME_IMAGE
+fi
 
 if [ ! -e "$REPORT" ]; then
     [ "$before" -eq 0 ] || {
@@ -118,6 +122,7 @@ env PRPL_AGENT_COUNT="$agents" PRPL_CLIENT_COUNT="$clients" \
     "$RADIO_LAB" radio-pool
 env PRPL_AGENT_COUNT="$agents" PRPL_CLIENT_COUNT="$clients" \
     PROVISIONED_AGENT_COUNT="$agents" PROVISIONED_CLIENT_COUNT="$clients" \
+    PRPLMESH_RUNTIME_IMAGE="$RUNTIME_IMAGE" PRPLMESH_CLIENT_IMAGE="$CLIENT_IMAGE" \
     "$RADIO_LAB" deploy
 
 after=$(instance_names | awk 'NF {n++} END {print n+0}')

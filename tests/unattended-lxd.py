@@ -73,6 +73,15 @@ esac
         self.run_with_open_stdin(f'bash "{ROOT}/scripts/build-runtime-image.sh"', expected=1)
         self.assertNotIn("publish ", self.log.read_text())
 
+    def test_client_image_uses_separate_base_setup_and_alias(self):
+        self.environment.update(SOURCE_IMAGE="test-base")
+        self.run_with_open_stdin(f'bash "{ROOT}/scripts/build-runtime-image.sh" client')
+        calls = self.log.read_text()
+        self.assertIn("init test-base prpl-client-image-build", calls)
+        self.assertIn("scripts/container/setup-client-base.sh", calls)
+        self.assertIn("publish prpl-client-image-build --alias prpl-client-local", calls)
+        self.assertNotIn("setup-runtime-base.sh", calls)
+
     def test_vm_exec_argument_and_failure_passthrough(self):
         command = shell_function("deploy/lxd-vm/build.sh", "run")
         self.environment["MOCK_EXEC_RESULT"] = "17"
@@ -86,6 +95,7 @@ esac
     def test_radio_container_creation(self):
         setup = """
 RUNTIME_IMAGE=test-runtime
+CLIENT_IMAGE=test-client-image
 instance_state() { echo STOPPED; }
 ensure_project_mount() { :; }
 ensure_metrics_mount() { :; }
@@ -99,6 +109,7 @@ remove_wired_backhaul() { :; }
             with self.subTest(name=name):
                 command = shell_function("scripts/radio-lab.sh", name)
                 self.run_with_open_stdin(setup + command + f"\n{name} {arguments}")
+        self.assertIn("init test-client-image test-client", self.log.read_text())
 
 
 if __name__ == "__main__":

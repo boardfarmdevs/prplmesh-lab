@@ -23,6 +23,7 @@ OUTPUT="$BUNDLE/prplmesh-${RELEASE_ID}-${SHORT}-thin-lxd.tar.zst"
 TRIM_REPORT="$BUNDLE/trim-report.txt"
 BUILD_STORAGE_POOL=
 RUNTIME_IMAGE=prpl-runtime-local
+CLIENT_IMAGE=prpl-client-local
 RUNTIME_BASE_COMMIT=${PRPLMESH_RUNTIME_BASE_COMMIT:-}
 SOURCE_COMMIT=$(git -C "$ROOT" rev-parse HEAD)
 SOURCE_STAGE=
@@ -205,6 +206,9 @@ nested_count=$(lxc exec "$NAME" -- lxc list --format csv -c n |
     exit 1
 }
 lxc exec "$NAME" -- lxc image info "$RUNTIME_IMAGE" >/dev/null
+capacity_schema=$(lxc exec "$NAME" -- python3 -c 'import json; print(json.load(open("/var/lib/prplmesh-lab/thin-image-capacity.json"))["schema_version"])')
+if [[ "$capacity_schema" != 3 ]]; then CLIENT_IMAGE=$RUNTIME_IMAGE; fi
+lxc exec "$NAME" -- lxc image info "$CLIENT_IMAGE" >/dev/null
 lxc exec "$NAME" -- test -r /var/lib/prplmesh-lab/thin-firstboot.template.env
 lxc exec "$NAME" -- test -r /var/lib/prplmesh-lab/thin-profile-selection.required
 lxc exec "$NAME" -- test ! -e /var/lib/prplmesh-lab/thin-pending.env
@@ -212,16 +216,17 @@ printf 'nested_instances_before_export=%s\n' "$nested_count" >> "$TRIM_REPORT"
 
 lxc exec "$NAME" -- python3 /opt/prplmesh-lab/deploy/guest/thin-image-guard.py firstboot-check \
     --state /var/lib/prplmesh-lab/thin-image-capacity.json \
-    --image "$RUNTIME_IMAGE" --existing 0 --expected 105 > "$BUNDLE/thin-capacity-check.json"
+    --image "$RUNTIME_IMAGE" --client-image "$CLIENT_IMAGE" --existing 0 --expected 105 > "$BUNDLE/thin-capacity-check.json"
 lxc file pull "$NAME/var/lib/prplmesh-lab/thin-image-capacity.json" "$BUNDLE/thin-image-capacity.json"
 
 lxc file push "$ROOT/deploy/lxd-vm/package-cleanup.sh" \
     "$NAME/run/prplmesh-package-cleanup"
 lxc exec "$NAME" -- chmod 0755 /run/prplmesh-package-cleanup
-lxc exec "$NAME" -- env PRPLMESH_PRESERVE_IMAGE_ALIAS="$RUNTIME_IMAGE" \
+lxc exec "$NAME" -- env PRPLMESH_PRESERVE_IMAGE_ALIAS="$RUNTIME_IMAGE" PRPLMESH_PRESERVE_CLIENT_ALIAS="$CLIENT_IMAGE" \
     /bin/bash /run/prplmesh-package-cleanup | tee -a "$TRIM_REPORT"
 lxc file delete "$NAME/run/prplmesh-package-cleanup"
 lxc exec "$NAME" -- lxc image info "$RUNTIME_IMAGE" >/dev/null
+lxc exec "$NAME" -- lxc image info "$CLIENT_IMAGE" >/dev/null
 [ "$(lxc exec "$NAME" -- lxc list --format csv -c n | awk 'NF {n++} END {print n+0}')" -eq 0 ]
 lxd_set_device_property "$NAME" root size 160GiB
 [ "$(lxc config device get "$NAME" root size)" = 160GiB ] || {

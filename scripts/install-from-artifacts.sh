@@ -23,12 +23,13 @@ fi
 if [ ! -x "$ROOT/build/bin/wmediumd" ]; then
     "$ROOT/scripts/build-wmediumd.sh"
 fi
-SOURCE_IMAGE=$BASE_ALIAS "$ROOT/scripts/build-runtime-image.sh"
+SOURCE_IMAGE=$BASE_ALIAS IMAGE_ALIAS=${PRPLMESH_RUNTIME_IMAGE:-prpl-runtime-local} "$ROOT/scripts/build-runtime-image.sh"
+SOURCE_IMAGE=$BASE_ALIAS IMAGE_ALIAS=${PRPLMESH_CLIENT_IMAGE:-prpl-client-local} "$ROOT/scripts/build-runtime-image.sh" client
 
 sudo env INSTALL_MODULE=1 "$ROOT/scripts/build-hwsim.sh"
 sudo depmod -a "$(uname -r)"
 if [ "$MODE" = --prepare-only ]; then
-    echo 'Runtime image and radio modules installed; reboot before provisioning the radio pool.'
+    echo 'Mesh/client images and radio modules installed; reboot before provisioning the radio pool.'
     exit 0
 fi
 sudo "$ROOT/scripts/radio-lab.sh" radio-pool

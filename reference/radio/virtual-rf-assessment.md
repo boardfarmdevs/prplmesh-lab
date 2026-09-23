@@ -481,7 +481,7 @@ merely to make a demonstration pass.
 | IDs | Source boundary and follow-up |
 | --- | --- |
 | P01, P03–P04 | `patches/prplmesh/`: current-channel survey consumption, scan override removal and associated-stat refresh implemented |
-| P02 | BWL station counters qualify after Profile 2 KiB-to-octet normalization; noise, ESP, retry/error and rate semantics remain unqualified |
+| P02 | Bounded byte/packet/retry/Tx-error counters qualify (Profile 2 KiB); [0032](../../patches/prplmesh/0032-size-metrics-messages-for-client-pool.patch) fixes 100-client reporting. Noise, ESP, Rx-error and rate semantics remain unqualified |
 | P05–P06 | Periodic, explicit-query, upward/downward threshold and restart behavior pass; preserve native timestamps and availability in UI consumers |
 | P07–P08 | Scoped external policy and build/service integration implemented; channel planning and new artifact qualification remain separate |
 

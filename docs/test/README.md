@@ -7,6 +7,9 @@ Run from the matching **outer-host checkout**; reuse existing VMs.
 Live/soak tiers guard/stop the room until native tests finish, then restore its
 prior active state. Cleanup failures fail qualification. Room tests use `worlds/golden`.
 
+After native AP/monitor restarts, re-establish clients with `scripts/radio-lab.sh clients`
+inside the VM before starting the room.
+
 For RF checks, set `ROOM_URL` to the live-room URL from
 `bash deploy/lxd-vm/build.sh urls`. Proxies usually bind the LAN IP, not localhost:
 

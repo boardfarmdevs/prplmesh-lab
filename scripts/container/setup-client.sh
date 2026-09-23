@@ -4,7 +4,8 @@ set -euo pipefail
 ordinal=${1:?client ordinal}
 cohort=${2:?private or iot}
 band=${3:-5}
-tar -C /usr/local -xzf /mnt/project/artifacts/hostap-runtime-2.10.tar.gz
+tar -C /usr/local -xzf /mnt/project/artifacts/hostap-runtime-2.10.tar.gz \
+    ./sbin/wpa_supplicant ./bin/wpa_cli
 
 case "$band" in
     2.4) key_mgmt=WPA-PSK; frequency=2437 ;;

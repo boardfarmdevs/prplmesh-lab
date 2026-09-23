@@ -86,7 +86,7 @@ class PrplBrokerDecoder:
     HEADER = struct.Struct("<III")
     MAGIC = 0xB8C16F47
     METADATA_SIZE = 40
-    MAX_MESSAGE_SIZE = 8192
+    MAX_MESSAGE_SIZE = 32768
 
     def __init__(self):
         self.buffer = bytearray()

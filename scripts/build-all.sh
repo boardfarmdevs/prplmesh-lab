@@ -8,7 +8,8 @@ ROOT=$(cd "$(dirname "$0")/.." && pwd)
 "$ROOT/scripts/build-prplmesh.sh" nl80211
 "$ROOT/scripts/package-build-artifacts.sh"
 "$ROOT/scripts/build-wmediumd.sh"
-"$ROOT/scripts/build-runtime-image.sh"
+IMAGE_ALIAS=${PRPLMESH_RUNTIME_IMAGE:-prpl-runtime-local} "$ROOT/scripts/build-runtime-image.sh"
+IMAGE_ALIAS=${PRPLMESH_CLIENT_IMAGE:-prpl-client-local} "$ROOT/scripts/build-runtime-image.sh" client
 
 sudo env INSTALL_MODULE=1 "$ROOT/scripts/build-hwsim.sh"
 sudo depmod -a "$(uname -r)"

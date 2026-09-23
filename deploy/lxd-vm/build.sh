@@ -27,6 +27,9 @@ ROOM_PORT=${PRPLMESH_ROOM_DEMO_HOST_PORT:-18891}
 RUNTIME_DEPS=${PRPL_RUNTIME_DEPS_ARCHIVE:-$ROOT/artifacts/prpl-runtime-deps-6.0.0.tar.gz}
 PRPL_INSTALL=${PRPL_INSTALL_ARCHIVE:-$ROOT/artifacts/prpl-install-nl80211-6.0.0.tar.gz}
 HOSTAP_RUNTIME=${PRPL_HOSTAP_ARCHIVE:-$ROOT/artifacts/hostap-runtime-2.10.tar.gz}
+NESTED_POOL=${PRPLMESH_NESTED_STORAGE_POOL:-prpl-lab}
+NESTED_DRIVER=${PRPLMESH_NESTED_STORAGE_DRIVER:-btrfs}
+NESTED_SIZE=${PRPLMESH_NESTED_STORAGE_SIZE:-120GiB}
 
 usage()
 {
@@ -48,6 +51,9 @@ Site overrides:
   PRPLMESH_LXD_STORAGE=$PRPLMESH_LXD_STORAGE (retained on delete)
   PRPLMESH_PORT_BASE=$PRPLMESH_PORT_BASE
   PRPLMESH_STORAGE_DRIVER=dir (new pools only; existing pools are reused)
+  PRPLMESH_NESTED_STORAGE_DRIVER=btrfs (fresh VM container pool; or dir)
+  PRPLMESH_NESTED_STORAGE_POOL=prpl-lab
+  PRPLMESH_NESTED_STORAGE_SIZE=120GiB (sparse Btrfs capacity, not preallocation)
 EOF
 }
 
@@ -267,7 +273,7 @@ EOF"
 
     run env DEBIAN_FRONTEND=noninteractive bash -c '
         apt-get update
-        apt-get install -y build-essential ca-certificates curl dpkg-dev git golang-go iperf3 iproute2 iptables iputils-ping iw jq \
+        apt-get install -y btrfs-progs build-essential ca-certificates curl dpkg-dev git golang-go iperf3 iproute2 iptables iputils-ping iw jq \
           libconfig-dev libnl-3-dev libnl-genl-3-dev libnl-route-3-dev meson \
           nftables ninja-build patch pkg-config python3 python3-venv rsync snapd util-linux
         sed "s/^Types: deb$/Types: deb-src/" /etc/apt/sources.list.d/ubuntu.sources \
@@ -278,6 +284,9 @@ EOF"
         lxd waitready
         lxc storage show default >/dev/null 2>&1 || lxd init --auto --storage-backend dir </dev/null
     '
+    run env PRPLMESH_NESTED_STORAGE_POOL="$NESTED_POOL" \
+        PRPLMESH_NESTED_STORAGE_DRIVER="$NESTED_DRIVER" PRPLMESH_NESTED_STORAGE_SIZE="$NESTED_SIZE" \
+        bash /opt/prplmesh-lab/deploy/guest/setup-nested-storage.sh
     run bash /opt/prplmesh-lab/scripts/install-from-artifacts.sh --prepare-only
     lxc restart "$NAME" --timeout 120
     wait_agent
