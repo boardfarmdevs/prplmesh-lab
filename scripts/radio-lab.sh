@@ -12,7 +12,8 @@ fi
 source "$ROOT/manifests/lab.env"
 
 ACTION=${1:-status}
-RUNTIME_IMAGE=prpl-runtime-local
+RUNTIME_IMAGE=${PRPLMESH_RUNTIME_IMAGE:-prpl-runtime-local}
+CLIENT_IMAGE=${PRPLMESH_CLIENT_IMAGE:-prpl-client-local}
 CONTROLLER=$CONTROLLER_CONTAINER
 ACTIVE_AGENTS=${PRPL_AGENT_COUNT:-$ACTIVE_AGENT_COUNT}
 ACTIVE_CLIENTS=${PRPL_CLIENT_COUNT:-$ACTIVE_CLIENT_COUNT}
@@ -257,7 +258,11 @@ create_client()
 {
     local name=$1 radio=$2
     if ! lxc info "$name" >/dev/null 2>&1; then
-        lxc init "$RUNTIME_IMAGE" "$name" -c security.privileged=true </dev/null
+        lxc image info "$CLIENT_IMAGE" >/dev/null 2>&1 || {
+            echo "Missing client image $CLIENT_IMAGE; run scripts/build-runtime-image.sh client first." >&2
+            return 1
+        }
+        lxc init "$CLIENT_IMAGE" "$name" -c security.privileged=true </dev/null
     fi
     [ "$(instance_state "$name")" != RUNNING ] || {
         echo "$name must be stopped before provisioning" >&2

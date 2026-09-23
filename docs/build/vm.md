@@ -18,7 +18,7 @@ The checkout must be committed and clean. The builder transfers a verified
 bundle of its exact HEAD, not uncommitted files. It selects the three archives
 under `artifacts/`, verifies adjacent `SHA256SUMS`, creates the named storage
 pool if missing, checks port conflicts, and refuses to replace an existing VM.
-It installs the pinned radio kernel, nested LXD, prplMesh runtime, patched
+It installs the pinned radio kernel, nested LXD, separate mesh/client images, patched
 hwsim/wmediumd, topology, room and **Console NG**. Native acceptance runs before
 success; no room campaign or long soak runs during the build. Preserve the
 build log on failure; do not treat an existing VM as an accepted build.
@@ -29,7 +29,8 @@ builders can stall after `Built .../wmediumd` while `lxc init` awaits optional
 YAML on stdin. If that exact wait is confirmed, send Ctrl-D on an empty line
 in the original terminal to continue; do not delete the VM. Runtime image setup
 logs to `/tmp/prpl-runtime-image-build.log` inside the VM
-(`RUNTIME_IMAGE_BUILD_LOG` overrides it for standalone runs).
+and `/tmp/prpl-client-image-build.log` for clients
+(`RUNTIME_IMAGE_BUILD_LOG` overrides either for standalone runs).
 
 Native artifacts are built in Ubuntu 22.04. The radio VM is Ubuntu 24.04 with
 the pinned Linux 7 kernel. VM creation does not require Go, Node or Chromium on
@@ -73,10 +74,62 @@ Default pools use `dir`, which works without an outer-host ZFS module. To use
 an existing pool set `PRPLMESH_LXD_STORAGE`; it is never reformatted. For a new
 CoW outer pool, set `PRPLMESH_STORAGE_DRIVER=zfs` or `btrfs` and optionally
 `PRPLMESH_STORAGE_SIZE=240GiB`, with host backend support installed first.
-This **does not change nested storage**: prpl's thin-image capacity/identity
-guards currently require its existing directory-backed inner pool. RDK's
-parallel BPI roster allocator and inner Btrfs implementation are not portable
-to prpl and have not been copied.
+This outer-host choice is independent of the **inner container pool**.
+
+## Efficient inner storage and clients
+
+Fresh VM builds create `prpl-lab`, a Btrfs copy-on-write pool. Containers share
+unchanged image data rather than unpacking 105 independent Ubuntu root filesystems.
+The default `120GiB` loop file is sparse: it is a capacity ceiling, not 120 GiB
+immediately consumed. The VM disk default remains 160 GiB until new builds are
+qualified; do not assume a smaller disk will pass capacity checks.
+
+Optional overrides, exported before `build.sh build`:
+
+```sh
+export PRPLMESH_NESTED_STORAGE_POOL=prpl-lab
+export PRPLMESH_NESTED_STORAGE_DRIVER=btrfs
+export PRPLMESH_NESTED_STORAGE_SIZE=120GiB
+```
+
+Use `dir` only when explicitly needed; it loses image sharing. Existing pools
+are reused only with a matching driver, never reformatted. The setup helper
+refuses to switch an existing roster to another pool. **Existing VMs are not
+migrated or shrunk.** Build a separately named VM to validate these improvements
+without disturbing an accepted lab.
+
+```sh
+source deploy/lxd-vm/lab-config.sh demo-prpl-cow
+bash deploy/lxd-vm/build.sh build
+```
+
+Commit the source first; reuse the existing verified native archives. No native
+prplMesh, hostap, or BPI image rebuild is required for these packaging changes.
+
+Five mesh containers use `prpl-runtime-local`; 100 clients use
+`prpl-client-local`. The lean client remains Ubuntu 22.04 for ABI compatibility,
+but omits the native controller/agent installation and AP daemon. It keeps the
+exact patched `wpa_supplicant`/`wpa_cli` from the checksummed hostap archive,
+including 6 GHz/SAE and BTM support, plus `iw`, traffic/capture tools and Python.
+Package-refresh services are disabled and package caches removed before publishing.
+It does not substitute the distribution's supplicant or change radio policy.
+
+Both images are built automatically. To rebuild just the client image inside
+an isolated build VM, after installing the three verified archives:
+
+```sh
+SOURCE_IMAGE=prpl-ubuntu-22.04-base bash scripts/build-runtime-image.sh client
+```
+
+This updates the local image, not existing containers. Thin exports retain and
+fingerprint both role images. Capacity checks budget five mesh and 100 client
+full copies plus growth/headroom, without assuming CoW savings or crediting
+shared Btrfs blocks as reclaimable. They also check free space behind the sparse
+pool. Legacy single-image thin manifests retain their original checks.
+
+After a new build, inspect `lxc storage list` inside the VM, then run the
+[static/live/room tiers](../test/README.md) before accepting size or speed claims.
+New-image cold boots and full room behavior still require live qualification.
 
 ## Start, stop and rebuild
 

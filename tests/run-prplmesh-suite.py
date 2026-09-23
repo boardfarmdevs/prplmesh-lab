@@ -153,6 +153,7 @@ def main():
         if 'static' in chosen:
             step('static/documentation', [sys.executable, 'tests/test_documentation.py'])
             step('static/unattended-lxd', [sys.executable, 'tests/unattended-lxd.py'])
+            step('static/thin-firstboot', ['bash', 'tests/thin-firstboot.sh'])
             step('static/python', [sys.executable, '-m', 'pytest', '--import-mode=importlib', '-q',
                                   'wmediumd/configurator/tests', 'optimizer/tests', 'demo/tests', 'tests'], 1200)
             step('static/console-go', ['go', 'test', './...'], cwd=ROOT / 'wmediumd/observer')

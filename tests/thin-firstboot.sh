@@ -6,6 +6,8 @@ work=$(mktemp -d /tmp/prplmesh-thin-firstboot.XXXXXX)
 trap 'rm -rf -- "$work"' EXIT
 state=$work/instances
 marker=$work/thin-pending.env
+capacity=$work/capacity.json
+printf '{"schema_version":3}\n' > "$capacity"
 report=$work/firstboot-report.txt
 mkdir -p "$work/root/deploy/guest"
 cat > "$work/root/deploy/guest/thin-image-guard.py" <<'PY'
@@ -55,6 +57,7 @@ run_firstboot()
         PRPLMESH_THIN_SKIP_SYNC=1 \
         PRPLMESH_THIN_MARKER="$marker" \
         PRPLMESH_THIN_REPORT="$report" \
+        PRPLMESH_THIN_CAPACITY_STATE="$capacity" \
         PRPLMESH_LXC_BIN="$work/lxc" \
         PRPLMESH_RADIO_LAB="$work/radio-lab" \
         FAKE_LXC_STATE="$state" \

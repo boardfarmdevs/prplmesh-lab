@@ -72,8 +72,8 @@ host's pool name is provenance only and is not imposed on the destination.
 
 ## First boot and operation
 
-First boot creates the 100-client roster from the local `prpl-runtime-local`
-image. It does not clone repositories or download runtime artifacts. Monitor
+New two-image bundles create the 100-client roster from local `prpl-client-local`;
+legacy bundles use `prpl-runtime-local`. Neither downloads runtime artifacts. Monitor
 it with the selected instance name:
 
 ```sh
@@ -141,7 +141,7 @@ PRPLMESH_RELEASE_ID=0916 \
 ```
 
 Thin conversion removes provisioned nested instances from the source VM,
-retains the verified local runtime image and exact source, and exports a
+retains the verified mesh/client images and exact source, and exports a
 stopped instance-only backup. It emits `prplmesh-0916-thin.tar`, its adjacent
 `.sha256`, schema-2 `release.json`, inner `SHA256SUMS`, and this README.
 The bundle also includes `RELEASE-NOTES.md` for the delivered checkpoint.
@@ -157,7 +157,7 @@ assets must match the source controller. Keep the generated
 
 Preparation checks temporary copy/publication space, then the projected 105-copy
 budget before changing the runtime alias or deleting the stopped roster. Only
-actual allocated bytes of explicitly scheduled stopped-container deletions are
+actual allocated bytes of explicitly scheduled stopped-container deletions on `dir` are
 credited; no credit is assumed for future outer cleanup, compression or sparse
 files. The first-boot check repeats against actual free space after import.
 Physical block allocation can change during publication without changing file
@@ -175,6 +175,19 @@ This helper alone neither publishes an image nor proves release acceptance.
 All exports, including already-thin repackaging, repeat the empty-guest capacity
 check. `thin-image-capacity.json` and `thin-capacity-check.json` are included in
 the bundle checksums; an older unmeasured runtime image cannot bypass this gate.
+
+New builds use the inner Btrfs pool and separate lean-client image described in
+[the VM build guide](../../docs/build/vm.md#efficient-inner-storage-and-clients).
+Schema-3 thin records bind both sanitized templates, using `prpl-client-01` for
+the client copy and rejecting a full mesh installation in that image. Both local
+images survive cleanup for offline first boot. Capacity budgets five mesh and
+100 client full expansions; Btrfs gets **zero shared-block reclamation credit**,
+and the sparse loop's backing filesystem must also have headroom. Guard operations
+enter the verified local LXD daemon's mount namespace when needed to inspect its
+private Btrfs mount. Existing `dir` pools and schema-1/2 imports remain supported;
+changing storage or client images is a fresh-build operation, not an in-place
+conversion of an accepted VM.
+Packaging trims the inner Btrfs filesystem before trimming the outer guest disk.
 
 ## Optional container management and metrics
 

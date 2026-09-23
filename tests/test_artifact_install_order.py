@@ -10,8 +10,8 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 @pytest.mark.parametrize("arguments,expected,status", [
-    (["--prepare-only"], ["preflight", "image", "modules", "depmod"], 0),
-    ([], ["preflight", "image", "modules", "depmod", "radio-pool", "deploy"], 0),
+    (["--prepare-only"], ["preflight", "image mesh", "image client", "modules", "depmod"], 0),
+    ([], ["preflight", "image mesh", "image client", "modules", "depmod", "radio-pool", "deploy"], 0),
     (["--unknown"], [], 2),
     (["--prepare-only", "extra"], [], 2),
 ])
@@ -27,7 +27,7 @@ def test_prepare_only_installs_without_touching_loaded_radios(tmp_path, argument
     log.write_text("")
     programs = {
         scripts / "preflight.sh": 'echo preflight >> "$CALLS"',
-        scripts / "build-runtime-image.sh": 'echo image >> "$CALLS"',
+        scripts / "build-runtime-image.sh": 'echo "image ${1:-mesh}" >> "$CALLS"',
         scripts / "build-hwsim.sh": 'test "$INSTALL_MODULE" = 1; echo modules >> "$CALLS"',
         scripts / "radio-lab.sh": 'echo "$1" >> "$CALLS"',
         commands / "sudo": 'exec "$@"',

@@ -3,8 +3,15 @@ set -euo pipefail
 
 ROOT=$(cd "$(dirname "$0")/.." && pwd)
 SOURCE_IMAGE=${SOURCE_IMAGE:-}
-IMAGE_ALIAS=${IMAGE_ALIAS:-prpl-runtime-local}
-BUILDER=${RUNTIME_IMAGE_BUILDER:-prpl-runtime-image-build}
+role=${1:-mesh}
+case "$role" in
+    mesh) default_alias=${PRPLMESH_RUNTIME_IMAGE:-prpl-runtime-local}; setup=setup-runtime-base.sh; default_builder=prpl-runtime-image-build ;;
+    client) default_alias=${PRPLMESH_CLIENT_IMAGE:-prpl-client-local}; setup=setup-client-base.sh; default_builder=prpl-client-image-build ;;
+    *) echo "usage: $0 [mesh|client]" >&2; exit 2 ;;
+esac
+[[ $# -le 1 ]] || { echo "usage: $0 [mesh|client]" >&2; exit 2; }
+IMAGE_ALIAS=${IMAGE_ALIAS:-$default_alias}
+BUILDER=${RUNTIME_IMAGE_BUILDER:-$default_builder}
 
 if [ -z "$SOURCE_IMAGE" ]; then
     SOURCE_IMAGE=$(lxc image list -c fd --format csv | \
@@ -22,9 +29,9 @@ fi
 lxc init "$SOURCE_IMAGE" "$BUILDER" -c security.privileged=true </dev/null
 lxc config device add "$BUILDER" project disk source="$ROOT" path=/mnt/project
 lxc start "$BUILDER"
-log=${RUNTIME_IMAGE_BUILD_LOG:-/tmp/prpl-runtime-image-build.log}
+log=${RUNTIME_IMAGE_BUILD_LOG:-/tmp/$default_builder.log}
 if ! lxc exec --mode non-interactive "$BUILDER" -- \
-    /mnt/project/scripts/container/setup-runtime-base.sh </dev/null >"$log" 2>&1; then
+    "/mnt/project/scripts/container/$setup" </dev/null >"$log" 2>&1; then
     tail -200 "$log" >&2
     exit 1
 fi

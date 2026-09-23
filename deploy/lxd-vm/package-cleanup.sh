@@ -21,15 +21,18 @@ nested_images()
 }
 
 PRESERVE_IMAGE_ALIAS=${PRPLMESH_PRESERVE_IMAGE_ALIAS:-}
-preserve_fingerprint=
-if [ -n "$PRESERVE_IMAGE_ALIAS" ]; then
-    preserve_fingerprint=$(lxc image info "$PRESERVE_IMAGE_ALIAS" 2>/dev/null |
+PRESERVE_CLIENT_ALIAS=${PRPLMESH_PRESERVE_CLIENT_ALIAS:-}
+preserve_fingerprints=()
+for alias in "$PRESERVE_IMAGE_ALIAS" "$PRESERVE_CLIENT_ALIAS"; do
+    [[ -n "$alias" ]] || continue
+    fingerprint=$(lxc image info "$alias" 2>/dev/null |
         sed -n 's/^Fingerprint: //p')
-    [ -n "$preserve_fingerprint" ] || {
-        echo "nested image alias is missing: $PRESERVE_IMAGE_ALIAS" >&2
+    [ -n "$fingerprint" ] || {
+        echo "nested image alias is missing: $alias" >&2
         exit 1
     }
-fi
+    preserve_fingerprints+=("$fingerprint")
+done
 
 printf 'trim_started_at=%s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 printf 'root_used_bytes_before=%s\n' "$(root_used)"
@@ -41,7 +44,7 @@ systemctl stop prplmesh-lab.service 2>/dev/null || true
 # image cache is not needed to start, stop, restart or validate the appliance.
 while IFS= read -r fingerprint; do
     [ -n "$fingerprint" ] || continue
-    [ "$fingerprint" = "$preserve_fingerprint" ] && continue
+    if printf '%s\n' "${preserve_fingerprints[@]}" | grep -Fxq "$fingerprint"; then continue; fi
     lxc image delete "$fingerprint" >/dev/null
 done < <(nested_images)
 
@@ -60,11 +63,15 @@ find /var/log -xdev -type f \
 
 sync
 printf 'fstrim_output_begin\n'
+pool=$(lxc profile device get default root pool)
+if [[ $(lxc query "/1.0/storage-pools/$pool" | jq -r .driver) == btrfs ]]; then
+    python3 "${PRPLMESH_ROOT:-/opt/prplmesh-lab}/deploy/guest/thin-image-guard.py" trim-pool
+fi
 fstrim -av
 printf 'fstrim_output_end\n'
 sync
 
 printf 'nested_images_after=%s\n' "$(nested_images | awk 'NF {n++} END {print n+0}')"
-[ -z "$preserve_fingerprint" ] || printf 'preserved_nested_image=%s\n' "$preserve_fingerprint"
+for fingerprint in "${preserve_fingerprints[@]}"; do printf 'preserved_nested_image=%s\n' "$fingerprint"; done
 printf 'root_used_bytes_after=%s\n' "$(root_used)"
 printf 'trim_finished_at=%s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
