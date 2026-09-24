@@ -37,7 +37,7 @@ Generated assets, dependencies and browser evidence are ignored by Git.
 
 ## Enable on GitHub when ready
 
-The workflow builds and tests on relevant pushes to `codex/0916-clean`.
+The workflow builds and tests on relevant pushes to `main`.
 Publication remains disabled until the repository owner opts in:
 
 1. Push the source and `.github/workflows/pages.yml` to the canonical branch.
@@ -46,7 +46,7 @@ Publication remains disabled until the repository owner opts in:
    repository variable `PUBLISH_PAGES` with value `true`.
 4. Open the **Interactive documentation** Actions run for that push and choose
    **Re-run all jobs**. If the `github-pages` environment restricts branches,
-   allow `codex/0916-clean`. The default branch need not change.
+   allow `main`.
 
 The successful deployment provides:
 

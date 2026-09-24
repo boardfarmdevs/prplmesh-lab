@@ -1,7 +1,7 @@
 name: Interactive documentation
 on:
   push:
-    branches: [codex/0916-clean]
+    branches: [main]
     paths: ['explorer/**', 'wmediumd/configurator/worlds/**', '.github/workflows/pages.yml']
   workflow_dispatch:
 

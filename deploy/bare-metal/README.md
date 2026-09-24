@@ -7,8 +7,8 @@ second wireless lab on the same host.
 Use the canonical source branch in a new directory:
 
 ```sh
-git clone --branch codex/0913-clean https://github.com/boardfarmdevs/prplmesh-lab.git prplmesh-lab-0913-clean
-cd prplmesh-lab-0913-clean
+git clone --branch main https://github.com/boardfarmdevs/prplmesh-lab.git prplmesh-lab
+cd prplmesh-lab
 ```
 
 Install the host packages and initialize LXD as described in
