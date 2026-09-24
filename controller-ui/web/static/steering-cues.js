@@ -9,6 +9,7 @@
   const shortName = value => String(value || '').replace(/^Extender[- ]?/i, 'Ext-');
   let maskSequence = 0;
   const layouts = new WeakMap();
+  const pendingLayouts = new WeakSet();
   const intersects = (first, second, margin = 0) => first.x < second.x + second.width + margin &&
     first.x + first.width + margin > second.x && first.y < second.y + second.height + margin &&
     first.y + first.height + margin > second.y;
@@ -148,7 +149,13 @@
     position(cue);
     setTimeout(() => {
       cue.remove();
-      if (group.node()?.isConnected) layout(group);
+      const element = group.node();
+      if (!element?.isConnected || pendingLayouts.has(element)) return;
+      pendingLayouts.add(element);
+      requestAnimationFrame(() => {
+        pendingLayouts.delete(element);
+        if (element.isConnected) layout(group);
+      });
     }, effect.remainingMs);
     return cue;
   }

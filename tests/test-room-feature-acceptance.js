@@ -2,7 +2,7 @@
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
-const {argumentsFrom, expectedFrame, evaluate, distribution, eventPerformance, viewAgreement, recordedEventKind, kernelClientAudit} = require('./room-feature-acceptance.js');
+const {argumentsFrom, expectedFrame, evaluate, distribution, eventPerformance, viewAgreement, recordedEventKind, kernelClientAudit, qualificationFailures} = require('./room-feature-acceptance.js');
 const harnessSource = fs.readFileSync(path.join(__dirname, 'room-feature-acceptance.js'), 'utf8');
 assert.match(harnessSource, /movingCapture = screenshot\('moving'\)\.catch/);
 assert.doesNotMatch(harnessSource, /await screenshot\('moving'\)/);
@@ -151,4 +151,15 @@ assert.equal(discarded.verifiedActions, 0);
 const matching = {viewMatchesRoom: true, viewMatchesModel: true, duplicates: false};
 assert.equal(viewAgreement([{...matching, monoMs: 0, viewMatchesRoom: false}, {...matching, monoMs: 6000}]).passed, true);
 assert.equal(viewAgreement(Array.from({length: 7}, (_, index) => ({...matching, monoMs: index * 1000, viewMatchesRoom: false}))).passed, false);
+const qualification = {id: 'fixture', load: {passed: true}, initial: {passed: true},
+  final: {passed: true}, playback: {completed: true}, checkpoints: [], scriptCorrect: true,
+  sceneCorrect: true, viewCorrect: true, presencePhases: [], fronthaulOutages: [],
+  kernel: {passed: true}, errors: []};
+assert.deepEqual(qualificationFailures(qualification), []);
+assert.deepEqual(qualificationFailures({...qualification, trafficExperiment: {passed: false}}), ['trafficExperiment']);
+assert.deepEqual(qualificationFailures({...qualification,
+  fronthaulOutages: [{samples: 4, remainingAssociations: [9000], meshConnected: true}]}), ['fronthaulOutage']);
+assert.deepEqual(qualificationFailures(qualification, [{room: 'fixture'}]), ['browserErrors']);
+assert.deepEqual(qualificationFailures({...qualification, initial: undefined, final: {passed: false},
+  errors: ['failure']}), ['initialConvergence', 'finalConvergence', 'roomErrors']);
 console.log('PASS: golden interpolation, absence, duplicates, ownership, epochs, freshness, coverage, mesh, script and percentile checks');
