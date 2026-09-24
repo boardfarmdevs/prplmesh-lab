@@ -17,6 +17,7 @@ This is prplMesh's equivalent of RDK's `doc/easymesh/README.md`.
 | Build native artifacts, then a named VM | [Build guide](build/README.md), [legacy entrypoint](from-scratch.md) |
 | Validate changes and room convergence | [Test tiers and runner](test/README.md), [testing reference](../reference/testing/README.md) |
 | Explore radios, packet paths and RF evidence | [Console NG manual](wmediumd-console-ng.md) |
+| Browse offline architecture, topology and room previews | [Interactive Pages setup](../explorer/README.md) |
 | Find detailed contracts and proposals | [Reference index](../reference/README.md) |
 
 ## Keeping this documentation small

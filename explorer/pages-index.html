@@ -1,0 +1,123 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta
+      name="description"
+      content="Explore EasyMesh architecture, try the disconnected room sandbox, and read the interactive room manual."
+    />
+    <title>prplMesh lab — Explore and learn</title>
+    <style>
+      :root {
+        color-scheme: dark;
+        font-family: system-ui, sans-serif;
+        color: #e8eef8;
+        background: #0a101b;
+      }
+      * {
+        box-sizing: border-box;
+      }
+      body {
+        margin: 0;
+      }
+      main {
+        max-width: 1080px;
+        margin: auto;
+        padding: 64px 24px;
+      }
+      .eyebrow {
+        color: #8cbbff;
+        letter-spacing: 0.12em;
+        font-size: 13px;
+      }
+      h1 {
+        font-size: clamp(30px, 5vw, 46px);
+        margin-bottom: 16px;
+      }
+      p {
+        color: #b8c8df;
+        line-height: 1.7;
+      }
+      nav {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(min(100%, 260px), 1fr));
+        gap: 18px;
+        margin: 36px 0;
+      }
+      nav a {
+        display: block;
+        padding: 24px;
+        border: 1px solid #31527e;
+        border-radius: 14px;
+        background: #101b2b;
+        text-decoration: none;
+      }
+      nav a:hover {
+        background: #162841;
+      }
+      a {
+        color: #8cbbff;
+      }
+      a:focus-visible {
+        outline: 3px solid #b9d7ff;
+        outline-offset: 5px;
+      }
+      h2 {
+        font-size: 21px;
+        margin-top: 0;
+      }
+      nav p {
+        margin-bottom: 0;
+      }
+      .note {
+        border-top: 1px solid #29394d;
+        padding-top: 22px;
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <p class="eyebrow">PRPLMESH · EASYMESH EVALUATION LAB</p>
+      <h1>Explore the system. Try the room.</h1>
+      <p>
+        Interactive documentation for the container-based prplMesh lab, its real
+        Wi-Fi software, and simulated radios.
+      </p>
+      <nav aria-label="Lab documentation">
+        <a href="explorer/"
+          ><h2>System explorer →</h2>
+          <p>
+            Inspect components, explore topology arrangements, and follow
+            protocol paths through the native prplMesh architecture.
+          </p></a
+        >
+        <a href="viewer/?world=home-a-private-client-room-walk"
+          ><h2>Room viewer →</h2>
+          <p>
+            Play scenarios and explore RF geometry in the disconnected room
+            sandbox.
+          </p></a
+        >
+        <a href="viewer/manual.html"
+          ><h2>Manual →</h2>
+          <p>
+            Learn the room controls, metrics, scenarios, and live-lab operating
+            procedures.
+          </p></a
+        >
+      </nav>
+      <p class="note">
+        These public pages do not connect to or control a live lab. The explorer
+        is a pinned documentation snapshot; topology placements are
+        illustrative, not live measurements.
+      </p>
+      <p>
+        <a
+          href="https://github.com/boardfarmdevs/prplmesh-lab/tree/codex/0916-clean/docs"
+          >Current source documentation ↗</a
+        >
+      </p>
+    </main>
+  </body>
+</html>

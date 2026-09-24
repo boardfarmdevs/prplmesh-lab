@@ -734,8 +734,10 @@ def main():
         else:
             raise RuntimeError('native controller did not confirm fresh source associations and minimum dwell')
         selected = lambda client, _timestamp: client.sta_mac in station_macs
-        candidate = ControllerCandidateProvider(base, allow_simulated=True, client_selector=selected) if rdk else PrplMeshCandidateProvider(
+        candidate = ControllerCandidateProvider(base, allow_simulated=True, client_selector=selected,
+            busy_wait_seconds=1) if rdk else PrplMeshCandidateProvider(
             allow_simulated=True, client_selector=selected, timeout_seconds=10)
+        report['native_admission_wait_seconds'] = 1 if rdk else 0
         observer = observer_type(base, candidate_provider=TimedCandidates(candidate))
         for attempt in range(3):
             try:

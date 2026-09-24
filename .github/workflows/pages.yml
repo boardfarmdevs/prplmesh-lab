@@ -1,0 +1,51 @@
+name: Interactive documentation
+on:
+  push:
+    branches: [codex/0916-clean]
+    paths: ['explorer/**', 'wmediumd/configurator/worlds/**', '.github/workflows/pages.yml']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: prplmesh-pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: explorer/package-lock.json
+      - run: npm ci
+        working-directory: explorer
+      - run: npm run build
+        working-directory: explorer
+      - run: npx playwright install --with-deps chromium
+        working-directory: explorer
+      - run: npm test
+        working-directory: explorer
+      - uses: actions/upload-pages-artifact@v4
+        with:
+          path: explorer/site
+  deploy:
+    if: vars.PUBLISH_PAGES == 'true'
+    needs: build
+    runs-on: ubuntu-24.04
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/configure-pages@v5
+      - id: deployment
+        uses: actions/deploy-pages@v4

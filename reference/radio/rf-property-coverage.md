@@ -290,26 +290,35 @@ the suite. Earlier failed runs remain separate evidence.
 ### Current action evidence and remaining gates
 
 The original full prpl suite failed pressure and did not attempt rescue; its
-report remains unchanged. Fresh bounded pressure and rescue checks now pass in
-`test-results/qualification-followup/rf/`. The suite uses their qualified workload:
-two 12-Mbps uplinks with 1200-byte payloads, 300 actual source-AP broadcasts/s,
-512-byte CS6-marked downlink traffic and 250-ms alternating 2-dB/healthy RF.
-Rescue uses a 32-dB serving link, not the former disconnect-level stimulus.
+report remains unchanged. Bounded repeats are under
+`test-results/qualification-repeat/`. The earlier 512-byte pressure fixture
+does not repeat reliably: one fresh veto is followed by clear counters and a
+legitimate load-steer proposal. The harness refuses that proposal before
+actuation; this is insufficient stimulus, not a demonstrated policy failure.
+Two consecutive 1400-byte pressure repeats pass with 14/15 causal witnesses,
+no BTM, unchanged source ownership, 20.02/20.00-second settling and 5,179/5,127
+delivered downlink datagrams. The suite now uses 1400-byte CS6 downlink packets
+for pressure only; rescue retains 512 bytes and passes again, with a 5.041-second
+signal hold and 2.033-second native target verification.
+Both retain two offered 12-Mbps, 1200-byte uplinks, 300 offered source-AP
+broadcasts/s and 250-ms alternating 2-dB/healthy RF. Actual throughput is recorded
+and can be substantially lower than offered demand; requested rates are not
+measurement evidence. Rescue uses a usable 32-dB serving link.
 Read-only AQM/Console NG samples confirm TID7/voice traffic; PHY retry-rate
 chains were not captured. No native counter, utilization, policy threshold or
 PHY-rate mask is injected. Both cases restore Default-20, fresh metrics and
 unchanged native identities. This is bounded qualification, not a new suite pass.
 
-September 22 diagnostics used unchanged native binaries and production policy
-thresholds. They are not clean-source release acceptance. Suite traffic uses
+These bounded diagnostics preserve production policy thresholds and are not
+clean-source release acceptance. Clear-case suite traffic uses
 two real 12 Mbps senders with 1,400-byte payloads; actual native occupancy,
 not requested traffic, determines eligibility.
 
 | Case | RDK | prpl |
 | --- | --- | --- |
 | Clear counters, quieter different-channel target | Latest bounded run passes using actual source-AP broadcast traffic: utilization 213 versus target 9, unchanged ten-second hold, clear counters, captured BTM, 3.419 s native verification, post-steer traffic and fresh Default restoration. Earlier native HTTP 504 failures remain retained. | Pass: utilization 213→16, RCPI 148→144, matching BTM, 0.681 s native verification, 74 positive post-verification receiver intervals and 20.68 s settling. |
-| Retry-pressure veto | Pass: source/target utilization 241/11, 182 retries/s and 10.69 TX errors/s; three causal veto witnesses after the unchanged ten-second shadow hold, no BTM, 21.99 s settling and 5,062 delivered downlink datagrams. | Pass: fresh pressure veto versus fully held unguarded shadow opportunity, no BTM, 20.93 s settling; 8,648 actual downlink datagrams delivered. |
-| Weak-signal rescue during pressure | Pass: RCPI 102→144, 205.69 retries/s and 10.69 TX errors/s, 6.824 s observed hold against the unchanged five-second minimum, matching native BTM, 2.312 s target verification and 20.54 s settling. | Pass: RCPI 102→144 after unchanged 5.01 s signal hold, 275 retries/s and 14 TX errors/s, matching native BTM, 1.918 s target verification and 20.48 s settling. |
+| Retry-pressure veto | Earlier pass: utilization 241/11, 182 retries/s, three causal vetoes, no BTM and 21.99 s settling. Latest two-hop repeat fails stimulus qualification; see below. | Two 1400-byte repeats pass: first qualified source/target loads 215/13 and 210/14, retries 128/s and 132/s; 14/15 causal vetoes after the unchanged shadow hold, no BTM and twenty-second settling. The 512-byte repeat fails stimulus qualification. |
+| Weak-signal rescue during pressure | Latest repeat passes: RCPI 102→144, 7.849 s observed hold against the unchanged five-second minimum, matching BTM, 3.489 s target verification and 20.25 s settling. | Repeat passes: RCPI 102→144, unchanged 5.041 s signal hold, matching native BTM, 2.033 s target verification and 20.56 s settling. |
 
 All action runs restored RF, channels, associations and Default-20 without
 native process changes. prpl's subsequent 90-second traffic/memory check,
@@ -319,10 +328,30 @@ controller 43.07 MiB, fifteen fronthauls at most 14.36 MiB. This check had
 
 Earlier raw evidence is under `test-results/guarded-load-followup/` in each checkout.
 `rdk-clear-2-read-only-audit.json` replays the saved decisions and hashes the
-original evidence; it is not a fresh rerun. New pressure/rescue passes are under
-`test-results/qualification-followup/`. Next verify cross-run repeatability of
-these fixtures without lowering thresholds, fabricating load or crediting an
-uncommanded roam. Bounded passes do not constitute an all-green regression suite.
+original evidence; it is not a fresh rerun. Initial passes are under
+`test-results/qualification-followup/`; their repeats are under
+`test-results/qualification-repeat/`. No threshold is lowered, no load is
+fabricated, and an uncommanded roam cannot pass. Bounded passes do not
+constitute an all-green regression suite.
+
+RDK's new `qualification-repeat/qualification-repeat-pressure-2/` fails
+stimulus qualification: load peaks at 204/255 but never yields a fully held
+unguarded opportunity. Its source now has two native backhaul hops rather
+than one in the passing trial, with a one-hop target. No BTM is submitted;
+Default-20, RF and native identities restore correctly. This is not proof of
+a policy regression or a controlled latency comparison; host contention and
+path differences remain confounders, not established causes.
+
+RDK rescue first verifies native reassociation in 2.717 seconds, then fails
+immediately on a post-steer admission refusal. The common action driver now
+uses the room's one-second bounded retry for explicitly unsubmitted RDK
+`Error_Not_Ready`/`Error_Prev_Cmd_In_Progress` requests and records that budget.
+Generic 503s, partial completion and 504s remain failures; policy and observation
+gates are unchanged. The next RDK repeat passes at 3.489-second verification
+and 20.25-second settling, with complete fresh evidence first sampled after
+16.856 seconds. Its 49 queries encounter no busy response, so live recovery
+through that retry branch remains unproven despite passing unit coverage.
+prpl's provider and workload timing are unchanged by this RDK-specific option.
 
 ## Room catalog qualification and open failures
 
@@ -347,6 +376,15 @@ supersede the isolation diagnosis, not the original failed suite result.
 `targeted-suite-repair/rf-rooms/report.json` also passes both failed ordinary
 RF rooms through load, Play, checkpoints, native/view convergence and Default
 restoration, with unchanged native identities. This is not a full-catalog rerun.
+
+Newer RDK `cold-metrics-followup/` repeats remain red: the branch run reaches
+initial convergence, then loses all four backhaul station links during Play
+while APs remain operating. Isolation and parent-handover stop before Play at
+9/10 and 8/10 candidate-complete clients; both restore Default successfully.
+Native identities remain unchanged. Native admission 503s and transport 504s
+are recorded separately. This does not invalidate the earlier warm passes,
+but prevents claiming repeatable three-room acceptance; no native threshold,
+RF geometry or convergence deadline is weakened to pass the rerun.
 
 The prpl ordinary-room loading failures affect `band-ap-counter-roam`,
 `band-upgrade-24-5`, `band-upgrade-5-6`,
@@ -406,7 +444,9 @@ did not recur in the new VM's full geometry campaign.
    reports partial results promptly but does not create missing measurements.
    Browser-expiry and full-roster
    preflight now pass bounded checks, not a new catalog or soak campaign.
-4. Recheck cross-run repeatability of the now-passing pressure/rescue cases.
+4. Keep the repeat-qualified prpl pressure fixture (1400-byte voice, 300 offered
+   broadcasts/s) separate from rescue (512 bytes); both retain native evidence
+   and unchanged policy gates. Recheck RDK pressure/rescue repeatability.
    RDK pressure uses 1400-byte voice packets and 1000 broadcasts/s; its rescue
    uses 512-byte voice packets and 500 broadcasts/s. Production policy is
    unchanged; different native stacks need not share one traffic stimulus.

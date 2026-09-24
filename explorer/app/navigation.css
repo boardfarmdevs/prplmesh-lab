@@ -1,0 +1,26 @@
+.site-navigation {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 12px 22px;
+  padding: 10px 36px;
+  border-bottom: 1px solid #243042;
+  background: #0c1421;
+  color: #b8c8df;
+  font-size: 13px;
+}
+
+.site-navigation a:hover,
+.site-navigation [aria-current='page'] {
+  color: #8cbbff;
+  text-decoration: underline;
+  text-underline-offset: 4px;
+}
+
+@media (max-width: 800px) {
+  .site-navigation {
+    justify-content: flex-start;
+    gap: 10px 16px;
+    padding: 12px 18px;
+  }
+}

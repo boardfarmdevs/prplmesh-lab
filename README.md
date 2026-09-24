@@ -10,6 +10,7 @@ steering adapters and deployment remain independent.
 - [Current deployment, URLs, downloads and limits](docs/current-state.md)
 - [Install or operate a lab](docs/operations.md)
 - [Use the room and network topology](docs/live-room-demo/README.md)
+- [Interactive architecture and room sandbox: build/publish](explorer/README.md)
 - [Build artifacts, then a named VM](docs/build/README.md)
 - [Test tiers and host-side runner](docs/test/README.md)
 - [Technical reference by subsystem](reference/README.md)

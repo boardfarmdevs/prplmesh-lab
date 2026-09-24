@@ -104,7 +104,8 @@ def _default_request(url: str, payload: dict[str, Any]) -> dict[str, Any]:
             CandidateMetricsUnavailable
             if error.code in {408, 429, 502, 503, 504} else CandidateMetricsError
         )
-        if error.code == 503 and "Error_Prev_Cmd_In_Progress" in str(detail.get("message", "")):
+        if error.code == 503 and any(code in str(detail.get("message", ""))
+                                     for code in ("Error_Prev_Cmd_In_Progress", "Error_Not_Ready")):
             error_type = CandidateMetricsBusy
         raise error_type(
             f"candidate query failed with HTTP {error.code}: {detail}"

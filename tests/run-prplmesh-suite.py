@@ -214,7 +214,8 @@ def main():
             if live_ok and actions_ok:
                 for index, scenario in enumerate(scenarios):
                     workload = ['--payload-bytes', '1400'] if scenario == 'clear' else [
-                        '--payload-bytes', '1200', '--pressure-payload-bytes', '512',
+                        '--payload-bytes', '1200', '--pressure-payload-bytes',
+                        '1400' if scenario == 'pressure' else '512',
                         '--pressure-access-category', 'voice', '--pressure-snr', '2',
                         '--rescue-snr', '32', '--background-packets-per-second', '300']
                     if not step('rf-actions/' + scenario, guest('env',

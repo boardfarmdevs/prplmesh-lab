@@ -145,8 +145,8 @@ def test_rf_actions_run_in_order_without_full_pool_guard(tmp_path):
     assert all('--policy' in command and '--yes-change-lab' in command for command in actions)
     assert [command[command.index('--payload-bytes') + 1] for command in actions] == ['1400', '1200', '1200']
     assert '--pressure-access-category' not in actions[0]
-    for command in actions[1:]:
-        for option, value in [('pressure-payload-bytes', '512'), ('pressure-access-category', 'voice'),
+    for command, pressure_payload in zip(actions[1:], ['1400', '512']):
+        for option, value in [('pressure-payload-bytes', pressure_payload), ('pressure-access-category', 'voice'),
                               ('pressure-snr', '2'), ('rescue-snr', '32'),
                               ('background-packets-per-second', '300')]:
             assert command[command.index('--' + option) + 1] == value
