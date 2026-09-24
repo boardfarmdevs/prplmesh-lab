@@ -458,6 +458,24 @@ def test_positive_load_setup_respects_actual_backhaul(hop_counts, preferred, exp
     assert DRIVER.select_radio_pair(radios, bsses, hops, preferred) == expected
 
 
+@pytest.mark.parametrize('hop_counts, preferred, expected', [
+    ([0, 1, 1, 1, 1], 1, (1, 4)),
+    ([0, 1, 1, 1, 1], 3, (3, 4)),
+    ([0, 2, 1, 1, 1], 1, (2, 4)),
+    ([0, 1, 1, 2, 2], 3, (1, 2)),
+    ([0, 3, 1, 2, 2], 2, (3, 4)),
+    ([0, 2, 2, 2, 2], 1, (1, 4)),
+    ([0, None, 1, None, 2], 1, (4, 2)),
+])
+def test_pressure_prefers_shallow_native_paths_without_changing_the_topology(hop_counts, preferred, expected):
+    radios = [{'bssid': 'bss-' + str(index)} for index in range(5)]
+    bsses = {radio['bssid']: {'device_id': 'node-' + str(index)} for index, radio in enumerate(radios)}
+    hops = {'node-' + str(index): count for index, count in enumerate(hop_counts)}
+    before = deepcopy((radios, bsses, hops))
+    assert DRIVER.select_radio_pair(radios, bsses, hops, preferred, prefer_shallow=True) == expected
+    assert (radios, bsses, hops) == before
+
+
 @pytest.mark.parametrize('hop_counts', [[0, 1, None, None, None], [0, None, None, None, None],
                                       [0, True, -1, '1', None]])
 def test_positive_load_setup_rejects_missing_or_additional_hop(hop_counts):

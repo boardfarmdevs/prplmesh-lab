@@ -261,7 +261,7 @@ class CounterPulse:
             control.apply_frequency(status.generation + 1, self.strong)
 
 
-def select_radio_pair(radios, bsses, hops, preferred):
+def select_radio_pair(radios, bsses, hops, preferred, *, prefer_shallow=False):
     radio_hops = [hops.get(bsses.get(radio['bssid'], {}).get('device_id')) for radio in radios]
     eligible = [(source, target) for source in range(1, len(radios)) for target in range(1, len(radios))
                 if source != target and all(type(radio_hops[index]) is int and radio_hops[index] > 0
@@ -270,8 +270,12 @@ def select_radio_pair(radios, bsses, hops, preferred):
     if not eligible:
         raise RuntimeError('no pair with verified backhaul and no additional backhaul hop: ' +
                            json.dumps(dict(zip((radio['bssid'] for radio in radios), radio_hops))))
-    return min(eligible, key=lambda pair: (pair[1] != len(radios) - 1, pair[0] != preferred,
-                                          radio_hops[pair[0]] - radio_hops[pair[1]], pair))
+    def rank(pair):
+        depth = (radio_hops[pair[0]], radio_hops[pair[0]] - radio_hops[pair[1]]) if prefer_shallow else ()
+        return (*depth, pair[1] != len(radios) - 1, pair[0] != preferred,
+                radio_hops[pair[0]] - radio_hops[pair[1]], pair)
+
+    return min(eligible, key=rank)
 
 
 def background_links(radios, source_radio, packets_per_second, placement):
@@ -556,7 +560,8 @@ def main():
         raise RuntimeError('requires complete native twenty-client roster')
     radios = [private_radio(command('lxc', 'exec', node, '--', 'iw', 'dev')) for node in nodes]
     bsses, hops = inventory(inventory_observer.last_raw)
-    source_index, target_index = select_radio_pair(radios, bsses, hops, 1 if rdk else len(radios) - 2)
+    source_index, target_index = select_radio_pair(radios, bsses, hops, 1 if rdk else len(radios) - 2,
+                                                 prefer_shallow=args.counter_case == 'pressure')
     if target_index != len(radios) - 1:
         nodes[target_index], nodes[-1] = nodes[-1], nodes[target_index]
         radios[target_index], radios[-1] = radios[-1], radios[target_index]
@@ -591,6 +596,7 @@ def main():
               'freshness_timing_scope': 'first sampled evidence after verification; not native arrival or convergence latency',
               'station_macs': station_macs, 'radios': radios, 'actions': [], 'restoration_errors': [],
               'source_node': nodes[source_index], 'source_bssid': source_radio['bssid'],
+              'pair_selection': 'shallowest_native_path' if args.counter_case == 'pressure' else 'preferred_native_pair',
               'source_backhaul_hops': hops[bsses[source_radio['bssid']]['device_id']],
               'target_backhaul_hops': hops[bsses[radios[-1]['bssid']]['device_id']],
               'scope': 'two workload clients, starting/ending Default-20; stopping the room can restore the full pool',

@@ -434,12 +434,14 @@ did not recur in the new VM's full geometry campaign.
 
 ### Next build and test gates
 
-1. Commit and synchronize matching test/runtime sources before clean-suite
-   qualification. The prpl executable-path fix does not require new native
-   artifacts or a VM rebuild; do not bypass the suite's source-match gate.
-2. Recheck the affected ordinary rooms after synchronization. The current
-   full-scale baselines already pass; no repeated full build or soak is needed
-   merely to investigate these bounded failures.
+1. Runtime sources are synchronized to prpl `76b8569` and RDK `2d64df1`;
+   previous guest edits are preserved in named stashes. The additional fixture
+   and diagnostic changes still need a committed checkpoint before clean-suite
+   acceptance; do not bypass source-match gates.
+2. The synchronized prpl run passes all three geometry rooms, pressure and
+   rescue, with native identities unchanged during each check. RDK's native
+   recovery and reporting qualification remains separate. No full build or
+   soak is required merely to investigate these bounded failures.
 3. Recheck RDK cold candidate completeness; its new terminal-response contract
    reports partial results promptly but does not create missing measurements.
    Browser-expiry and full-roster
@@ -510,6 +512,36 @@ the [iperf statistics implementation](https://github.com/esnet/iperf/blob/3.9/sr
 Guarded-load fixtures select native extender radios with verified hop counts
 and no extra target backhaul hop, retaining the original target when suitable.
 They do not force backhaul parents or change native policy thresholds.
+
+Pressure-only qualification now prefers the shallowest available source path,
+then equal-depth pairs, before historical AP preferences. Reports record
+`pair_selection` and both actual hop counts. This controls an avoidable
+backhaul bottleneck without requiring a star or manufacturing overload; a
+deeper-only lab still has to meet every original stimulus and policy gate.
+Clear/rescue selection is unchanged. The synchronized prpl pressure repeat in
+`test-results/synchronized-rf/pressure/` passes with 22 causal veto witnesses,
+no steering, healthy Default-20 restoration and unchanged native identities.
+Its first qualified native sample has source/target utilization 213/15 and
+113 retries/s, using the existing 1400-byte voice/300 offered broadcasts/s
+fixture. The accompanying `geometry/` run passes all three geometry rooms,
+their return checkpoints and Default restoration. The `rescue/` repeat passes
+with a native BTM, 2.166 s verification and 23.742 s observed settling, using
+the separate 512-byte fixture. Original channels, RF, associations, fresh
+twenty-client metrics and native identities restore. These are bounded
+hot-runtime checks, not fresh-build or soak acceptance.
+The synchronized `rf-rooms.json` also passes both 30-second RF-property rooms,
+all seven native observations, traffic and healthy Default restoration.
+
+Geometry reports retain browser/lab identities and a bounded host
+CPU/load/temperature/process trace. Run the browser on a separate test machine
+with `--host` and reachable room/topology URLs to avoid measuring its software
+rendering load as lab work. Keep `host-monitor.jsonl` with the report; sampling
+errors fail the diagnostic gate, without changing convergence assertions.
+The prpl geometry trace records host CPU busy averaging 25.15%, but CPU
+temperature reaches 100 °C and package throttle count increases by 7,363.
+These functional passes are not unconstrained performance measurements;
+address host cooling before comparing latency. No power settings or unrelated
+workloads were changed for this run.
 
 Load-action reports also retain production thresholds, evaluated and missing
 subject cycle counts, decision-reason counts, peak decision-evidence utilization
