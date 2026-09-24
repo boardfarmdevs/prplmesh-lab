@@ -63,9 +63,25 @@
         outline: 3px solid #b9d7ff;
         outline-offset: 5px;
       }
-      h2 {
+      nav h3 {
         font-size: 21px;
         margin-top: 0;
+      }
+      section {
+        border-top: 1px solid #29394d;
+        margin-top: 44px;
+      }
+      section h2 {
+        font-size: 26px;
+        margin: 28px 0 8px;
+      }
+      li {
+        color: #b8c8df;
+        line-height: 1.7;
+      }
+      .fits {
+        max-width: 70ch;
+        font-size: 15px;
       }
       nav p {
         margin-bottom: 0;
@@ -84,40 +100,78 @@
         Interactive documentation for the container-based prplMesh lab, its real
         Wi-Fi software, and simulated radios.
       </p>
-      <nav aria-label="Lab documentation">
-        <a href="explorer/"
-          ><h2>System explorer →</h2>
-          <p>
-            Inspect components, explore topology arrangements, and follow
-            protocol paths through the native prplMesh architecture.
-          </p></a
-        >
-        <a href="viewer/?world=home-a-private-client-room-walk"
-          ><h2>Room viewer →</h2>
-          <p>
-            Play scenarios and explore RF geometry in the disconnected room
-            sandbox.
-          </p></a
-        >
-        <a href="viewer/manual.html"
-          ><h2>Manual →</h2>
-          <p>
-            Learn the room controls, metrics, scenarios, and live-lab operating
-            procedures.
-          </p></a
-        >
-      </nav>
-      <p class="note">
-        These public pages do not connect to or control a live lab. The explorer
-        is a pinned documentation snapshot; topology placements are
-        illustrative, not live measurements.
+      <p class="fits">
+        Part of the <strong>EasyMesh optimizer</strong> goal, with the
+        <a href="https://boardfarmdevs.github.io/meta-cmf-bananapi-vcpe/">RDK EasyMesh lab</a>, the same lab on RDK-B. The
+        <a href="https://boardfarmdevs.github.io/emosa-lab/">EMOSA</a> and
+        <a href="https://boardfarmdevs.github.io/opensync-lab/">OpenSync</a> labs bring existing OpenSync
+        pods into EasyMesh. The end goal is one EasyMesh system on wmediumd, with
+        native EasyMesh agents and OpenSync pods working together.
       </p>
-      <p>
-        <a
-          href="https://github.com/boardfarmdevs/prplmesh-lab/tree/main/docs"
-          >Current source documentation ↗</a
-        >
-      </p>
+      <section id="what">
+        <h2>What it is</h2>
+        <p>
+        Native prplMesh, run as containers in one Ubuntu VM: a controller
+        and extenders, a pool of 100 simulated clients, userspace wmediumd as the
+        virtual RF medium, the EasyMesh optimizer, and an interactive room to play
+        scenarios in.
+        </p>
+        <nav aria-label="Lab documentation">
+          <a href="explorer/"
+            ><h3>System explorer →</h3>
+            <p>
+              Inspect components, explore topology arrangements, and follow
+              protocol paths through the native prplMesh architecture.
+            </p></a
+          >
+          <a href="viewer/?world=home-a-private-client-room-walk"
+            ><h3>Room viewer →</h3>
+            <p>
+              Play scenarios and explore RF geometry in the disconnected room
+              sandbox.
+            </p></a
+          >
+          <a href="viewer/manual.html"
+            ><h3>Manual →</h3>
+            <p>
+              Learn the room controls, metrics, scenarios, and live-lab operating
+              procedures.
+            </p></a
+          >
+        </nav>
+        <p class="note">
+          These public pages do not connect to or control a live lab. The explorer
+          is a pinned documentation snapshot; topology placements are
+          illustrative, not live measurements.
+        </p>
+      </section>
+      <section id="state">
+        <h2>Current state</h2>
+        <ul>
+          <li>Development checkpoint: fresh-VM and full-suite acceptance are pending.</li>
+          <li>The ordinary room catalog has passing evidence for all 24 rooms across two
+          runs; guarded load steering passed with a native BTM.</li>
+          <li>Still open: geometry isolation/recovery (an extender's 6 GHz inventory
+          disappeared) and pressure veto / weak-signal rescue (no complete live proof).</li>
+        </ul>
+        <p><a href="https://github.com/boardfarmdevs/prplmesh-lab/blob/main/docs/current-state.md">The current state in full ↗</a></p>
+      </section>
+      <section id="run">
+        <h2>Run it</h2>
+        <p>
+        Start from a clean host with the bare-metal guide; the operations guide has
+        the day-to-day commands.
+        </p>
+        <p><a href="https://github.com/boardfarmdevs/prplmesh-lab/blob/main/deploy/bare-metal/README.md">Bare-metal guide ↗</a> · <a href="https://github.com/boardfarmdevs/prplmesh-lab/blob/main/docs/operations.md">Operations ↗</a></p>
+      </section>
+      <section id="reference">
+        <h2>Reference</h2>
+        <ul>
+          <li><a href="https://github.com/boardfarmdevs/prplmesh-lab/blob/main/docs/README.md">Source documentation ↗</a></li>
+          <li><a href="https://github.com/boardfarmdevs/prplmesh-lab/blob/main/docs/current-state.md">Current state ↗</a></li>
+          <li><a href="https://github.com/boardfarmdevs/prplmesh-lab/blob/main/reference/radio/rf-property-coverage.md">RF qualification record ↗</a></li>
+        </ul>
+      </section>
     </main>
   </body>
 </html>

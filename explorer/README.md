@@ -35,30 +35,29 @@ protocol paths, mobile layout, room playback and manual navigation. They check
 all room files, pinned source links and absence of external/live API requests.
 Generated assets, dependencies and browser evidence are ignored by Git.
 
-## Enable on GitHub when ready
+## Publish
 
-The workflow builds and tests on relevant pushes to `main`.
-Publication remains disabled until the repository owner opts in:
+The site is built and published by the Pages workflow
+(`.github/workflows/pages.yml`, the same in the four lab repositories) on every
+push to `main`: `pages/build` runs `npm ci`, `npm run build` and `npm test` here,
+and `pages/finish-site.py` adds the labs bar shared by the four lab sites. The
+Pages source is **GitHub Actions**, and the `github-pages` environment must allow
+`main`.
 
-1. Push the source and `.github/workflows/pages.yml` to the canonical branch.
-2. In **Settings → Pages**, select **GitHub Actions** as the source.
-3. In **Settings → Secrets and variables → Actions → Variables**, add the
-   repository variable `PUBLISH_PAGES` with value `true`.
-4. Open the **Interactive documentation** Actions run for that push and choose
-   **Re-run all jobs**. If the `github-pages` environment restricts branches,
-   allow `main`.
-
-The successful deployment provides:
+The deployment provides:
 
 - `https://boardfarmdevs.github.io/prplmesh-lab/`
 - `https://boardfarmdevs.github.io/prplmesh-lab/explorer/`
 - `https://boardfarmdevs.github.io/prplmesh-lab/viewer/`
 - `https://boardfarmdevs.github.io/prplmesh-lab/viewer/manual.html`
 
-Later relevant pushes rebuild the whole site together, avoiding stale viewer
-assets or missing room files. Remove the variable to stop future publication.
-No `gh-pages` branch, SPA rewrite, backend or change to RDK Pages is required.
-See [GitHub’s Pages workflow requirements](https://docs.github.com/en/pages/getting-started-with-github-pages/using-custom-workflows-with-github-pages).
+Every push rebuilds the whole site together, avoiding stale viewer assets or
+missing room files. To preview the finished site locally:
+
+```sh
+pages/build && python3 pages/finish-site.py
+python3 -m http.server -d dist/site 8000
+```
 
 Public HTTPS Pages cannot proxy a private HTTP VM. Use the lab’s own URL or
 its authenticated remote-access gateway for live operation. Keep screenshots

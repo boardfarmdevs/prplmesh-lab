@@ -1,42 +1,40 @@
-name: Interactive documentation
+# The Pages workflow of the four lab sites (meta-cmf-bananapi-vcpe, prplmesh-lab,
+# emosa-lab, opensync-lab): the same file in each. The repository's own step is
+# pages/build (into dist/site); pages/finish-site.py adds the labs bar and build.json.
+# Pages source: GitHub Actions. Deploys from main only.
+name: pages
 on:
   push:
     branches: [main]
-    paths: ['explorer/**', 'wmediumd/configurator/worlds/**', '.github/workflows/pages.yml']
+  pull_request:
   workflow_dispatch:
 
 permissions:
   contents: read
 
 concurrency:
-  group: prplmesh-pages
+  group: pages-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
   build:
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v5
         with:
           fetch-depth: 0
-      - uses: actions/setup-node@v6
+      - uses: actions/setup-node@v5
         with:
           node-version: '24'
-          cache: npm
-          cache-dependency-path: explorer/package-lock.json
-      - run: npm ci
-        working-directory: explorer
-      - run: npm run build
-        working-directory: explorer
-      - run: npx playwright install --with-deps chromium
-        working-directory: explorer
-      - run: npm test
-        working-directory: explorer
+      - name: Build the site
+        run: pages/build
+      - name: Finish the site (labs bar, build.json)
+        run: python3 pages/finish-site.py dist/site
       - uses: actions/upload-pages-artifact@v4
         with:
-          path: explorer/site
+          path: dist/site
   deploy:
-    if: vars.PUBLISH_PAGES == 'true'
+    if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
     needs: build
     runs-on: ubuntu-24.04
     permissions:
