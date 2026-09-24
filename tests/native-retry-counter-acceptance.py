@@ -29,11 +29,26 @@ def command(*arguments, timeout=15):
                           text=True, timeout=timeout).stdout
 
 
-def endpoint(mode, address, seconds, port):
+def endpoint(mode, address, seconds, port, payload_bytes=1000, progress=False, access_category='best-effort'):
+    require(type(payload_bytes) is int and 128 <= payload_bytes <= 1400,
+            'UDP payload must be 128..1400 bytes')
+    require(access_category in ('best-effort', 'voice'), 'unsupported traffic access category')
     with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as channel:
+        if mode == 'send' and access_category == 'voice':
+            channel.setsockopt(socket.IPPROTO_IP, socket.IP_TOS, 0xc0)
         started = time.monotonic()
         packets = 0
         unique = set()
+        next_report = started + 1
+        def report_progress():
+            nonlocal next_report
+            now = time.monotonic()
+            if progress and now >= next_report:
+                print(json.dumps({'kind': 'progress', 'mode': mode, 'packets': packets,
+                                  'unique_packets': len(unique), 'payload_bytes': payload_bytes,
+                                  'requested_access_category': access_category,
+                                  'seconds': now - started}), flush=True)
+                next_report = now + 1
         if mode == "receive":
             channel.bind((address, port))
             channel.settimeout(.2)
@@ -42,21 +57,56 @@ def endpoint(mode, address, seconds, port):
                 try:
                     data = channel.recv(2000)
                 except socket.timeout:
+                    report_progress()
                     continue
-                if len(data) == 1000 and data[4:] == bytes(996):
+                if len(data) == payload_bytes and data[4:] == bytes(payload_bytes - 4):
                     unique.add(struct.unpack("!I", data[:4])[0])
                     packets += 1
+                report_progress()
         else:
             channel.settimeout(.1)
             while time.monotonic() - started < seconds:
                 try:
-                    channel.sendto(struct.pack("!I", packets) + bytes(996), (address, port))
+                    channel.sendto(struct.pack("!I", packets) + bytes(payload_bytes - 4), (address, port))
                 except (TimeoutError, BlockingIOError):
+                    report_progress()
                     continue
                 packets += 1
                 time.sleep(max(0, started + packets / 400 - time.monotonic()))
-        print(json.dumps({"packets": packets, "unique_packets": len(unique),
+                report_progress()
+        print(json.dumps({"packets": packets, "unique_packets": len(unique), "payload_bytes": payload_bytes,
+                          "requested_access_category": access_category,
                           "seconds": time.monotonic() - started}), flush=True)
+
+
+def broadcast(interface, seconds, packets_per_second, payload_bytes):
+    require(re.fullmatch(r'(?:wlan|wifi)[0-9]+', interface or ''), 'requires a bound wireless AP interface')
+    require(all(type(value) is int for value in (seconds, packets_per_second, payload_bytes))
+            and 1 <= seconds <= 120 and 1 <= packets_per_second <= 1000 and 128 <= payload_bytes <= 1400,
+            'broadcast exceeds bounded duration, packet rate or payload')
+    with socket.socket(socket.AF_PACKET, socket.SOCK_RAW, socket.htons(0x88B5)) as channel:
+        channel.bind((interface, 0))
+        address = channel.getsockname()[4]
+        require(len(address) == 6, 'wireless interface MAC is unavailable')
+        channel.settimeout(.1)
+        header = bytes([255]) * 6 + address + struct.pack('!H', 0x88B5)
+        started = time.monotonic()
+        packets, attempted = 0, 0
+        print('ready', flush=True)
+        while time.monotonic() - started < seconds:
+            due = time.monotonic() + 1 / packets_per_second
+            attempted += 1
+            try:
+                sent = channel.send(header + struct.pack('!I', packets) + bytes(payload_bytes - 4))
+            except (TimeoutError, BlockingIOError):
+                pass
+            else:
+                require(sent == len(header) + payload_bytes, 'incomplete background Ethernet frame')
+                packets += 1
+            time.sleep(max(0, due - time.monotonic()))
+        print(json.dumps({'packets': packets, 'attempted': attempted, 'payload_bytes': payload_bytes,
+                          'offered_packets_per_second': packets_per_second, 'interface': interface,
+                          'seconds': time.monotonic() - started, 'source': 'bound_ap_non_ip_broadcast'}), flush=True)
 
 
 def kernel_counters(text):
@@ -171,7 +221,13 @@ def main():
     parser.add_argument("--stack", choices=("rdk", "prpl"))
     parser.add_argument("--output", type=Path)
     parser.add_argument("--yes-change-lab", action="store_true")
-    parser.add_argument("--endpoint", choices=("send", "receive"))
+    parser.add_argument("--endpoint", choices=("send", "receive", "broadcast"))
+    parser.add_argument("--interface")
+    parser.add_argument("--broadcast-packets-per-second", type=int, default=200)
+    parser.add_argument("--broadcast-payload-bytes", type=int, default=1400)
+    parser.add_argument("--payload-bytes", type=int, default=1000)
+    parser.add_argument("--progress", action="store_true")
+    parser.add_argument("--access-category", choices=('best-effort', 'voice'), default='best-effort')
     parser.add_argument("--address")
     parser.add_argument("--seconds", type=int, default=8)
     parser.add_argument("--port", type=int, default=55209)
@@ -179,7 +235,11 @@ def main():
                         help="evaluate the counter veto on actual native report windows without steering")
     args = parser.parse_args()
     if args.endpoint:
-        endpoint(args.endpoint, args.address, args.seconds, args.port)
+        if args.endpoint == 'broadcast':
+            require(os.geteuid() == 0 and args.yes_change_lab, 'broadcast requires root and --yes-change-lab')
+            broadcast(args.interface, args.seconds, args.broadcast_packets_per_second, args.broadcast_payload_bytes)
+            return 0
+        endpoint(args.endpoint, args.address, args.seconds, args.port, args.payload_bytes, args.progress, args.access_category)
         return 0
     require(os.geteuid() == 0 and args.yes_change_lab and args.stack and args.output,
             "requires root, --stack, --output and --yes-change-lab")

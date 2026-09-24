@@ -39,6 +39,130 @@ def clock(monkeypatch):
     return clock
 
 
+@pytest.mark.parametrize('settings', [
+    ('eth0', 1, 200, 1400), ('wifi1.1', 1, 200, 1400), ('wifi0', 0, 200, 1400),
+    ('wifi0', 121, 200, 1400), ('wifi0', 1, 0, 1400), ('wifi0', 1, 1001, 1400),
+    ('wifi0', 1, 200, 127), ('wifi0', 1, 200, 1401), ('wifi0', 1, True, 1400)])
+def test_broadcast_rejects_invalid_bounds_before_opening_socket(monkeypatch, settings):
+    def unexpected(*arguments):
+        pytest.fail('invalid broadcast opened a socket')
+    monkeypatch.setattr(DRIVER.socket, 'socket', unexpected)
+    with pytest.raises(RuntimeError):
+        DRIVER.broadcast(*settings)
+
+
+@pytest.mark.parametrize('payload', [127, 1401, True, 128.5])
+def test_udp_endpoint_rejects_invalid_payload_before_socket(monkeypatch, payload):
+    monkeypatch.setattr(DRIVER.socket, 'socket', lambda *arguments: pytest.fail('invalid payload opened socket'))
+    with pytest.raises(RuntimeError, match='UDP payload'):
+        DRIVER.endpoint('send', '192.0.2.1', 1, 55209, payload)
+
+
+@pytest.mark.parametrize('payload', [128, 1000, 1400])
+def test_udp_endpoint_sends_configured_real_payload(clock, monkeypatch, capsys, payload):
+    channel = Mock()
+    monkeypatch.setattr(DRIVER.socket, 'socket', lambda *arguments: nullcontext(channel))
+    DRIVER.endpoint('send', '192.0.2.1', 1, 55209, payload)
+    report = json.loads(capsys.readouterr().out)
+    assert report['packets'] == channel.sendto.call_count == 400
+    assert report['payload_bytes'] == payload
+    for index, call in enumerate(channel.sendto.call_args_list):
+        data, destination = call.args
+        assert destination == ('192.0.2.1', 55209)
+        assert data == index.to_bytes(4, 'big') + bytes(payload - 4)
+
+
+def test_udp_receiver_counts_only_selected_payload_and_unique_sequences(clock, monkeypatch, capsys):
+    channel = Mock()
+    frames = [bytes(128), bytes(128), bytes(1000), bytes(127) + b'x', (1).to_bytes(4, 'big') + bytes(124)]
+    def receive(size):
+        clock.now += .4
+        return frames.pop(0)
+    channel.recv.side_effect = receive
+    monkeypatch.setattr(DRIVER.socket, 'socket', lambda *arguments: nullcontext(channel))
+    DRIVER.endpoint('receive', '192.0.2.1', 1, 55209, 128)
+    report = json.loads(capsys.readouterr().out.splitlines()[-1])
+    assert report['packets'] == 3 and report['unique_packets'] == 2
+    assert report['payload_bytes'] == 128
+
+
+def test_udp_progress_reports_real_counts_before_completion(clock, monkeypatch, capsys):
+    channel = Mock()
+    monkeypatch.setattr(DRIVER.socket, 'socket', lambda *arguments: nullcontext(channel))
+    DRIVER.endpoint('send', '192.0.2.1', 2, 55209, 128, progress=True)
+    reports = [json.loads(line) for line in capsys.readouterr().out.splitlines()]
+    assert reports[0]['kind'] == 'progress' and reports[0]['mode'] == 'send'
+    assert reports[0]['packets'] == 400 and reports[0]['seconds'] == 1
+    assert reports[-1]['packets'] == 800 and 'kind' not in reports[-1]
+
+
+@pytest.mark.parametrize('category', ['best-effort', 'voice'])
+def test_udp_marks_voice_packets_without_changing_socket_for_best_effort(clock, monkeypatch, capsys, category):
+    channel = Mock()
+    monkeypatch.setattr(DRIVER.socket, 'socket', lambda *arguments: nullcontext(channel))
+    DRIVER.endpoint('send', '192.0.2.1', 1, 55209, 128, access_category=category)
+    if category == 'voice':
+        channel.setsockopt.assert_called_once_with(DRIVER.socket.IPPROTO_IP, DRIVER.socket.IP_TOS, 0xc0)
+    else:
+        channel.setsockopt.assert_not_called()
+    assert json.loads(capsys.readouterr().out)['requested_access_category'] == category
+
+
+@pytest.mark.parametrize('drop_first', [False, True])
+def test_broadcast_uses_real_bounded_ethernet_frames_without_catchup(clock, monkeypatch, capsys, drop_first):
+    channel = Mock()
+    channel.getsockname.return_value = ('wifi0', 0, 0, 0, bytes.fromhex('020000000001'))
+    frames = []
+    attempted_at = []
+    def send(frame):
+        attempted_at.append(clock.now)
+        if drop_first and len(attempted_at) == 1:
+            clock.now += .4
+            raise TimeoutError()
+        frames.append(frame)
+        return len(frame)
+    channel.send.side_effect = send
+    monkeypatch.setattr(DRIVER.socket, 'socket', lambda *arguments: nullcontext(channel))
+    DRIVER.broadcast('wifi0', 1, 4, 128)
+    channel.bind.assert_called_once_with(('wifi0', 0))
+    output = capsys.readouterr().out.splitlines()
+    assert output[0] == 'ready'
+    report = json.loads(output[1])
+    assert report['packets'] == len(frames) > 0
+    assert report['attempted'] == len(attempted_at) == 4
+    assert report['source'] == 'bound_ap_non_ip_broadcast'
+    for index, frame in enumerate(frames):
+        assert frame[:14] == bytes.fromhex('ffffffffffff02000000000188b5')
+        assert frame[14:18] == index.to_bytes(4, 'big')
+        assert frame[18:] == bytes(124)
+    assert all(after - before >= .25 for before, after in zip(attempted_at, attempted_at[1:]))
+
+
+def test_broadcast_rejects_partial_frame(clock, monkeypatch):
+    channel = Mock()
+    channel.getsockname.return_value = ('wifi0', 0, 0, 0, bytes(6))
+    channel.send.return_value = 1
+    monkeypatch.setattr(DRIVER.socket, 'socket', lambda *arguments: nullcontext(channel))
+    with pytest.raises(RuntimeError, match='incomplete background Ethernet frame'):
+        DRIVER.broadcast('wifi0', 1, 4, 128)
+
+
+def test_broadcast_upper_bound_is_paced_without_bursts(clock, monkeypatch, capsys):
+    channel = Mock()
+    channel.getsockname.return_value = ('wifi0', 0, 0, 0, bytes(6))
+    sent_at = []
+    def send(frame):
+        sent_at.append(clock.now)
+        return len(frame)
+    channel.send.side_effect = send
+    monkeypatch.setattr(DRIVER.socket, 'socket', lambda *arguments: nullcontext(channel))
+    DRIVER.broadcast('wifi0', 1, 1000, 128)
+    report = json.loads(capsys.readouterr().out.splitlines()[-1])
+    assert report['offered_packets_per_second'] == 1000
+    assert 999 <= report['packets'] <= 1001
+    assert all(after - before >= .000999 for before, after in zip(sent_at, sent_at[1:]))
+
+
 def trial(name="ack_loss", unit=1):
     driver = {"packets_sent": 1000, "bytes_sent": 1024000,
               "retransmissions": 900, "tx_packet_errors": 45, "rx_packet_errors": 0}

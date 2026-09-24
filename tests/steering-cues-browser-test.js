@@ -27,6 +27,7 @@ async function run() {
       mesh.append('text').attr('class', 'mesh-identity-label').attr('x', 0).attr('y', 50)
         .attr('font-size', 24).attr('text-anchor', 'middle').text(node => node.name);
       const stations = [];
+      const cuesStartedAt = performance.now();
       for (let ordinal = 0; ordinal < 24; ordinal++) {
         const nodeRef = nodes[ordinal % nodes.length];
         const station = {nodeRef, iconSize: 30, sta: {staMAC: 'sta-' + ordinal},
@@ -106,7 +107,16 @@ async function run() {
       }
       const bounds = scene.node().getBBox();
       d3.select('svg').attr('viewBox', `${bounds.x - 12} ${bounds.y - 12} ${bounds.width + 24} ${bounds.height + 24}`);
-      window.steeringFixture = {group, scene, stations, nodes};
+      const expiry = {layouts: 0, elapsedMs: null};
+      const getScreenCTM = scene.node().getScreenCTM.bind(scene.node());
+      scene.node().getScreenCTM = () => { expiry.layouts++; return getScreenCTM(); };
+      const observer = new MutationObserver(() => {
+        if (!group.select('.sta-roam-cue').empty()) return;
+        expiry.elapsedMs = performance.now() - cuesStartedAt;
+        observer.disconnect();
+      });
+      observer.observe(group.node(), {childList: true});
+      window.steeringFixture = {group, scene, stations, nodes, expiry, checkLabels};
       return {cues: group.selectAll('.sta-roam-cue').size(), labels: labels.length, layoutMs, width: bounds.width, height: bounds.height};
     });
     assert.equal(report.cues, 24);
@@ -118,6 +128,20 @@ async function run() {
       await page.screenshot({path: process.argv[4]});
     }
     await page.waitForFunction(() => !document.querySelector('.sta-roam-cue'), null, {timeout: 8000});
+    await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+    report.expiry = await page.evaluate(() => {
+      const {group, expiry, checkLabels} = window.steeringFixture;
+      return {...expiry, labels: checkLabels().length,
+        intents: group.selectAll('.sta-steering-intent-path').size(),
+        maskRects: group.selectAll('mask rect').size(),
+        entities: document.querySelectorAll('.node image, .mesh-identity-label, .sta-icon, .sta-identity-label').length};
+    });
+    assert.ok(report.expiry.layouts > 0 && report.expiry.layouts < report.cues,
+      `expiry must batch scene layouts: ${JSON.stringify(report.expiry)}`);
+    assert.equal(report.expiry.labels, 2);
+    assert.equal(report.expiry.intents, 2);
+    assert.equal(report.expiry.maskRects, 1 + report.expiry.entities + report.expiry.labels,
+      'clearance mask must release expired labels while retaining entities and intent badges');
     assert.deepEqual(errors, []);
     console.log('PASS: 24 simultaneous roams, collision-free labels, masked entities, purple BTM, cached ticks, movement and unchanged six-second expiry', JSON.stringify(report));
   } finally { await browser.close(); }

@@ -22,7 +22,7 @@ def settings_with_native_commands(state=None):
             assert options == {"timeout": 5}
             return json.dumps(state)
         assert arguments[:15] == ("nsenter", "--target", "1234", "--user", "--mount", "--net", "--pid", "--root", "--wd",
-                                  "--", "/usr/bin/env", "PATH=/usr/sbin:/usr/bin:/sbin:/bin", "wpa_cli", "-i", "wlan0")
+                                  "--", "/usr/bin/env", "PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin", "wpa_cli", "-i", "wlan0")
         operation, *parameters = arguments[15:]
         if operation == "status":
             return f"address={STATION}\nwpa_state=COMPLETED\nssid=private_ssid\nfreq=2437"
@@ -77,11 +77,12 @@ def test_capture_discovers_only_selected_instance_once_and_uses_native_cli():
     assert not hasattr(settings._sessions, "current")
 
 
-def test_native_cli_has_container_paths_when_merged_usr_service_path_omits_sbin(monkeypatch):
-    monkeypatch.setenv("PATH", "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/snap/bin")
+@pytest.mark.parametrize("path", ["/usr/bin:/bin", "/untrusted/bin:/snap/bin"])
+def test_native_cli_prefers_patched_container_binary_without_inheriting_host_paths(monkeypatch, path):
+    monkeypatch.setenv("PATH", path)
     settings, native = settings_with_native_commands()
     assert settings.capture(CONTAINER, STATION)["values"] == VALUES
-    assert all(call.args[10:13] == ("/usr/bin/env", "PATH=/usr/sbin:/usr/bin:/sbin:/bin", "wpa_cli")
+    assert all(call.args[10:13] == ("/usr/bin/env", "PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin", "wpa_cli")
                for call in native.call_args_list[1:])
 
 

@@ -28,6 +28,13 @@ const healthy = {native: {
   optimizer: {fleet: {converged: true}},
   topology: {nodes: Array(6).fill({}), stations: Array.from({length: 10}, (_, index) => ({mac: String(index)}))}};
 assert.equal(ready(healthy, 5), true);
+const diagnostics = require('./room-backhaul-features.js').convergenceDiagnostics(healthy);
+assert.equal(diagnostics.healthy, true);
+assert.equal(diagnostics.activeClients, 10);
+assert.equal(diagnostics.fleet.converged, true);
+assert.equal(diagnostics.nodes.extender_4.apOperating, true);
+assert.equal(diagnostics.nodes.extender_4.pingOk, true);
+assert.equal(Object.keys(diagnostics.nodes).length, 5);
 assert.equal(ready({...healthy, native: {...healthy.native, parents: {
   ...healthy.native.parents, extender_2: 'extender_4'}}}, 5), false);
 assert.equal(ready(healthy, 6), false);

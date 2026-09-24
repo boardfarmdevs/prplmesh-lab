@@ -210,18 +210,28 @@ def main():
         if 'rf-actions' in chosen:
             actions_ok = step('rf-actions/contracts', [sys.executable, '-m', 'pytest', '-q',
                                                      'tests/test_load_acceptance.py'])
+            scenarios = ('clear', 'pressure', 'rescue')
             if live_ok and actions_ok:
-                for scenario in ('clear', 'pressure', 'rescue'):
+                for index, scenario in enumerate(scenarios):
+                    workload = ['--payload-bytes', '1400'] if scenario == 'clear' else [
+                        '--payload-bytes', '1200', '--pressure-payload-bytes', '512',
+                        '--pressure-access-category', 'voice', '--pressure-snr', '2',
+                        '--rescue-snr', '32', '--background-packets-per-second', '300']
                     if not step('rf-actions/' + scenario, guest('env',
                         'PYTHONPATH=/opt/prplmesh-lab/optimizer:/opt/prplmesh-lab/wmediumd/configurator',
                         'python3', '/opt/prplmesh-lab/tests/load-policy-acceptance.py', '--stack', 'prpl',
                         '--root', '/opt/prplmesh-lab', '--policy',
                         '/opt/prplmesh-lab/optimizer/configs/load-counter-guard-policy.yaml',
-                        '--payload-bytes', '1400', '--counter-case', scenario, '--yes-change-lab', '--output',
+                        *workload, '--counter-case', scenario, '--yes-change-lab', '--output',
                         '/opt/prplmesh-lab/test-results/rf-actions-' + stamp + '-' + scenario), 600):
+                        for pending in scenarios[index + 1:]:
+                            record('rf-actions/' + pending, 'blocked',
+                                   detail=scenario + ' failed; subsequent RF mutations were not attempted')
                         break
             else:
-                record('rf-actions/live', 'blocked', detail='contracts or clean matching checkouts required')
+                for scenario in scenarios:
+                    record('rf-actions/' + scenario, 'blocked',
+                           detail='contracts or clean matching checkouts required')
         if 'rf' in chosen:
             contracts_ok = step('rf/contracts', [sys.executable, '-m', 'pytest', '--import-mode=importlib', '-o', 'addopts=', '-q',
                 'optimizer/tests/test_counter_guard.py', 'optimizer/tests/test_counter_shadow.py',

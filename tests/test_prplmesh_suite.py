@@ -143,19 +143,36 @@ def test_rf_actions_run_in_order_without_full_pool_guard(tmp_path):
     actions = [command for command in calls if '--counter-case' in command]
     assert [command[command.index('--counter-case') + 1] for command in actions] == ['clear', 'pressure', 'rescue']
     assert all('--policy' in command and '--yes-change-lab' in command for command in actions)
-    assert all(command[command.index('--payload-bytes') + 1] == '1400' for command in actions)
+    assert [command[command.index('--payload-bytes') + 1] for command in actions] == ['1400', '1200', '1200']
+    assert '--pressure-access-category' not in actions[0]
+    for command in actions[1:]:
+        for option, value in [('pressure-payload-bytes', '512'), ('pressure-access-category', 'voice'),
+                              ('pressure-snr', '2'), ('rescue-snr', '32'),
+                              ('background-packets-per-second', '300')]:
+            assert command[command.index('--' + option) + 1] == value
     assert not any('acquire' in command or 'start' in command for command in calls)
     assert report['results'][-1]['name'] == 'rf-actions/rescue'
 
 
 def test_rf_action_failure_blocks_following_mutations(tmp_path):
-    result, calls, _report = run_fixture(tmp_path, sections=('rf-actions',), fail='pressure')
+    result, calls, report = run_fixture(tmp_path, sections=('rf-actions',), fail='pressure')
     assert result == 1
     assert not any('rescue' in command for command in calls)
+    assert [(row['name'], row['status']) for row in report['results'][-2:]] == [
+        ('rf-actions/pressure', 'failed'), ('rf-actions/rescue', 'blocked')]
+
+
+def test_first_rf_action_failure_accounts_for_both_unrun_scenarios(tmp_path):
+    result, calls, report = run_fixture(tmp_path, sections=('rf-actions',), fail='clear')
+    assert result == 1
+    assert not any('pressure' in command or 'rescue' in command for command in calls)
+    assert [row['name'] for row in report['results'] if row['status'] == 'blocked'] == [
+        'rf-actions/pressure', 'rf-actions/rescue']
 
 
 def test_rf_actions_require_clean_matching_sources(tmp_path):
     result, calls, report = run_fixture(tmp_path, sections=('rf-actions',), dirty=True)
     assert result == 1
     assert not any('--counter-case' in command for command in calls)
-    assert report['results'][-1]['name'] == 'rf-actions/live'
+    assert [(row['name'], row['status']) for row in report['results'][-3:]] == [
+        ('rf-actions/clear', 'blocked'), ('rf-actions/pressure', 'blocked'), ('rf-actions/rescue', 'blocked')]

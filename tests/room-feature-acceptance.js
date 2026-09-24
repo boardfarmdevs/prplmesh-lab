@@ -66,6 +66,42 @@ function bandNativeErrors(world, probes, clients) {
   });
 }
 
+function udpByteAccounting(sender, receiver, payloadBytes) {
+  if (!sender || !receiver || !Number.isInteger(payloadBytes) || payloadBytes <= 0 ||
+      ![sender.bytes, receiver.bytes, sender.packets, receiver.packets].every(value => Number.isSafeInteger(value) && value > 0)) {
+    return {passed: false, state: 'unavailable'};
+  }
+  const excessBytes = receiver.bytes - sender.bytes;
+  const boundary = excessBytes === payloadBytes && sender.packets === receiver.packets &&
+    receiver.lost_packets === 0 && receiver.loss_percent === 0 &&
+    sender.bytes === (sender.packets - 1) * payloadBytes && receiver.bytes === receiver.packets * payloadBytes;
+  const passed = receiver.packets <= sender.packets && (excessBytes <= 0 || boundary);
+  return {passed, state: boundary ? 'one-datagram-accounting-boundary' : passed ? 'consistent' : 'inconsistent',
+    senderBytes: sender.bytes, receiverBytes: receiver.bytes, excessBytes, payloadBytes};
+}
+
+function qualificationFailures(result, browserErrors = []) {
+  const checks = {
+    load: result.load?.passed,
+    initialConvergence: result.initial?.passed,
+    playback: result.playback?.completed,
+    finalConvergence: result.final?.passed,
+    checkpoints: result.checkpoints.every(checkpoint => checkpoint.passed),
+    script: result.scriptCorrect,
+    scene: result.sceneCorrect,
+    topology: result.viewCorrect,
+    presence: result.presencePhases.every(entry => entry.topologyVerified),
+    fronthaulOutage: result.fronthaulOutages.every(outage =>
+      outage.samples > 0 && !outage.remainingAssociations.length && outage.meshConnected),
+    kernelClients: result.kernel?.passed,
+    bandSteering: result.bandSteering?.passed !== false,
+    trafficExperiment: result.trafficExperiment?.passed !== false,
+    roomErrors: !result.errors.length,
+    browserErrors: !browserErrors.some(error => error.room === result.id)
+  };
+  return Object.entries(checks).filter(([, passed]) => !passed).map(([name]) => name);
+}
+
 function trafficExperimentSummary(world, records) {
   const reports = records.filter(record => record.event.kind === 'traffic.experiment')
     .map(record => record.event.payload).filter(value => value.world_sha256 === world.golden_sha256);
@@ -79,7 +115,8 @@ function trafficExperimentSummary(world, records) {
         Number.isFinite(value[rate]) && value[rate] >= 0 &&
         Number.isInteger(value.bytes) && value.bytes >= 0 && Number.isInteger(value.packets) && value.packets >= 0 &&
         Number.isFinite(value.seconds) && value.seconds > 0;
-      return {index, configured: phase, result: result || {state: 'missing'}, passed: starts.length === 1 &&
+      const accounting = udpByteAccounting(sender, receiver, phase.payload_bytes);
+      return {index, configured: phase, result: result || {state: 'missing'}, accounting, passed: starts.length === 1 &&
         starts[0].mode === 'udp' && starts[0].role === phase.role &&
         starts[0].requested_offered_mbps === phase.offered_mbps && starts[0].payload_bytes === phase.payload_bytes &&
         same(starts[0].key, result?.key) && result?.role === phase.role && result.mode === 'udp' &&
@@ -89,7 +126,7 @@ function trafficExperimentSummary(world, records) {
         measured(sender, 'bits_per_second') && measured(receiver, 'goodput_bits_per_second') &&
         sender.source === 'iperf3_sender_json' && receiver.source === 'iperf3_receiver_json' &&
         sender.bytes > 0 && receiver.bytes > 0 && sender.packets > 0 && receiver.packets > 0 &&
-        receiver.bytes <= sender.bytes && Number.isInteger(receiver.lost_packets) &&
+        accounting.passed && Number.isInteger(receiver.lost_packets) &&
         receiver.lost_packets >= 0 && receiver.lost_packets <= receiver.packets &&
         Number.isFinite(receiver.loss_percent) && receiver.loss_percent >= 0 && receiver.loss_percent <= 100 &&
         Math.abs(receiver.loss_percent - 100 * receiver.lost_packets / receiver.packets) < 0.01};
@@ -634,11 +671,8 @@ async function run(args) {
         firstVerifiedRoomTimeMs: matches[0]?.playback.time_ms ?? null};
     });
     result.fronthaulOutages = fronthaulOutages(golden, result.samples);
-    result.passed = Boolean(result.load?.passed && result.initial?.passed && result.playback?.completed && result.final?.passed &&
-      result.checkpoints.every(checkpoint => checkpoint.passed) && result.scriptCorrect && result.sceneCorrect && result.viewCorrect &&
-      result.presencePhases.every(entry => entry.topologyVerified) &&
-      result.fronthaulOutages.every(outage => outage.samples > 0 && !outage.remainingAssociations.length && outage.meshConnected) &&
-      result.kernel?.passed && result.bandSteering?.passed !== false && result.trafficExperiment?.passed !== false && !result.errors.length && !report.errors.some(error => error.room === result.id));
+    result.failureReasons = qualificationFailures(result, report.errors);
+    result.passed = result.failureReasons.length === 0;
     result.sampleCount = result.samples.length;
     delete result.samples;
   }
@@ -833,6 +867,6 @@ function kernelClientAudit(bindings, wanted, associations, links) {
   return {onlineCount: online.size, offlineCount: bound.size - online.size, passed: errors.length === 0, errors, links};
 }
 
-module.exports = {argumentsFrom, expectedFrame, evaluate, distribution, eventPerformance, viewAgreement, recordedEventKind, fronthaulOutages, bandExpectations, bandSteeringSummary, bandNativeErrors, kernelClientAudit, trafficExperimentSummary};
+module.exports = {argumentsFrom, expectedFrame, evaluate, distribution, eventPerformance, viewAgreement, recordedEventKind, fronthaulOutages, bandExpectations, bandSteeringSummary, bandNativeErrors, kernelClientAudit, trafficExperimentSummary, qualificationFailures};
 if (require.main === module) run(argumentsFrom(process.argv.slice(2))).then(report => { process.exitCode = report.passed ? 0 : 1; })
   .catch(error => { console.error(error); process.exitCode = 2; });

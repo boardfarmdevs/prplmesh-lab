@@ -31,6 +31,28 @@ def test_available_traffic_tools_pass(monkeypatch):
     DRIVER.require_traffic_tools()
 
 
+def test_failed_traffic_keeps_latest_real_progress_without_claiming_completion(tmp_path):
+    rows = [{'kind': 'progress', 'mode': 'send', 'packets': count} for count in (400, 800)]
+    (tmp_path / 'pressure-send.jsonl').write_text('ready\n' + '\n'.join(map(json.dumps, rows)) + '\npartial{')
+    assert DRIVER.traffic_progress(tmp_path) == {'send': rows[-1]}
+
+
+@pytest.mark.parametrize('problem', ['none', 'missing', 'owner', 'band', 'signal', 'dwell', 'stale', 'future'])
+def test_source_precondition_requires_actual_native_dwell_and_fresh_owner(problem):
+    stamp = datetime.now(timezone.utc).timestamp()
+    client = SimpleNamespace(connected_bssid='source', band='2.4', rcpi=148,
+                             association_uptime_seconds=20,
+                             metric_observed_at=format_time(datetime.fromtimestamp(stamp, timezone.utc)))
+    changes = {'owner': ('connected_bssid', 'different'), 'band': ('band', '5'),
+               'signal': ('rcpi', None), 'dwell': ('association_uptime_seconds', 19),
+               'stale': ('metric_observed_at', format_time(datetime.fromtimestamp(stamp - 31, timezone.utc))),
+               'future': ('metric_observed_at', format_time(datetime.fromtimestamp(stamp + 2, timezone.utc)))}
+    if problem in changes:
+        setattr(client, *changes[problem])
+    snapshot = SimpleNamespace(client=lambda station: None if problem == 'missing' else client)
+    assert DRIVER.source_precondition(snapshot, ['subject'], 'source', 20, stamp) is (problem == 'none')
+
+
 @pytest.mark.parametrize('failure', ['missing', 'disabled', 'pressure', 'incomplete', 'duplicate'])
 def test_guarded_action_requires_complete_clear_counters(failure):
     evidence = {'counter_guard_enabled': True, 'counter_checks': [
@@ -50,6 +72,60 @@ def test_guarded_action_requires_complete_clear_counters(failure):
         evidence['counter_checks'].append(evidence['counter_checks'][0])
     with pytest.raises(RuntimeError, match='clear native counter evidence'):
         DRIVER.require_clear_counter_action(SimpleNamespace(load_evidence=evidence), configuration)
+
+
+def test_qualification_diagnostics_preserve_missing_zero_and_peak_without_changing_verdict():
+    report = {'state': 'failed'}
+    for utilization in (None, 0, 178, 153, False, 999):
+        decision = SimpleNamespace(sta_mac='subject', reason='current_acceptable',
+                                   load_evidence={'current_utilization': utilization})
+        decision.to_dict = lambda: {'reason': decision.reason, 'load_evidence': decision.load_evidence}
+        DRIVER.record_qualification_diagnostics(report, SimpleNamespace(decisions=[decision]), 'subject')
+        if utilization is None:
+            assert report['qualification_diagnostics']['maximum_current_utilization'] is None
+        elif type(utilization) is int and utilization == 0:
+            assert report['qualification_diagnostics']['maximum_current_utilization'] == 0
+    DRIVER.record_qualification_diagnostics(report, SimpleNamespace(decisions=[]), 'subject')
+    diagnostics = report['qualification_diagnostics']
+    assert diagnostics['evaluated_cycles'] == 7
+    assert diagnostics['missing_subject_cycles'] == 1
+    assert diagnostics['decision_reasons'] == {'current_acceptable': 6}
+    assert diagnostics['maximum_current_utilization'] == 178
+    assert diagnostics['last_subject_decision']['load_evidence']['current_utilization'] == 999
+    assert report['state'] == 'failed'
+    json.dumps(report)
+
+
+@pytest.mark.parametrize('options', [
+    ['--background-packets-per-second', '-1'], ['--background-packets-per-second', '1001'],
+    ['--pressure-snr', '-11'], ['--pressure-snr', '41'],
+    ['--rescue-snr', '-1'], ['--rescue-snr', '56'],
+    ['--counter-case', 'rescue', '--pressure-snr', '32', '--rescue-snr', '32']])
+def test_fixture_controls_reject_invalid_values_before_lab_access(monkeypatch, options):
+    monkeypatch.setattr(DRIVER.sys, 'argv', ['load-policy-acceptance.py', '--stack', 'rdk',
+        '--root', '/fixture', '--output', '/unused', '--yes-change-lab', *options])
+    monkeypatch.setattr(DRIVER.signal, 'signal', lambda *arguments: None)
+    monkeypatch.setattr(DRIVER.os, 'geteuid', lambda: 0)
+    monkeypatch.setattr(DRIVER, 'require_traffic_tools', lambda: None)
+    monkeypatch.setattr(DRIVER, 'load_policy', lambda path: SimpleNamespace(load_aware_enabled=True))
+    monkeypatch.setattr(DRIVER, 'fetch', lambda *arguments: pytest.fail('invalid fixture accessed the lab'))
+    with pytest.raises(SystemExit) as error:
+        DRIVER.main()
+    assert error.value.code == 2
+
+
+def test_background_radio_links_are_bounded_cochannel_and_separate_from_client_or_backhaul_links():
+    radios = [{'radio': 'gateway'}, {'radio': 'source'}, {'radio': 'target'}]
+    source = radios[1]
+    assert DRIVER.background_links(radios, source, 0, 'gateway') == []
+    assert DRIVER.background_links(radios, source, 200, 'source') == []
+    assert DRIVER.background_links(radios, source, 200, 'gateway') == [
+        {'source': 'gateway', 'destination': 'source', 'frequency_mhz': 2437, 'value': 35},
+        {'source': 'source', 'destination': 'gateway', 'frequency_mhz': 2437, 'value': 35}]
+    with pytest.raises(ValueError, match='independent gateway'):
+        DRIVER.background_links(radios, radios[0], 200, 'gateway')
+    with pytest.raises(ValueError):
+        DRIVER.background_links(radios, source, 200, 'invalid')
 
 
 def test_original_load_policy_does_not_require_optional_guard():
@@ -85,7 +161,8 @@ def test_post_steer_delivery_requires_receiver_data_after_verified_boundary():
 
 
 @pytest.mark.parametrize('failure', [None, 'instance', 'readback'])
-def test_counter_pulse_verifies_daemon_and_readback_and_stops(monkeypatch, failure):
+@pytest.mark.parametrize('pattern', ['pulse', 'steady'])
+def test_counter_pulse_verifies_daemon_and_readback_and_stops(monkeypatch, failure, pattern):
     writes = []
     state = {'value': 55, 'generation': 1}
     strong = [{'source': 'station', 'destination': 'ap', 'frequency_mhz': 2437, 'value': 55}]
@@ -114,19 +191,19 @@ def test_counter_pulse_verifies_daemon_and_readback_and_stops(monkeypatch, failu
             return state['generation'], 0 if failure == 'readback' else state['value'], True
 
     monkeypatch.setattr(DRIVER, 'ControlClient', Control)
-    pulse = DRIVER.CounterPulse('/test/control', strong, impaired)
-    monkeypatch.setattr(pulse.stopped, 'wait', lambda seconds: len(writes) >= 2)
+    pulse = DRIVER.CounterPulse('/test/control', strong, impaired, pattern)
+    monkeypatch.setattr(pulse.stopped, 'wait', lambda seconds=None: pattern == 'steady' or len(writes) >= 2)
     pulse.thread.start()
     pulse.thread.join(timeout=1)
     assert not pulse.thread.is_alive()
     if failure:
-        with pytest.raises(RuntimeError, match='counter impairment failed'):
+        with pytest.raises(RuntimeError, match='counter impairment failed|medium restarted'):
             pulse.close()
-        assert pulse.error
+        assert pulse.error or (pattern == 'steady' and failure == 'instance')
     else:
         pulse.close()
-        assert writes == [impaired, strong, strong]
-        assert pulse.generations == 2
+        assert writes == ([impaired, strong, strong] if pattern == 'pulse' else [impaired, strong])
+        assert pulse.generations == (2 if pattern == 'pulse' else 1)
 
 
 @pytest.fixture
@@ -234,6 +311,76 @@ def test_live_pressure_requires_an_otherwise_safe_quieter_target(pressure_case):
     assert result['decision']['reason'] == 'native_load_counter_pressure'
 
 
+@pytest.mark.parametrize('present', [False, True])
+def test_pressure_negative_rejects_disappearance_or_uncommanded_roam(pressure_case, present):
+    snapshot, configuration, station, source, target = pressure_case
+    snapshot = replace(snapshot, clients=(replace(snapshot.clients[0], connected_bssid=target),) if present else ())
+    evaluation = DRIVER.policy_for(configuration).evaluate(snapshot)
+    with pytest.raises(RuntimeError, match='subject left the source AP'):
+        DRIVER.pressure_observation(snapshot, evaluation, configuration, station, source, target)
+
+
+def advance_pressure_snapshot(snapshot, seconds):
+    stamp = lambda value: format_time(datetime.fromtimestamp(
+        DRIVER.parse_time(value).timestamp() + seconds, timezone.utc))
+    return replace(snapshot, observed_at=stamp(snapshot.observed_at),
+        clients=tuple(replace(row, metric_observed_at=stamp(row.metric_observed_at)) for row in snapshot.clients),
+        candidates=tuple(replace(row, metric_observed_at=stamp(row.metric_observed_at)) for row in snapshot.candidates),
+        bss_loads=tuple(replace(row, observed_at=stamp(row.observed_at)) for row in snapshot.bss_loads),
+        client_activity=tuple(replace(row, observed_at=stamp(row.observed_at)) for row in snapshot.client_activity))
+
+
+def test_pressure_shadow_requires_full_production_hold_and_never_simulates_actuation(pressure_case):
+    snapshot, configuration, station, source, target = pressure_case
+    engine = DRIVER.policy_for(replace(configuration, load_counter_guard_enabled=False))
+    guarded = DRIVER.policy_for(configuration)
+    shadow_state, guarded_state = DRIVER.PolicyState(), DRIVER.PolicyState()
+    for seconds in range(13):
+        current = advance_pressure_snapshot(snapshot, seconds)
+        evaluation = guarded.evaluate(current, guarded_state)
+        guarded_state = evaluation.state
+        assert DRIVER.pressure_observation(current, evaluation, configuration, station, source, target)['qualified']
+        shadow_state, shadow = DRIVER.shadow_step(engine, current, shadow_state, station, source, target)
+        assert shadow['would_steer'] is (seconds >= configuration.load_condition_hold_seconds)
+        assert shadow['actuated'] is False
+        assert shadow_state.for_sta(station).phase == 'holding'
+        assert shadow_state.for_sta(station).pending_since is None
+
+
+@pytest.mark.parametrize('problem', ['stale', 'unloaded', 'same_channel', 'wrong_target', 'wrong_source'])
+def test_shadow_cannot_qualify_missing_or_different_opportunities(pressure_case, problem):
+    snapshot, configuration, station, source, target = pressure_case
+    engine = DRIVER.policy_for(replace(configuration, load_counter_guard_enabled=False))
+    state, _ = DRIVER.shadow_step(engine, snapshot, DRIVER.PolicyState(), station, source, target)
+    current = advance_pressure_snapshot(snapshot, 11)
+    if problem == 'stale':
+        current = replace(current, bss_loads=snapshot.bss_loads)
+    elif problem == 'unloaded':
+        current = replace(current, bss_loads=(replace(current.bss_loads[0], utilization=10), current.bss_loads[1]))
+    elif problem == 'same_channel':
+        current = replace(current, bss_loads=(current.bss_loads[0], replace(current.bss_loads[1], channel=6)))
+    elif problem == 'wrong_source':
+        source = '02:00:00:00:00:99'
+    else:
+        target = '02:00:00:00:00:99'
+    _, shadow = DRIVER.shadow_step(engine, current, state, station, source, target)
+    assert not shadow['would_steer']
+    assert shadow['actuated'] is False
+
+
+def test_shadow_resets_hold_when_native_load_clears(pressure_case):
+    snapshot, configuration, station, source, target = pressure_case
+    engine = DRIVER.policy_for(replace(configuration, load_counter_guard_enabled=False))
+    state, _ = DRIVER.shadow_step(engine, snapshot, DRIVER.PolicyState(), station, source, target)
+    current = advance_pressure_snapshot(snapshot, 9)
+    current = replace(current, bss_loads=(replace(current.bss_loads[0], utilization=10), current.bss_loads[1]))
+    state, shadow = DRIVER.shadow_step(engine, current, state, station, source, target)
+    assert not shadow['would_steer']
+    _, shadow = DRIVER.shadow_step(engine, advance_pressure_snapshot(snapshot, 11), state, station, source, target)
+    assert not shadow['would_steer']
+    assert shadow['decision']['hold_seconds'] == 0
+
+
 @pytest.mark.parametrize('change', ['same_channel', 'no_load', 'clear', 'stale', 'wrong_owner', 'missing_signal'])
 def test_other_reasons_for_no_action_do_not_prove_counter_veto(pressure_case, change):
     snapshot, configuration, station, source, target = pressure_case
@@ -249,6 +396,17 @@ def test_other_reasons_for_no_action_do_not_prove_counter_veto(pressure_case, ch
         snapshot = replace(snapshot, client_activity=(replace(snapshot.client_activity[0], **fields),))
     evaluation = DRIVER.policy_for(configuration).evaluate(snapshot)
     assert not DRIVER.pressure_observation(snapshot, evaluation, configuration, station, source, target)['qualified']
+
+
+@pytest.mark.parametrize('present', [False, True])
+def test_pressure_diagnostics_distinguish_missing_stimulus_from_policy_failure(pressure_case, present):
+    snapshot, configuration, station, source, target = pressure_case
+    if not present:
+        snapshot = replace(snapshot, client_activity=(replace(snapshot.client_activity[0], retries_per_second=0),))
+    evaluation = SimpleNamespace(decisions=[SimpleNamespace(action='steer')])
+    message = 'negative produced a steering action' if present else 'stimulus not established'
+    with pytest.raises(RuntimeError, match=message):
+        DRIVER.pressure_observation(snapshot, evaluation, configuration, station, source, target)
 
 
 def test_missing_native_telemetry_is_failure_not_unsupported_workload():
@@ -285,25 +443,29 @@ def test_incomplete_native_identity_cannot_qualify(monkeypatch, identity):
 
 
 @pytest.mark.parametrize('hop_counts, preferred, expected', [
-    ([0, 1, 1, 1, 1], 1, 1),
-    ([0, 1, 1, 2, 2], 1, 3),
-    ([0, 1, 1, 2, 2], 3, 3),
-    ([0, 3, 1, 2, 2], 2, 3),
+    ([0, 1, 1, 1, 1], 1, (1, 4)),
+    ([0, 1, 1, 2, 2], 1, (3, 4)),
+    ([0, 1, 1, 2, 2], 3, (3, 4)),
+    ([0, 3, 1, 2, 2], 2, (3, 4)),
+    ([0, 1, 1, 1, 2], 1, (1, 2)),
+    ([0, 1, 1, 1, None], 1, (1, 2)),
+    ([0, None, 1, None, 2], 1, (4, 2)),
 ])
 def test_positive_load_setup_respects_actual_backhaul(hop_counts, preferred, expected):
     radios = [{'bssid': 'bss-' + str(index)} for index in range(5)]
     bsses = {radio['bssid']: {'device_id': 'node-' + str(index)} for index, radio in enumerate(radios)}
     hops = {'node-' + str(index): count for index, count in enumerate(hop_counts)}
-    assert DRIVER.select_source_radio(radios, bsses, hops, preferred) == expected
+    assert DRIVER.select_radio_pair(radios, bsses, hops, preferred) == expected
 
 
-@pytest.mark.parametrize('hop_counts', [[0, 1, 1, 1, 2], [0, 1, 1, 1, None]])
+@pytest.mark.parametrize('hop_counts', [[0, 1, None, None, None], [0, None, None, None, None],
+                                      [0, True, -1, '1', None]])
 def test_positive_load_setup_rejects_missing_or_additional_hop(hop_counts):
     radios = [{'bssid': 'bss-' + str(index)} for index in range(5)]
     bsses = {radio['bssid']: {'device_id': 'node-' + str(index)} for index, radio in enumerate(radios)}
     hops = {'node-' + str(index): count for index, count in enumerate(hop_counts)}
     with pytest.raises(RuntimeError, match='no additional backhaul hop'):
-        DRIVER.select_source_radio(radios, bsses, hops, 1)
+        DRIVER.select_radio_pair(radios, bsses, hops, 1)
 
 
 @pytest.mark.parametrize("response", ["FAIL\n", "", "UNKNOWN COMMAND\n"])

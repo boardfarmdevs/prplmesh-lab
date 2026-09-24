@@ -45,4 +45,21 @@ for (const change of [{state: 'cancelled'}, {mode: 'icmp'}, {source_interface: '
 assert.equal(trafficExperimentSummary(udpWorld, [...udpRecords, udpRecords[0]]).passed, false);
 const zeroLoss = {...udpResult, receiver: {...udpResult.receiver, lost_packets: 0, loss_percent: 0}};
 assert.equal(trafficExperimentSummary(udpWorld, [udpStart, event({state: 'off', history: [zeroLoss]})]).passed, true);
+const boundary = {...udpResult, sender: {...udpResult.sender, bytes: 10800},
+  receiver: {...udpResult.receiver, bytes: 12000, lost_packets: 0, loss_percent: 0}};
+const boundaryReport = trafficExperimentSummary(udpWorld, [udpStart, event({state: 'off', history: [boundary]})]);
+assert.equal(boundaryReport.passed, true);
+assert.equal(boundaryReport.phases[0].accounting.state, 'one-datagram-accounting-boundary');
+assert.equal(boundaryReport.phases[0].result.sender.bytes, 10800);
+assert.equal(boundaryReport.phases[0].result.receiver.bytes, 12000);
+for (const change of [
+  {sender: {...boundary.sender, bytes: 9600}},
+  {sender: {...boundary.sender, bytes: 10801}},
+  {receiver: {...boundary.receiver, packets: 11}},
+  {receiver: {...boundary.receiver, lost_packets: 1, loss_percent: 10}},
+  {receiver: {...boundary.receiver, bytes: 13200}}
+]) {
+  assert.equal(trafficExperimentSummary(udpWorld, [udpStart,
+    event({state: 'off', history: [{...boundary, ...change}]})]).passed, false, JSON.stringify(change));
+}
 console.log('PASS: ICMP compatibility and measured UDP endpoints, loss, identity and off-state required');

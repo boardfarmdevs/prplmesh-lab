@@ -88,6 +88,31 @@ def require_running_traffic(processes):
             raise RuntimeError('traffic process exited before qualification completed: status ' + str(status))
 
 
+def source_precondition(snapshot, stations, bssid, minimum_dwell, now):
+    return all((client := snapshot.client(station)) is not None
+               and client.connected_bssid == bssid and client.band == '2.4'
+               and client.rcpi is not None and client.rcpi > 0
+               and client.association_uptime_seconds >= minimum_dwell
+               and client.metric_observed_at is not None
+               and 0 <= now - parse_time(client.metric_observed_at).timestamp() <= 30
+               for station in stations)
+
+
+def traffic_progress(directory):
+    observations = {}
+    for mode in ('send', 'receive'):
+        path = directory / ('pressure-' + mode + '.jsonl')
+        if path.exists():
+            for line in path.read_text().splitlines():
+                try:
+                    record = json.loads(line)
+                except ValueError:
+                    continue
+                if isinstance(record, dict) and record.get('kind') == 'progress' and record.get('mode') == mode:
+                    observations[mode] = record
+    return observations
+
+
 def require_clear_counter_action(decision, configuration):
     if not configuration.load_counter_guard_enabled:
         return
@@ -98,6 +123,24 @@ def require_clear_counter_action(decision, configuration):
             or {row.get('property') for row in checks} != expected or len(checks) != len(expected)
             or any(row.get('state') != 'within_limit' for row in checks)):
         raise RuntimeError('guarded load action lacks complete clear native counter evidence')
+
+
+def record_qualification_diagnostics(report, evaluation, station):
+    diagnostics = report.setdefault('qualification_diagnostics', {
+        'evaluated_cycles': 0, 'missing_subject_cycles': 0, 'decision_reasons': {},
+        'maximum_current_utilization': None, 'last_subject_decision': None})
+    diagnostics['evaluated_cycles'] += 1
+    decision = next((row for row in evaluation.decisions if row.sta_mac == station), None)
+    if decision is None:
+        diagnostics['missing_subject_cycles'] += 1
+        return
+    reasons = diagnostics['decision_reasons']
+    reasons[decision.reason] = reasons.get(decision.reason, 0) + 1
+    diagnostics['last_subject_decision'] = decision.to_dict()
+    utilization = (decision.load_evidence or {}).get('current_utilization')
+    if type(utilization) is int and 0 <= utilization <= 255:
+        previous = diagnostics['maximum_current_utilization']
+        diagnostics['maximum_current_utilization'] = utilization if previous is None else max(previous, utilization)
 
 
 def btm_events(text, action=None):
@@ -130,17 +173,21 @@ def counter_pressure(snapshot, configuration, station, source_bssid):
 
 
 def pressure_observation(snapshot, evaluation, configuration, station, source_bssid, target_bssid):
-    if any(row.action != 'none' for row in evaluation.decisions):
-        raise RuntimeError('counter-pressure negative produced a steering action')
-    client = snapshot.client(station)
-    decision = next((row for row in evaluation.decisions if row.sta_mac == station), None)
     pressure = counter_pressure(snapshot, configuration, station, source_bssid)
+    if any(row.action != 'none' for row in evaluation.decisions):
+        reason = ('counter-pressure negative produced a steering action' if pressure['state'] == 'pressure'
+                  else 'counter-pressure stimulus not established; a decision would steer')
+        raise RuntimeError(reason + ': ' + json.dumps(pressure))
+    client = snapshot.client(station)
+    if client is None or client.connected_bssid != source_bssid:
+        raise RuntimeError('counter-pressure subject left the source AP')
+    decision = next((row for row in evaluation.decisions if row.sta_mac == station), None)
     eligible = [row for row in snapshot.candidates_for(station) if row.eligible and row.rcpi is not None
                 and row.bssid != source_bssid and row.metric_observed_at is not None
                 and 0 <= (parse_time(snapshot.observed_at) - parse_time(row.metric_observed_at)).total_seconds()
                 <= configuration.reject_stale_metrics_after_seconds]
     selection = None
-    if client is not None and client.rcpi is not None and client.connected_bssid == source_bssid:
+    if client.rcpi is not None:
         selection = policy_for(replace(configuration, load_counter_guard_enabled=False))._load_selection(
             snapshot, client, eligible, parse_time(snapshot.observed_at))
     target = selection.get('target') if selection else None
@@ -152,8 +199,26 @@ def pressure_observation(snapshot, evaluation, configuration, station, source_bs
             'decision': decision.to_dict() if decision else None}
 
 
+def shadow_step(engine, snapshot, prior, station, source_bssid, target_bssid):
+    evaluation = engine.evaluate(snapshot, prior)
+    state = evaluation.state
+    for decision in evaluation.decisions:
+        if decision.action == 'steer':
+            state = state.replace(prior.for_sta(decision.sta_mac))
+    decision = next((row for row in evaluation.decisions if row.sta_mac == station), None)
+    opportunity = bool(decision and decision.action == 'steer'
+                       and decision.reason == 'native_load_margin_hold_satisfied'
+                       and decision.source_bssid == source_bssid and decision.target_bssid == target_bssid
+                       and decision.hold_seconds >= engine.config.load_condition_hold_seconds)
+    return state, {'would_steer': opportunity, 'decision': decision.to_dict() if decision else None,
+                   'actuated': False}
+
+
 class CounterPulse:
-    def __init__(self, socket_path, strong, impaired):
+    def __init__(self, socket_path, strong, impaired, pattern='pulse'):
+        if pattern not in ('pulse', 'steady'):
+            raise ValueError('unknown counter impairment pattern')
+        self.pattern = pattern
         self.socket_path = socket_path
         self.strong, self.impaired = strong, impaired
         self.stopped = threading.Event()
@@ -166,7 +231,7 @@ class CounterPulse:
     def run(self):
         try:
             while not self.stopped.is_set():
-                for rows in (self.impaired, self.strong):
+                for rows in ((self.impaired, self.strong) if self.pattern == 'pulse' else (self.impaired,)):
                     with ControlClient(self.socket_path) as control:
                         status = control.status()
                         if status.instance_id != self.instance:
@@ -176,6 +241,9 @@ class CounterPulse:
                             if control.get_frequency_link(row['source'], row['destination'], row['frequency_mhz'])[1] != row['value']:
                                 raise RuntimeError('impairment RF readback mismatch')
                     self.generations += 1
+                    if self.pattern == 'steady':
+                        self.stopped.wait()
+                        return
                     if self.stopped.wait(.25):
                         return
         except Exception as error:
@@ -193,15 +261,27 @@ class CounterPulse:
             control.apply_frequency(status.generation + 1, self.strong)
 
 
-def select_source_radio(radios, bsses, hops, preferred):
+def select_radio_pair(radios, bsses, hops, preferred):
     radio_hops = [hops.get(bsses.get(radio['bssid'], {}).get('device_id')) for radio in radios]
-    target_hops = radio_hops[-1]
-    eligible = [index for index in range(1, len(radios) - 1)
-                if radio_hops[index] is not None and target_hops is not None
-                and radio_hops[index] >= target_hops]
+    eligible = [(source, target) for source in range(1, len(radios)) for target in range(1, len(radios))
+                if source != target and all(type(radio_hops[index]) is int and radio_hops[index] > 0
+                                            for index in (source, target))
+                and radio_hops[source] >= radio_hops[target]]
     if not eligible:
-        raise RuntimeError('prepare a target with no additional backhaul hop before qualification')
-    return min(eligible, key=lambda index: (index != preferred, radio_hops[index] - target_hops, index))
+        raise RuntimeError('no pair with verified backhaul and no additional backhaul hop: ' +
+                           json.dumps(dict(zip((radio['bssid'] for radio in radios), radio_hops))))
+    return min(eligible, key=lambda pair: (pair[1] != len(radios) - 1, pair[0] != preferred,
+                                          radio_hops[pair[0]] - radio_hops[pair[1]], pair))
+
+
+def background_links(radios, source_radio, packets_per_second, placement):
+    if not packets_per_second or placement == 'source':
+        return []
+    if placement != 'gateway' or radios[0]['radio'] == source_radio['radio']:
+        raise ValueError('background requires an independent gateway radio')
+    return [{'source': source, 'destination': destination, 'frequency_mhz': 2437, 'value': 35}
+            for source, destination in ((radios[0]['radio'], source_radio['radio']),
+                                        (source_radio['radio'], radios[0]['radio']))]
 
 
 def same_channel_negative(snapshot, evaluation, configuration, station, source_bssid, target_bssid):
@@ -411,6 +491,20 @@ def main():
     parser.add_argument('--payload-bytes', type=int, default=1200,
                         help='actual UDP payload, 128..1400 bytes; no fragmentation')
     parser.add_argument('--counter-case', choices=('clear', 'pressure', 'rescue'), default='clear')
+    parser.add_argument('--background-packets-per-second', type=int, default=0,
+                        help='real co-channel AP broadcast demand, 0..1000 packets/s; independent of backhaul throughput')
+    parser.add_argument('--background-ap', choices=('source', 'gateway'), default='source',
+                        help='broadcast from source or an independent co-channel gateway AP')
+    parser.add_argument('--pressure-snr', type=int, default=-5,
+                        help='impaired AP-to-client SNR, -10..40 dB; does not inject retry counters')
+    parser.add_argument('--pressure-payload-bytes', type=int, default=1000,
+                        help='actual downlink UDP payload, 128..1400 bytes; no synthetic counter pressure')
+    parser.add_argument('--pressure-access-category', choices=('best-effort', 'voice'), default='best-effort',
+                        help='downlink packet marking; voice requests DSCP CS6, without changing scheduler settings')
+    parser.add_argument('--pressure-pattern', choices=('pulse', 'steady'), default='pulse',
+                        help='alternate loss/healthy every 250 ms or hold a constant impaired link')
+    parser.add_argument('--rescue-snr', type=int, default=18,
+                        help='source-link SNR during the rescue fixture, 0..55 dB')
     parser.add_argument('--same-channel-negative', action='store_true',
                         help='keep all APs on channel 6; require real native overload, same_channel exclusion and no actions')
     args = parser.parse_args()
@@ -427,6 +521,14 @@ def main():
         parser.error('--offered-mbps must be 1..40')
     if not 128 <= args.payload_bytes <= 1400:
         parser.error('--payload-bytes must be 128..1400')
+    if not 128 <= args.pressure_payload_bytes <= 1400:
+        parser.error('--pressure-payload-bytes must be 128..1400')
+    if not 0 <= args.background_packets_per_second <= 1000:
+        parser.error('--background-packets-per-second must be 0..1000')
+    if not -10 <= args.pressure_snr <= 40 or not 0 <= args.rescue_snr <= 55:
+        parser.error('requires --pressure-snr -10..40 and --rescue-snr 0..55')
+    if args.counter_case == 'rescue' and args.pressure_snr >= args.rescue_snr:
+        parser.error('rescue pressure SNR must be lower than the rescue link SNR')
     if args.counter_case != 'clear' and (not configuration.load_counter_guard_enabled or args.same_channel_negative):
         parser.error('pressure/rescue require a counter-guard policy and a different-channel target')
     state_room = fetch('http://127.0.0.1:8891/api/demo/interactions')
@@ -454,7 +556,12 @@ def main():
         raise RuntimeError('requires complete native twenty-client roster')
     radios = [private_radio(command('lxc', 'exec', node, '--', 'iw', 'dev')) for node in nodes]
     bsses, hops = inventory(inventory_observer.last_raw)
-    source_index = select_source_radio(radios, bsses, hops, 1 if rdk else len(radios) - 2)
+    source_index, target_index = select_radio_pair(radios, bsses, hops, 1 if rdk else len(radios) - 2)
+    if target_index != len(radios) - 1:
+        nodes[target_index], nodes[-1] = nodes[-1], nodes[target_index]
+        radios[target_index], radios[-1] = radios[-1], radios[target_index]
+        if source_index == len(radios) - 1:
+            source_index = target_index
     source_radio = radios[source_index]
     if any(radio['frequency'] != 2437 for radio in radios):
         raise RuntimeError('requires default channel 6 on all private 2.4 GHz radios')
@@ -470,15 +577,23 @@ def main():
     report = {'stack': args.stack, 'state': 'failed', 'original_associations': originals,
               'same_channel_negative': args.same_channel_negative,
               'workload': {'clients': 2, 'offered_mbps_each': args.offered_mbps,
+                           'background_packets_per_second': args.background_packets_per_second,
+                           'background_ap': args.background_ap,
+                           'pressure_payload_bytes': args.pressure_payload_bytes,
+                           'pressure_access_category': args.pressure_access_category,
                            'payload_bytes': args.payload_bytes, 'seconds': 105, 'native_metrics_injected': False},
               'counter_case': args.counter_case, 'counter_observations': [],
+              'qualification_thresholds': {
+                  'load_high_utilization': configuration.load_high_utilization,
+                  'load_hold_seconds': configuration.load_condition_hold_seconds,
+                  'signal_hold_seconds': configuration.condition_hold_seconds},
               'timing_schema': 'native-load-stage-timings.v1', 'observation_gate_seconds': 20,
               'freshness_timing_scope': 'first sampled evidence after verification; not native arrival or convergence latency',
               'station_macs': station_macs, 'radios': radios, 'actions': [], 'restoration_errors': [],
               'source_node': nodes[source_index], 'source_bssid': source_radio['bssid'],
               'source_backhaul_hops': hops[bsses[source_radio['bssid']]['device_id']],
               'target_backhaul_hops': hops[bsses[radios[-1]['bssid']]['device_id']],
-              'scope': 'two-client native load policy qualification; default 20 active, provisioned pool unchanged',
+              'scope': 'two workload clients, starting/ending Default-20; stopping the room can restore the full pool',
               'rf_candidates': 'native controller query using explicitly enabled idealized hwsim measurements'}
     cleanup, traffic, servers, handles = [], [], [], []
     provider = None
@@ -586,6 +701,7 @@ def main():
                 for frequency in ((2437,) if args.same_channel_negative else (2412, 2437)):
                     for source, destination in ((station, radio['radio']), (radio['radio'], station)):
                         updates.append({'source': source, 'destination': destination, 'frequency_mhz': frequency, 'value': strength})
+        updates.extend(background_links(radios, source_radio, args.background_packets_per_second, args.background_ap))
         key = lambda row: (row['source'], row['destination'], row['frequency_mhz'])
         original_by_key = {key(row): row for row in original_frequencies}
         restoration = [original_by_key.get(key(row), {**row, 'override': False, 'value': 0}) for row in updates]
@@ -609,16 +725,14 @@ def main():
         deadline = time.monotonic() + 30
         while time.monotonic() < deadline:
             initial = inventory_observer.observe()
+            report['native_clients_at_workload_setup'] = len(initial.clients)
             (args.output / 'precondition-snapshot.json').write_text(json.dumps(initial.to_dict(), indent=2) + '\n')
-            if all(initial.client(station) is not None and initial.client(station).connected_bssid == source_radio['bssid']
-                   and initial.client(station).band == '2.4' and initial.client(station).rcpi is not None
-                   and initial.client(station).rcpi > 0 and initial.client(station).metric_observed_at is not None
-                   and 0 <= time.time() - parse_time(initial.client(station).metric_observed_at).timestamp() <= 30
-                   for station in station_macs):
+            if source_precondition(initial, station_macs, source_radio['bssid'],
+                                   configuration.minimum_dwell_seconds, time.time()):
                 break
             time.sleep(.5)
         else:
-            raise RuntimeError('native controller did not confirm preconditioned source associations')
+            raise RuntimeError('native controller did not confirm fresh source associations and minimum dwell')
         selected = lambda client, _timestamp: client.sta_mac in station_macs
         candidate = ControllerCandidateProvider(base, allow_simulated=True, client_selector=selected) if rdk else PrplMeshCandidateProvider(
             allow_simulated=True, client_selector=selected, timeout_seconds=10)
@@ -641,6 +755,11 @@ def main():
         report['policy_path'] = str(policy_path)
         engine = policy_for(replace(configuration, expected_clients=2))
         policy_state = PolicyState()
+        shadow_engine = policy_for(replace(configuration, expected_clients=2, load_counter_guard_enabled=False))
+        shadow_state = PolicyState()
+        if args.counter_case == 'pressure':
+            report['negative_proof'] = 'fresh native pressure vetoes an otherwise held unguarded action; shadow never actuates'
+            report['counterfactual_policy'] = asdict(shadow_engine.config)
         original_level = command('lxc', 'exec', clients[0], '--', 'wpa_cli', '-i', 'wlan0', 'log_level')
         report['original_log_level'] = original_level
         level = re.search(r'Current level:\s*(\w+)', original_level)[1]
@@ -680,6 +799,24 @@ def main():
             time.sleep(.3)
             traffic.append(subprocess.Popen(['nsenter', '-t', str(processes[node]), '-n', 'iperf3', '-c', gateway, '-B', addresses[index], '-p', port, '-u', '-b', str(args.offered_mbps) + 'M', '-l', str(args.payload_bytes), '-t', '105', '-J', '-i', '1'],
                                             stdout=client_output, stderr=subprocess.STDOUT))
+        if args.background_packets_per_second:
+            background_index = 0 if args.background_ap == 'gateway' else source_index
+            report['background_node'] = nodes[background_index]
+            background_path = args.output / 'background.jsonl'
+            background_output = background_path.open('w')
+            handles.append(background_output)
+            background = subprocess.Popen(['nsenter', '-t', str(processes[nodes[background_index]]), '-n',
+                sys.executable, str(args.root / 'tests/native-retry-counter-acceptance.py'),
+                '--endpoint', 'broadcast', '--yes-change-lab', '--interface', radios[background_index]['interface'],
+                '--seconds', '105', '--broadcast-packets-per-second', str(args.background_packets_per_second),
+                '--broadcast-payload-bytes', str(args.payload_bytes)],
+                stdin=subprocess.DEVNULL, stdout=background_output, stderr=subprocess.STDOUT)
+            traffic.append(background)
+            ready_deadline = time.monotonic() + 5
+            while not background_path.read_text().startswith('ready\n'):
+                if background.poll() is not None or time.monotonic() >= ready_deadline:
+                    raise RuntimeError('background AP broadcast did not become ready')
+                time.sleep(.05)
         if args.counter_case != 'clear':
             source_pid = processes[nodes[source_index]]
             interface = source_radio['interface']
@@ -692,7 +829,9 @@ def main():
             cleanup.append(('pressure host route', lambda: net_command(
                 source_pid, 'ip', 'route', 'del', addresses[0] + '/32', 'dev', bridge)))
             endpoint = [sys.executable, str(args.root / 'tests/native-retry-counter-acceptance.py'),
-                        '--address', addresses[0], '--seconds', '105', '--port', '55209']
+                        '--address', addresses[0], '--seconds', '105', '--port', '55209',
+                        '--payload-bytes', str(args.pressure_payload_bytes), '--progress',
+                        '--access-category', args.pressure_access_category]
             for mode, pid in (('receive', processes[clients[0]]), ('send', source_pid)):
                 log_path = args.output / ('pressure-' + mode + '.jsonl')
                 output = log_path.open('w')
@@ -709,12 +848,13 @@ def main():
             strong = [row for row in updates if row['frequency_mhz'] == 2437
                       and {row['source'], row['destination']} == {station_radios[0], source_radio['radio']}]
             if args.counter_case == 'rescue':
-                strong = [{**row, 'value': 18} for row in strong]
-            impaired = [{**row, 'value': -5 if row['source'] == source_radio['radio'] else row['value']}
+                strong = [{**row, 'value': args.rescue_snr} for row in strong]
+            impaired = [{**row, 'value': args.pressure_snr if row['source'] == source_radio['radio'] else row['value']}
                         for row in strong]
-            report['impairment'] = {'direction': 'AP to client; STA transmit signal remains unchanged',
-                                    'strong': strong, 'impaired': impaired, 'half_period_seconds': .25}
-            pulse = CounterPulse(control_path, strong, impaired)
+            report['impairment'] = {'direction': 'AP to client, including ACKs for client uplink; reverse SNR unchanged',
+                                    'strong': strong, 'impaired': impaired, 'pattern': args.pressure_pattern,
+                                    'half_period_seconds': .25 if args.pressure_pattern == 'pulse' else None}
+            pulse = CounterPulse(control_path, strong, impaired, args.pressure_pattern)
             pulse.thread.start()
         report['traffic_started_at'] = time.time()
         deadline = time.monotonic() + 65
@@ -731,6 +871,7 @@ def main():
                 snapshot, evaluation, cycle = measured_cycle(
                     observer, provider, engine, policy_state, station_macs, journal, cycle_index)
                 policy_state = evaluation.state
+                record_qualification_diagnostics(report, evaluation, station_macs[0])
                 for prior_action in report['actions']:
                     record_post_verify_freshness(prior_action, snapshot, cycle, configuration)
                 print(json.dumps({'loads': [(row.bssid, row.utilization) for row in snapshot.bss_loads if row.bssid in [source_radio['bssid'], radios[-1]['bssid']]],
@@ -738,14 +879,19 @@ def main():
                                   'decisions': [(row.sta_mac, row.reason) for row in evaluation.decisions]}), flush=True)
                 actions = [row for row in evaluation.decisions if row.action == 'steer']
                 if args.counter_case == 'pressure':
+                    shadow_state, shadow = shadow_step(shadow_engine, snapshot, shadow_state,
+                        station_macs[0], source_radio['bssid'], radios[-1]['bssid'])
                     observation = pressure_observation(snapshot, evaluation, configuration,
                         station_macs[0], source_radio['bssid'], radios[-1]['bssid'])
+                    observation['unguarded_shadow'] = shadow
                     report['counter_observations'].append({'cycle_index': cycle_index, **observation})
                     if observation['qualified']:
                         stamp = observation['counter_guard']['evidence']['activity_observed_at']
                         pressure_since = pressure_since or stamp
-                        if (verified_monotonic is None and
-                                (parse_time(stamp) - parse_time(pressure_since)).total_seconds() >= configuration.load_condition_hold_seconds):
+                        continuous = (parse_time(stamp) - parse_time(pressure_since)).total_seconds()
+                        report['longest_continuous_pressure_seconds'] = max(
+                            report.get('longest_continuous_pressure_seconds', 0), continuous)
+                        if verified_monotonic is None and shadow['would_steer']:
                             verified_monotonic = time.monotonic()
                             deadline = verified_monotonic + 21
                     else:
@@ -803,7 +949,7 @@ def main():
             report['negative_result'] = negative_summary(negative_observations, configuration.load_condition_hold_seconds)
         elif args.counter_case == 'pressure':
             if verified_monotonic is None:
-                raise RuntimeError('no sustained pressure veto with an otherwise eligible quieter target')
+                raise RuntimeError('no native pressure veto against a fully held unguarded steering opportunity')
             if report['actions'] or btm_events(capture_path.read_text()):
                 raise RuntimeError('counter-pressure negative observed a steering request')
         elif not report['actions']:
@@ -821,6 +967,10 @@ def main():
         for handle in handles:
             handle.flush()
         report['receiver_results'] = [json.loads((args.output / f'receiver-{index}.json').read_text()) for index in range(2)]
+        if args.background_packets_per_second:
+            report['background_result'] = json.loads(background_path.read_text().splitlines()[-1])
+            if report['background_result'].get('packets', 0) <= 0:
+                raise RuntimeError('background AP broadcast sent no frames')
         if args.counter_case != 'clear':
             report['pressure_traffic'] = {mode: json.loads((args.output / ('pressure-' + mode + '.jsonl')).read_text().splitlines()[-1])
                                           for mode in ('send', 'receive')}
@@ -838,6 +988,9 @@ def main():
         report['state'] = report['negative_result']['state'] if args.same_channel_negative else 'passed'
     except Exception as error:
         report['error'] = str(error)
+        print(json.dumps({'error': str(error),
+                          'qualification_thresholds': report['qualification_thresholds'],
+                          'qualification_diagnostics': report.get('qualification_diagnostics')}), flush=True)
         print(json.dumps({'phase': 'failed-restoring', 'error': str(error)}), flush=True)
     finally:
         if pulse is not None:
@@ -859,6 +1012,8 @@ def main():
             stop_process(process)
         for handle in handles:
             handle.close()
+        if args.counter_case != 'clear':
+            report['pressure_traffic_progress'] = traffic_progress(args.output)
         for name, action in reversed(cleanup):
             try:
                 action()
