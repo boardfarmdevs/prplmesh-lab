@@ -2,8 +2,9 @@
 
 [Testing reference](README.md) · [Expected room features](../rooms/catalog.md)
 
-Run rooms sequentially per lab. Targeted checks are not full-catalog coverage
-or soaks.
+Geometry diagnostics: browser/lab identities and `host-monitor.jsonl`.
+
+Run rooms sequentially per lab; targeted checks exclude catalog/soak qualification.
 
 ## 0916 release recovery checks
 

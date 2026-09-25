@@ -57,7 +57,7 @@
 <header>
   <div class="eyebrow">EasyMesh research lab · viewer guide</div>
   <h1>The interactive room manual</h1>
-  <p>Move clients and mesh nodes, inspect radio conditions, follow real associations, and understand how the optimizer responds. This guide covers the connected rev150 prplMesh lab and the shared public browser-only sandbox.</p>
+  <p>Move clients and mesh nodes, inspect radio conditions, follow real associations, and understand how the optimizer responds. This guide covers a connected prplMesh lab and the public browser-only sandbox. Public Pages never contacts a live lab by default; use the named VM's own URL for native observations and steering.</p>
   <p><strong>Start with the mode badge.</strong> A convincing animation is not proof of a live connection, a successful roam, or a healthy network.</p>
   <div class="tools">
     <label for="manualSearch">Find a topic</label>
@@ -99,7 +99,7 @@
   <p>The RF inspector, topology and Console NG use the same property catalog and independent passive observations. Candidate collection or steering failures do not freeze native load. Unknown radio/channel context stays unverified; configured stimulus is not measured evidence. The read-only <code>/api/demo/rf-catalog</code> and <code>/api/demo/rf-observations</code> endpoints expose units, source, timestamps and validity without requesting new scans. Console NG includes an RF properties manual explaining each simulation and observation path; it does not add RF controls.</p>
   <h3>Try the room without a lab</h3>
   <ol>
-    <li>Open the <a href="https://boardfarmdevs.github.io/meta-cmf-bananapi-vcpe/viewer/?world=home-a-private-client-room-walk" target="_blank" rel="noopener">public sandbox</a>. Look for <strong>NO CONNECT</strong>; no mode parameter is needed.</li>
+    <li>Open the <a href="https://boardfarmdevs.github.io/prplmesh-lab/viewer/?world=home-a-private-client-room-walk" target="_blank" rel="noopener">public sandbox</a>. Look for <strong>NO CONNECT</strong>; no mode parameter is needed.</li>
     <li>Select a client, drag it across the floor, and release it. No pointer-mode switch is needed.</li>
     <li>Read the movable details panel: coordinates, walls, predicted SNR, and the modeled strongest AP. Drag its dark background to move the panel without moving the device.</li>
     <li>Try <strong>Move to…</strong>, then click a destination. Drag empty space to orbit, or Shift-drag anywhere to pan.</li>
@@ -107,7 +107,7 @@
   </ol>
   <h3>Operate the live lab</h3>
   <ol>
-    <li>Open the <a href="http://192.168.2.150:18891/" target="_blank" rel="noopener">rev150 prplMesh 0913 live room</a> from a network that can reach the lab. Interactive control is the server default; no mode parameter is needed.</li>
+    <li>Open the live-room URL printed by the named VM's <code>deploy/lxd-vm/lab-config.sh</code> on a network that can reach the lab. Interactive control is the server default; no mode parameter is needed. The public sandbox is not that live URL.</li>
     <li>Wait for live state and current controller telemetry. Check the Whole lab card before editing.</li>
     <li>Drag a device or press Play. No operator token is required; the browser acquires a control lease automatically. Another browser may already hold control.</li>
     <li>Confirm the <strong>LIVE RF</strong> badge, then drag one role and release it.</li>
@@ -278,7 +278,7 @@
   <p>The authority is chosen when the server starts. <strong>Stimulus</strong> applies room RF without optimizer work; <strong>recommend</strong> explains possible steers; <strong>act</strong> permits bounded automatic BTM requests. The browser's control lease authorizes room edits, not a change of optimizer authority.</p>
   <p>Topology automatically tightens the space between AP groups using their visible bubbles and label clearance, then fills the available pane with only a six-pixel margin. The uniform spacing adjustment preserves orientation. Optimize Layout applies the same tightening to a manual arrangement. Neither resizing nor packing changes radio coordinates, associations or steering timing.</p>
   <h3>Profiling authority: read the fullscreen label</h3>
-  <p>The rev150 prplMesh appliance at ports <strong>18891</strong> (room) and <strong>8091</strong> (topology) runs <strong>Unassisted BTM</strong>: the external room threshold policy chooses requests, but no RF steering assist, kernel signal fallback, scan-cache refresh or topology animation delay is used to improve the result. This is not the prplMesh controller's autonomous optimization policy. Ready clients can progress while another client is missing; the whole room remains unconverged until membership and fresh measurements are complete.</p>
+  <p>The live prplMesh appliance uses guest ports <strong>8891</strong> (room) and <strong>8091</strong> (topology); host-facing ports are specific to the named VM. In <strong>Unassisted BTM</strong> mode, the external room threshold policy chooses requests, but no RF steering assist, kernel signal fallback, scan-cache refresh or topology animation delay is used to improve the result. This is not the prplMesh controller's autonomous optimization policy. Ready clients can progress while another client is missing; the whole room remains unconverged until membership and fresh measurements are complete.</p>
   <p><strong>Native observation</strong> means the room issues no client steering requests and performs no candidate collection. Serving-state observation and the selected traffic probe continue. Native stack behavior and client-initiated roaming are observed, not assumed to be a native optimizer. This mode is selected with <code>--mode stimulus --profiling</code>. Neither opening a browser nor acquiring its lease changes that authority.</p>
   <p>Profiling normally protects the startup mesh RF and does not choose backhaul parents. To study real modeled AP-to-AP RF without an external parent selector, the operator can add <code>--model-backhaul</code> to stimulus profiling. Weak backhaul may disconnect an extender. Read the authority and backhaul labels rather than assuming all servers run the assisted/adaptive demonstration described below.</p>
   <p>Interactive act mode measures eligible private and IoT clients, prioritizing all recently moved clients and clients of a moved AP before returning to the fleet. Candidates remain within each client's SSID and band. The fast interactive policy requires a measured two-dB advantage (four RCPI units), without a pre-action hold or minimum association dwell. Five seconds of post-success cooldown limits repeated moves. Exact ties do not cause a roam.</p>
@@ -337,7 +337,7 @@
   <div class="table-wrap"><table>
     <thead><tr><th scope="col">Symptom</th><th scope="col">What to check</th></tr></thead>
     <tbody>
-      <tr><td>The rev150 room URL refuses connections.</td><td>The server may be stopped. Confirm lab-network access, the appliance, its port proxy, and the room process. Refreshing cannot restart it. Use the public sandbox while the operator investigates.</td></tr>
+      <tr><td>The live-room URL refuses connections.</td><td>The server may be stopped. Confirm the named VM's port mapping, lab-network access, the appliance, and the room process. Refreshing cannot restart it. Use the public sandbox while the operator investigates.</td></tr>
       <tr><td>The room draws but nothing roams.</td><td>Check NO CONNECT/preview versus LIVE RF, optimizer authority, steering protection, stronger candidates, and measurement freshness. Recommend mode never sends the steer.</td></tr>
       <tr><td>The optimizer says Measurements unavailable.</td><td>In interactive mode, temporary candidate-query timeouts pause steering, not the viewer. Previous candidate/convergence results are discarded. Retries back off for 1, 2, 4, then at most 8 seconds; a new RF epoch wakes that wait early. A complete fresh snapshot for the selected clients is required. Deferred clients do not count as whole-fleet convergence. Cooldown and action history remain intact. Inspect the unavailable event for failed query details.</td></tr>
       <tr><td>The room says disconnected or failed.</td><td>Check the run's latest worker/error events and summary. Invalid measurements, other fatal worker errors, and scripted-run query failures still stop the run and trigger RF restoration. Confirm the process is alive before trusting old cards.</td></tr>
@@ -356,7 +356,7 @@
 </section>
 <section id="operations" aria-labelledby="operations-title">
   <h2 id="operations-title">15. Operator setup and shutdown</h2>
-  <p>Run these commands inside the prplMesh appliance, from its checked-out repository. The 0908 appliance is <code>prplmesh-20-0908</code> on rev150, using canonical branch <code>codex/0908-clean</code>. Other hosts retain their separately deployed release. The commands below require shell access; the public website does not run them.</p>
+  <p>Run these commands inside your named prplMesh appliance, from its checked-out repository. They require shell access; the public website does not execute them or provision a VM.</p>
   <pre><code>systemctl stop prplmesh-room-demo.service
 cd /opt/prplmesh-lab
 prplmesh-lab-start status
@@ -366,7 +366,7 @@ demo/room-demo interactive --mode recommend --listen 0.0.0.0:8891</code></pre>
   <pre><code>demo/room-demo interactive \
   --mode act --yes-act --profiling --steering-rate-limit 300 \
   --listen 0.0.0.0:8891</code></pre>
-  <p>The rev150 0908 proxy maps outer port <code>18891</code> to appliance port <code>8891</code>. Do not create a second room process on the same medium. A process PID or a reachable page alone is not a complete medium-health check.</p>
+  <p>The named VM's host proxy maps its room port to guest port <code>8891</code>. Do not create a second room process on the same medium. A process PID or a reachable page alone is not a complete medium-health check.</p>
   <p>The updated CLI creates no operator token file. Interactive control requires only the renewable lease and normal revision checks. Restrict network access to trusted users or place an authenticated gateway in front of the whole service.</p>
   <h3>Normal stop</h3>
   <p>Use <kbd>Ctrl</kbd> + <kbd>C</kbd> in the owning room terminal, or stop the actual owning service if the operator launched one. SIGINT/SIGTERM drain accepted work and restore the captured RF matrix. Check the final outcome and <code>restored=true</code>; a worker failure can have <code>outcome=failed</code> even if RF restoration succeeded.</p>

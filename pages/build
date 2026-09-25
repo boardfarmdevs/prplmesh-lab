@@ -1,0 +1,21 @@
+#!/usr/bin/env bash
+# Build this repository's Pages site into dist/site. This is the only per-repository
+# step: pages/finish-site.py, pages/labs-bar.js and .github/workflows/pages.yml are
+# the same in the four lab repositories.
+#
+# prplmesh-lab: the explorer (explorer/) builds the whole public site,
+# with the disconnected room viewer, manual and golden rooms; its browser tests run
+# against it before it is published.
+set -euo pipefail
+cd "$(dirname "$(readlink -f "$0")")/.."
+(
+    cd explorer
+    npm ci
+    npm run build
+    if [ -n "${CI:-}" ]; then npx playwright install --with-deps chromium; fi
+    npm test
+)
+rm -rf dist/site
+mkdir -p dist
+cp -a explorer/site dist/site
+echo "Built dist/site from explorer/site"

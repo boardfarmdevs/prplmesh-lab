@@ -11,7 +11,7 @@ and Console NG share a typed RF catalog and fresh passive native observations,
 independent of candidate/steering success. prpl keeps its native adapter and
 1024-byte counter units. No new RF physics is claimed. See the
 [property guide](console-rf-properties.md) and [test tiers](../../docs/test/README.md).
-Development branch: `codex/0916-clean`. The
+Development branch: `main`. The
 [property-to-room coverage and live gates](rf-property-coverage.md#native-load-action-qualification)
 separate implementation, measured behavior and remaining qualification failures.
 Earlier qualification does not certify every backported mode or physical capacity.

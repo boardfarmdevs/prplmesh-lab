@@ -7,7 +7,7 @@ deployment summary, not a live health monitor. See [operations](operations.md).
 
 | Item | Current value |
 | --- | --- |
-| Canonical branch | `codex/0916-clean` |
+| Canonical branch | `main` |
 | Development checkout | `rev150:/home/rev/git/prplmesh-lab-0916-clean` |
 | Last-tested build host checkout | `rev120:/home/rev/git/prplmesh-lab` |
 | Last-tested VM | `rev120:demo-prpl` |

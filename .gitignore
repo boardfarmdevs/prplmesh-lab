@@ -12,3 +12,4 @@
 /browser-tools/
 *.pyc
 __pycache__/
+/dist/
