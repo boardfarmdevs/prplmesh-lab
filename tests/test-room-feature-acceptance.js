@@ -97,6 +97,35 @@ assert.equal(check({...current, network: {...current.network, mesh: {...current.
   backhaul_edges: current.network.mesh.backhaul_edges.map(edge => ({...edge, parent_role: edge.child_role}))}}}).meshConnected, false);
 assert.equal(check(current, {...interactions, roles: {client: {position: [5, 0], present: true}}}).converged, false);
 assert.equal(check(current, interactions, {...view, edges: []}).meshViewMatches, false);
+// ap_expectations: a named client on its AP at the final settle or a checkpoint
+{
+  const {apExpectations} = require('./room-feature-acceptance.js');
+  const settledOn = pairs => ({final: {roomAssociations: pairs.map(([role, ap]) => ({role, ap}))}});
+  const world = {ap_expectations: [{at: 'final', roles: {sta_mobile_01: 'extender_5'}},
+    {at: 30000, roles: {sta_mobile_01: 'gateway'}}]};
+  const result = {final: settledOn([['sta_mobile_01', 'extender_5']]),
+    checkpoints: [{timeMs: 30000, ...settledOn([['sta_mobile_01', 'extender_2']])}]};
+  const checked = apExpectations(world, result);
+  assert.deepEqual(checked.map(item => item.passed), [true, false]);
+  assert.deepEqual(checked[1].misses, [{role: 'sta_mobile_01', expected: 'gateway', observed: 'extender_2'}]);
+  assert.deepEqual(apExpectations({}, result), []);
+  assert.equal(apExpectations(world, {checkpoints: []})[0].settled, false);
+}
+// a wired Agent (extender_5): an Ethernet child of the gateway, never a Wi-Fi child
+{
+  const wiredWorld = {...world, roles: {...world.roles, gateway: 'fronthaul_ap', extender_1: 'fronthaul_ap',
+    extender_2: 'fronthaul_ap', extender_3: 'fronthaul_ap', extender_4: 'fronthaul_ap', extender_5: 'fronthaul_ap'},
+    wired_backhaul: ['extender_5']};
+  const edges = [1, 2, 3, 4].map(n => [`extender_${n}`, 'gateway']);
+  const wiredMesh = (backhaul, wired = [['extender_5', 'gateway']]) => evaluate({...current, network: {...current.network,
+    mesh: {...current.network.mesh, backhaul_edges: backhaul.map(([child_role, parent_role]) => ({child_role, parent_role})),
+      wired_edges: wired.map(([child_role, parent_role]) => ({child_role, parent_role}))}}},
+    interactions, view, wiredWorld, bindings, now).meshConnected;
+  assert.equal(wiredMesh(edges), true);
+  assert.equal(wiredMesh(edges, []), false);
+  assert.equal(wiredMesh([...edges, ['extender_5', 'gateway']]), false);
+  assert.equal(wiredMesh([['extender_1', 'gateway'], ['extender_2', 'extender_5'], ['extender_3', 'gateway'], ['extender_4', 'gateway']]), true);
+}
 assert.deepEqual(distribution([1, 2, 4, 3]), {count: 4, p50: 2, p95: 4, max: 4});
 assert.deepEqual(distribution([]), {count: 0, p50: null, p95: null, max: null});
 const measured = eventPerformance([

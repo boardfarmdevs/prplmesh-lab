@@ -15,6 +15,10 @@ import urllib.request
 from optimizer.load_observer import NativeLoadProvider
 from optimizer.prplmesh import PrplMeshObserver
 from room_demo.traffic_experiment import namespace_udp
+import re
+
+# The default room of each room set: the lab's own rooms (worlds) or with its wired Agent (worlds-wired).
+DEFAULT_WORLD = re.compile(r"home-five-agent(?:-(wired))?--private-client-room-walk")
 
 
 OBJECT = "X_PRPLWARE-COM_Controller.Configuration"
@@ -63,7 +67,7 @@ def main():
     with urllib.request.urlopen("http://127.0.0.1:8891/api/demo/interactions", timeout=5) as response:
         room = json.load(response)
     require(not room["lease"]["held"] and room["playback"]["status"] == "paused"
-            and room["selected_world"] == "home-five-agent--private-client-room-walk",
+            and DEFAULT_WORLD.fullmatch(room["selected_world"] or "") is not None,
             "requires the idle default room")
     fields = ("LinkMetricsRequestIntervalSec", "StatisticsPollingRateSec",
               "APReportingChannelUtilizationThreshold",

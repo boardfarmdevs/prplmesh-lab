@@ -52,3 +52,21 @@ class PrplMeshTopologyTests(unittest.TestCase):
         ]}, {})
         self.assertEqual(projected["backhaul_edges"], [])
         self.assertEqual(projected["unresolved_edges"], 1)
+
+
+class PrplMeshWiredBackhaulTests(unittest.TestCase):
+    def test_an_agent_on_a_wired_backhaul_is_an_ethernet_child_not_a_wifi_edge(self):
+        topology = {"devices": [
+            {"id": "AA:00", "radios": [{"bsses": [{"bssid": "BB:00"}]}]},
+            {"id": "AA:05", "radios": [{"bsses": [{"bssid": "BB:05"}]}],
+             "backhaul": {"parent_id": "AA:00", "type": "Ethernet", "mac": ""}},
+            {"id": "AA:02", "radios": [{"bsses": [{"bssid": "BB:02"}]}],
+             "backhaul": {"parent_id": "AA:05", "type": "Wi-Fi", "mac": "BB:05"}},
+        ]}
+        projected = project_topology(topology, {"bb:00": "gateway", "bb:05": "extender_5", "bb:02": "extender_2"})
+        self.assertEqual(projected["wired_edges"],
+                         [{"parent_role": "gateway", "child_role": "extender_5", "media_type": "Ethernet"}])
+        # a Wi-Fi Agent may hang off it
+        self.assertEqual([(edge["parent_role"], edge["child_role"]) for edge in projected["backhaul_edges"]],
+                         [("extender_5", "extender_2")])
+        self.assertEqual(project_topology(None, {})["wired_edges"], [])

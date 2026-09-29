@@ -12,6 +12,9 @@ import time
 from urllib.request import Request, urlopen
 import uuid
 
+# The default room of each room set: the lab's own rooms (worlds) or with its wired Agent (worlds-wired).
+DEFAULT_WORLD = re.compile(r"home-five-agent(?:-(wired))?--private-client-room-walk")
+
 
 ROOT = Path(__file__).resolve().parents[1]
 ROOMS = ("rf-packet-size-counters", "rf-asymmetric-ack")
@@ -98,7 +101,7 @@ def preflight(room, current):
     if (room.get("lease", {}).get("held") or room.get("movement_active")
             or room.get("recording", {}).get("active")):
         raise RuntimeError("external owner/movement/recording active; leave the room untouched")
-    if (room.get("selected_world") not in {"default", "home-five-agent--private-client-room-walk"}
+    if ((room.get("selected_world") != "default" and not DEFAULT_WORLD.fullmatch(room.get("selected_world") or ""))
             or room.get("playback", {}).get("time_ms") != 0
             or room.get("playback", {}).get("status") != "paused"
             or current.get("health", {}).get("healthy") is not True):

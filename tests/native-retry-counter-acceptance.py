@@ -18,6 +18,9 @@ import sys
 import time
 import urllib.request
 
+# The default room of each room set: the lab's own rooms (worlds) or with its wired Agent (worlds-wired).
+DEFAULT_WORLD = re.compile(r"home-five-agent(?:-(wired))?--private-client-room-walk")
+
 
 def require(condition, message):
     if not condition:
@@ -259,7 +262,7 @@ def main():
     with urllib.request.urlopen("http://127.0.0.1:8891/api/demo/interactions", timeout=5) as response:
         interaction = json.load(response)
     require(not interaction["lease"]["held"] and not interaction["recording"]["active"], "room is in use")
-    require(interaction["selected_world"] == "home-five-agent--private-client-room-walk"
+    require(DEFAULT_WORLD.fullmatch(interaction["selected_world"] or "") is not None
             and interaction["expected_online_clients"] == 20
             and interaction["playback"]["status"] == "paused"
             and interaction["playback"]["time_ms"] == 0

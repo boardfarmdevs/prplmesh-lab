@@ -38,25 +38,32 @@ def arp_probe(interface="br-lan", target="192.168.77.1", timeout=1):
     return False
 
 
-def native_probe(role):
-    if role not in {"gateway", *(f"extender_{ordinal}" for ordinal in range(1, 5))}:
+def eth1_master():
+    master = Path("/sys/class/net/eth1/master")
+    return master.resolve().name if master.exists() else ""
+
+
+def native_probe(role, wired=False):
+    if role not in {"gateway", *(f"extender_{ordinal}" for ordinal in range(1, 6))}:
         raise ValueError("unknown mesh role")
     ap = subprocess.run(["iw", "dev", "wlan2.1", "info"], capture_output=True,
                         text=True, timeout=3, check=True).stdout
     link = subprocess.run(["iw", "dev", "wlan3", "link"], capture_output=True,
                           text=True, timeout=3)
-    if role != "gateway" and link.returncode:
+    # an Agent on a wired backhaul has no backhaul station at all
+    if role != "gateway" and link.returncode and not wired:
         raise RuntimeError(link.stderr)
     inventory = subprocess.run(["iw", "dev"], capture_output=True,
                                text=True, timeout=3, check=True).stdout
     aps = sum(line.strip() in {"ssid private_ssid", "ssid iot_ssid"}
               for line in inventory.splitlines())
-    method = "icmp-local-gateway" if role == "gateway" else "arp-over-wireless-backhaul"
+    method = ("icmp-local-gateway" if role == "gateway" else
+              "arp-over-wired-backhaul" if wired else "arp-over-wireless-backhaul")
     reachable = (subprocess.run(["ping", "-I", "br-lan", "-q", "-c", "1", "-W", "1", "192.168.77.1"],
                                capture_output=True, timeout=3).returncode == 0
                  if role == "gateway" else arp_probe())
-    return {"raw": ap + (link.stdout or "Not connected.\n") +
-            f"\nPROBE_EXIT={0 if reachable else 1}\nFRONTHAUL_APS={aps}\n",
+    return {"raw": ap + ((link.stdout if not link.returncode else "") or "Not connected.\n") +
+            f"\nPROBE_EXIT={0 if reachable else 1}\nFRONTHAUL_APS={aps}\nETH1_MASTER={eth1_master()}\n",
             "probeMethod": method}
 
 
@@ -67,6 +74,9 @@ def collect():
                  if entry["state"]["status"] == "Running"}
     containers = {"gateway": "prpl-controller", **{
         f"extender_{ordinal}": f"prpl-agent-{ordinal:02d}" for ordinal in range(1, 5)}}
+    # the lab's Agent on a wired backhaul (scripts/radio-lab.sh), where it runs
+    wired = {"extender_5": "prpl-agent-05"} if "prpl-agent-05" in processes else {}
+    containers.update(wired)
 
     def inspect(item):
         role, container = item
@@ -74,15 +84,16 @@ def collect():
         if type(process) is not int or process <= 1:
             raise RuntimeError(f"{container}: native mesh namespace is unavailable")
         result = subprocess.run(["nsenter", "--target", str(process), "--net", "--", sys.executable,
-                                 str(Path(__file__).resolve()), role], capture_output=True,
-                                text=True, timeout=15)
+                                 str(Path(__file__).resolve()), role, *(["wired"] if role in wired else [])],
+                                capture_output=True, text=True, timeout=15)
         if result.returncode:
             raise RuntimeError(f"{container}: native probe failed: {result.stderr.strip()}")
         return role, json.loads(result.stdout)
 
-    with concurrent.futures.ThreadPoolExecutor(max_workers=5) as workers:
+    with concurrent.futures.ThreadPoolExecutor(max_workers=6) as workers:
         return dict(workers.map(inspect, containers.items()))
 
 
 if __name__ == "__main__":
-    print(json.dumps(collect() if len(sys.argv) == 1 else native_probe(sys.argv[1])))
+    print(json.dumps(collect() if len(sys.argv) == 1 else
+                     native_probe(sys.argv[1], wired=sys.argv[2:] == ["wired"])))

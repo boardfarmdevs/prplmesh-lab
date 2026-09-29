@@ -10,6 +10,9 @@ import re
 import time
 import urllib.request
 
+# The default room of each room set: the lab's own rooms (worlds) or with its wired Agent (worlds-wired).
+DEFAULT_WORLD = re.compile(r"home-five-agent(?:-(wired))?--private-client-room-walk")
+
 
 def parse_timestamp(value):
     return dt.datetime.fromisoformat(re.sub(r"(\.\d{6})\d+", r"\1", value).replace("Z", "+00:00"))
@@ -43,6 +46,9 @@ def default_roster(health, clients, state):
     stations = {f"sta_{kind}_{ordinal:02d}" for kind in ("mobile", "static")
                 for ordinal in range(1, 11)}
     mesh = {"gateway", *(f"extender_{ordinal}" for ordinal in range(1, 5))}
+    variant = DEFAULT_WORLD.fullmatch(state.get("selected_world") or "")
+    if variant and variant.group(1) == "wired":
+        mesh.add("extender_5")  # the lab's Agent on a wired backhaul
     dormant = {f"sta_pool_{ordinal:03d}" for ordinal in range(21, 101)}
     roles = state.get("roles") or {}
     present = {role for role, value in roles.items() if value.get("present") is True}
@@ -51,7 +57,7 @@ def default_roster(health, clients, state):
             and all(isinstance(address, str) and address for address in addresses)
             and len({address.lower() for address in addresses}) == 20
             and {client.get("role") for client in clients} == stations
-            and state.get("selected_world") == "home-five-agent--private-client-room-walk"
+            and variant is not None
             and state.get("pool_clients") == 100 and state.get("expected_online_clients") == 20
             and set(roles) == stations | mesh | dormant and present == stations | mesh)
 

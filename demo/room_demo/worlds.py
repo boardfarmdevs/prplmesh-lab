@@ -91,6 +91,10 @@ class BoundWorlds:
             first = world["generations"][0]
             if first["time_ms"] != 0:
                 raise ValueError("world must start at time zero")
+            # an AP on a wired backhaul (wired_backhaul) is one of the world's APs
+            wired = set(world.get("wired_backhaul", []))
+            if not wired <= {role for role, kind in roles.items() if kind == "fronthaul_ap"}:
+                raise ValueError("wired_backhaul names a role that is not an AP")
             expected_links = {
                 (source, destination) for source in roles for destination in roles
                 if source != destination and "fronthaul_ap" in (roles[source], roles[destination])
@@ -153,5 +157,10 @@ class BoundWorlds:
                                 "clients": sum(kind == "station" for kind in world["roles"].values())})
             except InteractionError:
                 continue
-        return {"default": "default", "clients": len(self.roles) - len(self.mesh_roles),
-                "mesh_devices": len(self.mesh_roles), "worlds": entries}
+        catalog = {"default": "default", "clients": len(self.roles) - len(self.mesh_roles),
+                   "mesh_devices": len(self.mesh_roles), "worlds": entries}
+        # the room set's tree, relative to the checkout: tests select from the same tree
+        repo = Path(__file__).resolve().parents[2]
+        if self.root.resolve().is_relative_to(repo):
+            catalog["worlds_root"] = str(self.root.resolve().relative_to(repo))
+        return catalog

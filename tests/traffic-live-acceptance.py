@@ -15,6 +15,10 @@ import time
 import urllib.request
 from urllib.error import URLError
 import uuid
+import re
+
+# The default room of each room set: the lab's own rooms (worlds) or with its wired Agent (worlds-wired).
+DEFAULT_WORLD = re.compile(r"home-five-agent(?:-(wired))?--private-client-room-walk")
 
 
 PORT = 55204
@@ -314,7 +318,7 @@ def run(args):
         require(not initial["lease"]["held"] and not initial["recording"]["active"] and
                 initial["playback"]["status"] == "paused" and not initial["playback"]["manual_roles"],
                 "requires idle, unleased, unedited room")
-        require(initial["selected_world"] == "home-five-agent--private-client-room-walk" and initial["playback"]["time_ms"] == 0,
+        require(DEFAULT_WORLD.fullmatch(initial["selected_world"] or "") is not None and initial["playback"]["time_ms"] == 0,
                 "requires default room at time zero so restoration is exact")
         bindings = json.loads((args.root / "demo/bindings/private-client-room-walk.json").read_text())["roles"]
         container = bindings["sta_static_01"]

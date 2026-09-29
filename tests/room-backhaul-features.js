@@ -10,6 +10,11 @@ const {kernelClientAudit} = require('./room-feature-acceptance.js');
 const execute = promisify(execFile);
 const {hostCommand, guestAuditInstallCommand, startHostMonitor} = require('./room-host-monitor.js');
 const rooms = ['backhaul-branch-formation', 'backhaul-parent-handover', 'backhaul-isolation-recovery'];
+// Only in the room sets with the wired Agent (worlds-wired): run when the catalog has it.
+const wiredRooms = ['backhaul-wired-parent'];
+// The APs on a wired backhaul (role -> container), from the room's catalog: read like the lab's
+// own nodes; each is a child of the gateway over its LAN port, never over Wi-Fi.
+let wiredContainers = {};
 const delay = milliseconds => new Promise(resolve => setTimeout(resolve, milliseconds));
 
 function stackProfile(flavor) {
@@ -22,12 +27,16 @@ function stackProfile(flavor) {
 }
 
 function ready(entry, healthNodes, clients = 10) {
-  return Object.keys(entry.native.nodes).length === 5 && Object.keys(entry.native.parents).length === 4 &&
+  const wired = Object.keys(wiredContainers);
+  healthNodes += wired.length;
+  return Object.keys(entry.native.nodes).length === 5 + wired.length &&
+    Object.keys(entry.native.parents).length === 4 + wired.length &&
+    wired.every(role => entry.native.nodes[role]?.wiredUplink === true) &&
     Object.values(entry.native.parents).every(Boolean) &&
     nativeCycles(entry.native.parents).length === 0 &&
     Object.values(entry.native.nodes).every(node => node.pingOk && node.fronthaulAps === 6 && node.apOperating) &&
     entry.health?.healthy && entry.health.topology_nodes === healthNodes && entry.health.api_active === clients &&
-    entry.optimizer?.fleet?.converged === true && entry.topology.nodes.length === 6 &&
+    entry.optimizer?.fleet?.converged === true && entry.topology.nodes.length === 6 + wired.length &&
     new Set(entry.topology.stations.map(station => station.mac)).size === clients;
 }
 
@@ -66,6 +75,7 @@ function interfaceState(raw) {
   return {apBssid: apInfo.match(/\baddr ([0-9a-f:]{17})/i)?.[1]?.toLowerCase(),
     apOperating: /\bssid mesh_backhaul\b/.test(apInfo) && /\bchannel 36 \(5180 MHz\)/.test(apInfo),
     fronthaulAps: Number(raw.match(/FRONTHAUL_APS=(\d+)/)?.[1] ?? NaN),
+    eth1Master: raw.match(/ETH1_MASTER=(\S*)/)?.[1] || null,
     parentBssid: raw.match(/Connected to ([0-9a-f:]{17})/i)?.[1]?.toLowerCase() || null,
     pingOk: /PROBE_EXIT=0\b/.test(raw)};
 }
@@ -77,7 +87,9 @@ function summarizeNative(samples, room) {
     ? {branchObserved: parents.some(value => value.extender_3 === 'extender_1' && value.extender_4 === 'extender_2')}
     : room === 'backhaul-parent-handover'
       ? {lowerRelayObserved: parents.some(value => value.extender_3 === 'extender_2')}
-      : {upstreamOutageObserved: isolated};
+      : room === 'backhaul-wired-parent'
+        ? {wiredParentObserved: parents.some(value => value.extender_3 === 'extender_5')}
+        : {upstreamOutageObserved: isolated};
 }
 
 async function run(options) {
@@ -87,11 +99,11 @@ async function run(options) {
   for (const key of ['room-url', 'topology-url']) assert.ok(['http:', 'https:'].includes(new URL(options[key]).protocol), 'Invalid --' + key);
   for (const key of ['host', 'vm']) assert.match(options[key], /^[a-zA-Z0-9_.-]+$/);
   assert.equal(options['yes-act'], 'true', 'Explicit --yes-act true is required; these rooms change live RF and can interrupt service');
-  const selectedRooms = options.room ? [options.room] : rooms;
+  let selectedRooms = options.room ? [options.room] : [...rooms, ...wiredRooms];
   const flavor = options.flavor || 'rdk';
   const profile = stackProfile(flavor);
   const containers = profile.containers;
-  assert.ok(selectedRooms.every(id => rooms.includes(id)), 'Unknown geometry room');
+  assert.ok(selectedRooms.every(id => rooms.includes(id) || wiredRooms.includes(id)), 'Unknown geometry room');
   const directory = path.resolve(options.output);
   assert.ok(!fs.existsSync(directory), 'Use a new output directory');
   fs.mkdirSync(directory, {recursive: true});
@@ -146,8 +158,15 @@ async function run(options) {
       const nodes = Object.fromEntries(Object.entries(JSON.parse(result.stdout)).map(([role, value]) =>
         [role, {...value, ...interfaceState(value.raw)}]));
       const owners = Object.fromEntries(Object.entries(nodes).map(([role, value]) => [value.apBssid, role]));
+      // a wired Agent's parent is the gateway over its LAN port, and only while it has no
+      // Wi-Fi parent (that would be a second path into the LAN)
+      for (const role of Object.keys(wiredContainers)) {
+        const node = nodes[role];
+        if (node) node.wiredUplink = node.eth1Master === profile.bridge && !node.parentBssid && node.pingOk === true;
+      }
       return {nodes, parents: Object.fromEntries(Object.entries(nodes).filter(([role]) => role !== 'gateway')
-        .map(([role, value]) => [role, owners[value.parentBssid] || null]))};
+        .map(([role, value]) => [role, role in wiredContainers ? (value.wiredUplink ? 'gateway' : null)
+          : owners[value.parentBssid] || null]))};
     }
     const readings = await Promise.all(Object.entries(containers).map(async ([role, container]) => {
       const script = 'iw dev wifi1.1 info; iw dev wifi1.3 link 2>/dev/null; ping -I brlan0 -q -c 1 -W 1 10.0.0.1 >/dev/null 2>&1; printf "\\nPROBE_EXIT=%s\\n" "$?"; printf "FRONTHAUL_APS=%s\\n" "$(iw dev | grep -Ec \"ssid (private_ssid|iot_ssid)$\")"';
@@ -250,8 +269,12 @@ async function run(options) {
     save('baseline.json', {health: before.health, mesh: before.network.mesh, backhaul: baseline.backhaul_links, daemon: baseline.daemon});
     const catalog = await request('/api/demo/worlds');
     bindings = catalog.client_bindings;
+    wiredContainers = catalog.wired_bindings || {};
+    for (const container of Object.values(wiredContainers)) assert.match(String(container), /^[a-zA-Z0-9_.-]+$/);
     assert.equal(Object.keys(bindings).length, 100);
     for (const id of rooms) assert.equal(catalog.worlds.find(entry => entry.id === id)?.backhaul_rf, 'geometry');
+    if (!options.room) selectedRooms = selectedRooms.filter(id => rooms.includes(id) ||
+      catalog.worlds.some(entry => entry.id === id && entry.backhaul_rf === 'geometry'));
     await roomPage.goto(base + '/');
     await roomPage.waitForFunction(() => window.__viewer && !document.getElementById('world').disabled, null, {timeout: 60000});
     await topologyPage.goto(options['topology-url']);
@@ -330,6 +353,10 @@ async function run(options) {
         const verified = entry => id === 'backhaul-parent-handover' ?
           summarizeNative([entry], id).lowerRelayObserved && ready(entry, profile.healthNodes) &&
             entry.mesh?.backhaul_edges?.some(edge => edge.child_role === 'extender_3' && edge.parent_role === 'extender_2') :
+          id === 'backhaul-wired-parent' ?
+            // extender_3 on the wired Agent's backhaul BSS, natively and in the controller's model
+            summarizeNative([entry], id).wiredParentObserved && ready(entry, profile.healthNodes) &&
+              entry.mesh?.backhaul_edges?.some(edge => edge.child_role === 'extender_3' && edge.parent_role === 'extender_5') :
           summarizeNative([entry], id).upstreamOutageObserved && entry.native.nodes.extender_4.apOperating &&
             entry.native.nodes.extender_4.fronthaulAps === 6;
         while (!verified(observation) && Date.now() < deadline) {

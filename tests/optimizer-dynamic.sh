@@ -61,8 +61,11 @@ esac
 candidate_timeout=$((expected_clients * 6))
 [ "$candidate_timeout" -ge 90 ] || candidate_timeout=90
 
+# the lab's Agents on a wired backhaul (the environment, else the VM's /etc/default/prplmesh-lab)
+export PROVISIONED_WIRED_AGENT_COUNT=${PROVISIONED_WIRED_AGENT_COUNT:-$(sed -n 's/^PROVISIONED_WIRED_AGENT_COUNT=//p' /etc/default/prplmesh-lab 2>/dev/null)}
 if ! binding_output=$(python3 - "$inventory" "$CLIENT" "$TARGET" <<'PY'
 import json
+import os
 import sys
 
 inventory = json.load(open(sys.argv[1], encoding="utf-8"))
@@ -91,12 +94,17 @@ if not source:
     raise SystemExit(f"cannot map serving BSSID {source_bssid}")
 if source == target_name:
     raise SystemExit(f"{client_name} is already served by {target_name}")
+# The crossover binds five APs: the lab's Agents on a wired backhaul (after the Wi-Fi Agents,
+# scripts/radio-lab.sh) stay unbound, at the medium's baseline.
+wired = {f"prpl-agent-{ordinal:02d}" for ordinal in range(
+    int(os.environ.get("PROVISIONED_AGENT_COUNT") or 4) + 1,
+    int(os.environ.get("PROVISIONED_AGENT_COUNT") or 4) + 1 + int(os.environ.get("PROVISIONED_WIRED_AGENT_COUNT") or 0))}
 others = sorted(
     item["container"] for item in inventory["radios"]
-    if item.get("kind") == "mesh" and item["container"] not in {source, target_name}
+    if item.get("kind") == "mesh" and item["container"] not in {source, target_name} | wired
 )
 if len(others) != 3:
-    raise SystemExit(f"five-node profile required; found {2 + len(others)} mesh nodes")
+    raise SystemExit(f"five-node profile required; found {2 + len(others)} Wi-Fi mesh nodes")
 band = client.get("band")
 ssid = client.get("ssid")
 target_bssid = next(

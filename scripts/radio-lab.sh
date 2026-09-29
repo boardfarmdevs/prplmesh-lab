@@ -85,6 +85,11 @@ instance_state()
 }
 
 require_count "$ACTIVE_AGENTS" "$PROVISIONED_AGENT_COUNT" PRPL_AGENT_COUNT
+case "$PROVISIONED_WIRED_AGENT_COUNT" in
+    ''|*[!0-9]*) echo "PROVISIONED_WIRED_AGENT_COUNT must be a non-negative integer" >&2; exit 2 ;;
+esac
+# every mesh agent: the Wi-Fi agents, then the wired ones (their radios follow in order)
+MESH_AGENT_COUNT=$((PROVISIONED_AGENT_COUNT + PROVISIONED_WIRED_AGENT_COUNT))
 require_count "$ACTIVE_CLIENTS" "$PROVISIONED_CLIENT_COUNT" PRPL_CLIENT_COUNT
 case "$TOPOLOGY" in
     star|branch|chain) ;;
@@ -94,6 +99,12 @@ esac
 agent_name()
 {
     printf 'prpl-agent-%02d' "$1"
+}
+
+wired_agent_ordinals()
+{
+    [ "$PROVISIONED_WIRED_AGENT_COUNT" -gt 0 ] || return 0
+    seq "$((PROVISIONED_AGENT_COUNT + 1))" "$MESH_AGENT_COUNT"
 }
 
 client_name()
@@ -411,7 +422,7 @@ start_kernel_medium()
     stop_medium
     install -d -m 0755 "$WMEDIUMD_RUNTIME"
     python3 "$ROOT/scripts/kernel-medium-aliases.py" \
-        --agents "$PROVISIONED_AGENT_COUNT" \
+        --agents "$MESH_AGENT_COUNT" \
         --clients "$PROVISIONED_CLIENT_COUNT" \
         --radios-per-node "$RADIOS_PER_MESH_NODE" \
         --output "$KERNEL_MEDIUM_ALIASES"
@@ -466,6 +477,9 @@ start_active_agents()
     # associated at layer 2 but absent from the controller model.
     for ordinal in $(seq 1 "$ACTIVE_AGENTS"); do
         start_agent "$ordinal"
+    done
+    for ordinal in $(wired_agent_ordinals); do
+        start_wired_agent "$ordinal"
     done
 }
 
@@ -592,7 +606,7 @@ configure_credentials()
         PRPL_METRICS_INTERVAL_SEC="${PRPL_METRICS_INTERVAL_SEC:-1}" \
         python3 /mnt/project/scripts/container/configure-metrics.py
     set_device_credentials "$CONTROLLER_AL_MAC"
-    for ordinal in $(seq 1 "$ACTIVE_AGENTS"); do
+    for ordinal in $(seq 1 "$ACTIVE_AGENTS") $(wired_agent_ordinals); do
         set_device_credentials "$(agent_al "$ordinal")"
     done
     controller_cli bml_update_wifi_credentials >/dev/null
@@ -681,6 +695,22 @@ start_agent()
     wait_for_agent_controller "$name" "$ordinal"
 }
 
+start_wired_agent()
+{
+    # an Agent on a wired backhaul: eth1 (the backhaul network) in its br-lan, no backhaul
+    # station, onboarding over Ethernet
+    local ordinal=$1 name
+    name=$(agent_name "$ordinal")
+    start_container "$name"
+    echo "$name: wired backhaul"
+    configure_control_priority --node "$name"
+    lxc exec "$name" -- \
+        /mnt/project/scripts/container/setup-nl80211-node.sh agent "$ordinal" wired
+    wait_for_model "$(agent_al "$ordinal")" \
+        "external agent $(agent_al "$ordinal")"
+    wait_for_agent_controller "$name" "$ordinal"
+}
+
 stop_agent()
 {
     local ordinal=$1 name
@@ -702,7 +732,7 @@ stop_all()
         lxc info "$name" >/dev/null 2>&1 || continue
         names+=("$name")
     done
-    for ordinal in $(seq 1 "$PROVISIONED_AGENT_COUNT"); do
+    for ordinal in $(seq 1 "$MESH_AGENT_COUNT"); do
         name=$(agent_name "$ordinal")
         lxc info "$name" >/dev/null 2>&1 || continue
         names+=("$name")
@@ -750,7 +780,10 @@ case "$ACTION" in
             first_radio=$((ordinal * RADIOS_PER_MESH_NODE))
             create_node "$name" "$first_radio" wireless
         done
-        first_client_radio=$(( (PROVISIONED_AGENT_COUNT + 1) * RADIOS_PER_MESH_NODE ))
+        for ordinal in $(wired_agent_ordinals); do
+            create_node "$(agent_name "$ordinal")" "$((ordinal * RADIOS_PER_MESH_NODE))" wired
+        done
+        first_client_radio=$(( (MESH_AGENT_COUNT + 1) * RADIOS_PER_MESH_NODE ))
         for ordinal in $(seq 1 "$PROVISIONED_CLIENT_COUNT"); do
             create_client "$(client_name "$ordinal")" \
                 "$((first_client_radio + ordinal - 1))"

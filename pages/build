@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Build this repository's Pages site into dist/site. This is the only per-repository
 # step: pages/finish-site.py, pages/labs-bar.js and .github/workflows/pages.yml are
-# the same in the four lab repositories.
+# the same in the five lab repositories.
 #
 # prplmesh-lab: the explorer (explorer/) builds the whole public site,
 # with the disconnected room viewer, manual and golden rooms; its browser tests run

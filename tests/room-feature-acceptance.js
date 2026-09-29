@@ -80,6 +80,19 @@ function udpByteAccounting(sender, receiver, payloadBytes) {
     senderBytes: sender.bytes, receiverBytes: receiver.bytes, excessBytes, payloadBytes};
 }
 
+// A world's ap_expectations: at a checkpoint or at the final settle, each named client on
+// its AP (by the room's association at the settled sample).
+function apExpectations(world, result) {
+  return (world.ap_expectations || []).map(expectation => {
+    const settled = expectation.at === 'final' ? result.final :
+      result.checkpoints?.find(checkpoint => checkpoint.timeMs === expectation.at);
+    const on = Object.fromEntries((settled?.final?.roomAssociations || []).map(client => [client.role, client.ap]));
+    const misses = Object.entries(expectation.roles).filter(([role, ap]) => on[role] !== ap)
+      .map(([role, ap]) => ({role, expected: ap, observed: on[role] ?? null}));
+    return {at: expectation.at, settled: Boolean(settled), misses, passed: Boolean(settled) && !misses.length};
+  });
+}
+
 function qualificationFailures(result, browserErrors = []) {
   const checks = {
     load: result.load?.passed,
@@ -96,6 +109,7 @@ function qualificationFailures(result, browserErrors = []) {
     kernelClients: result.kernel?.passed,
     bandSteering: result.bandSteering?.passed !== false,
     trafficExperiment: result.trafficExperiment?.passed !== false,
+    apExpectations: (result.apExpectations || []).every(item => item.passed),
     roomErrors: !result.errors.length,
     browserErrors: !browserErrors.some(error => error.room === result.id)
   };
@@ -172,6 +186,11 @@ function bandSteeringSummary(world, events, verifications) {
     scanMeasurements: events.filter(record => record.event.kind === 'optimizer.band_scan' && record.event.payload.phase === 'received').length};
 }
 
+function expectedMeshCount(world) {
+  const aps = Object.values(world?.roles || {}).filter(kind => kind === 'fronthaul_ap').length;
+  return aps ? 1 + aps : 6;  // a world without AP roles (a fixture) keeps the lab's six
+}
+
 function evaluate(current, interactions, view, world, bindings, now = Date.now()) {
   const expected = expectedFrame(world, interactions.playback.time_ms);
   const wanted = Object.entries(bindings).filter(([role]) => expected[role]?.present).map(([, client]) => lower(client.sta_mac)).sort();
@@ -205,14 +224,26 @@ function evaluate(current, interactions, view, world, bindings, now = Date.now()
     return Number.isFinite(client.rcpi) && client.rcpi > 0 && age >= -2 && age <= 30;
   });
   const parents = Object.fromEntries((current.network?.mesh?.backhaul_edges || []).map(edge => [edge.child_role, edge.parent_role]));
-  const meshConnected = Object.keys(parents).length === 4 && Object.keys(parents).every(role => {
-    const visited = new Set();
-    while (role !== 'gateway') {
-      if (!parents[role] || visited.has(role)) return false;
-      visited.add(role); role = parents[role];
-    }
-    return true;
-  });
+  // The lab's own Agents hang off the Wi-Fi backhaul, except one on a wired backhaul (the
+  // world's wired_backhaul): that one is an Ethernet child of the gateway in the controller's
+  // topology and never a Wi-Fi child, and a Wi-Fi Agent may hang off it. Every edge there is
+  // must lead to the gateway.
+  const wired = new Set(world?.wired_backhaul || []);
+  const wiredParents = Object.fromEntries((current.network?.mesh?.wired_edges || []).map(edge => [edge.child_role, edge.parent_role]));
+  const wiredConnected = [...wired].every(role => wiredParents[role] === 'gateway' && !(role in parents));
+  const extenders = Object.entries(world?.roles || {})
+    .filter(([role, kind]) => kind === 'fronthaul_ap' && role !== 'gateway' && !wired.has(role))
+    .map(([role]) => role);
+  const meshConnected = wiredConnected &&
+    (extenders.length ? extenders.every(role => role in parents) : Object.keys(parents).length === 4) &&
+    Object.keys(parents).every(role => {
+      const visited = new Set();
+      while (role !== 'gateway' && !wired.has(role)) {
+        if (!parents[role] || visited.has(role)) return false;
+        visited.add(role); role = parents[role];
+      }
+      return true;
+    });
   const meshNodes = new Map((current.network?.mesh?.nodes || []).map(node => [node.role, String(node.device_id)]));
   const meshViewMatches = Object.entries(parents).every(([child, parent]) => view.edges.some(edge =>
     edge.to === meshNodes.get(child) && edge.from === meshNodes.get(parent)));
@@ -221,14 +252,14 @@ function evaluate(current, interactions, view, world, bindings, now = Date.now()
   const complete = fleet.measurement_complete === true && fleet.clients_checked === wanted.length && fleet.clients_evaluated === wanted.length;
   const mediumFault = interactions.fault || current.error || null;
   const bandErrors = bandExpectations(world, interactions.playback.time_ms, clients, view);
-  const qualified = roster && viewMatchesRoom && viewMatchesModel && view.meshCount === 6 && meshConnected && meshViewMatches &&
+  const qualified = roster && viewMatchesRoom && viewMatchesModel && view.meshCount === expectedMeshCount(world) && meshConnected && meshViewMatches &&
     healthy && epochMatches && metricsFresh && complete && decisionCoverage &&
     evaluationAge >= -2 && evaluationAge <= 30 && scriptErrors.length === 0 && !mediumFault && !bandErrors.length;
   const policyConverged = qualified && fleet.converged === true;
   const strongestApConverged = qualified && sameBandBest && fleet.clients_with_stronger_ap === 0;
   const converged = policyConverged;
   return {converged, roster, viewMatchesRoom, viewMatchesModel, duplicates, scriptErrors, healthy, epochMatches,
-    complete, sameBandBest, metricsFresh, evaluationAge, meshConnected, meshViewMatches, meshCount: view.meshCount,
+    complete, sameBandBest, metricsFresh, evaluationAge, meshConnected, wiredConnected, meshViewMatches, meshCount: view.meshCount,
     expectedClients: wanted.length, actualClients: actual.length, candidates: fleet.candidate_measurements,
     strongerClients: fleet.clients_with_stronger_ap, policyConverged, strongestApConverged,
     optimizerPolicySatisfied: fleet.converged === true, decisionCoverage, strongerClientGaps,
@@ -657,7 +688,7 @@ async function run(args) {
     if (bandWorld.traffic_experiment) result.trafficExperiment = trafficExperimentSummary(bandWorld, relevant);
     result.scriptCorrect = during.length > 0 && during.every(sample => !sample.scriptErrors.length && !sample.mediumFault);
     result.sceneCorrect = during.length > 0 && during.every(sample => !sample.sceneErrors.length);
-    result.viewCorrect = during.every(sample => !sample.duplicates && sample.meshCount === 6 && sample.associations.every(client => client.visible && client.label)) && agreement.passed;
+    result.viewCorrect = during.every(sample => !sample.duplicates && sample.meshCount === expectedMeshCount(bandWorld) && sample.associations.every(client => client.visible && client.label)) && agreement.passed;
     const golden = JSON.parse(fs.readFileSync(path.join(args.worlds, result.id + '.world.json')));
     const presencePhases = [];
     for (const frame of golden.generations) {
@@ -671,6 +702,7 @@ async function run(args) {
         firstVerifiedRoomTimeMs: matches[0]?.playback.time_ms ?? null};
     });
     result.fronthaulOutages = fronthaulOutages(golden, result.samples);
+    result.apExpectations = apExpectations(golden, result);
     result.failureReasons = qualificationFailures(result, report.errors);
     result.passed = result.failureReasons.length === 0;
     result.sampleCount = result.samples.length;
@@ -867,6 +899,6 @@ function kernelClientAudit(bindings, wanted, associations, links) {
   return {onlineCount: online.size, offlineCount: bound.size - online.size, passed: errors.length === 0, errors, links};
 }
 
-module.exports = {argumentsFrom, expectedFrame, evaluate, distribution, eventPerformance, viewAgreement, recordedEventKind, fronthaulOutages, bandExpectations, bandSteeringSummary, bandNativeErrors, kernelClientAudit, trafficExperimentSummary, qualificationFailures};
+module.exports = {argumentsFrom, expectedFrame, evaluate, distribution, eventPerformance, viewAgreement, recordedEventKind, fronthaulOutages, bandExpectations, bandSteeringSummary, bandNativeErrors, kernelClientAudit, trafficExperimentSummary, qualificationFailures, apExpectations};
 if (require.main === module) run(argumentsFrom(process.argv.slice(2))).then(report => { process.exitCode = report.passed ? 0 : 1; })
   .catch(error => { console.error(error); process.exitCode = 2; });

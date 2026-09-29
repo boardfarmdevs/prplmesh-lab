@@ -593,6 +593,11 @@ class InteractiveMediumSession:
                 for role, binding in self.plan["bindings"].items()
                 if binding["role_type"] == "station"
             },
+            # the APs on a wired backhaul and their containers: the geometry rooms read them too
+            "wired_bindings": {
+                role: self.plan["bindings"].get(role, {}).get("container")
+                for role in self.world.get("wired_backhaul", [])
+            },
         }
 
     def _room_updates(self) -> list[dict[str, Any]]:

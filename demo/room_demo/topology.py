@@ -13,6 +13,7 @@ def project_topology(topology: dict[str, Any] | None, roles_by_bssid: dict[str, 
         "available": topology is not None,
         "nodes": [],
         "backhaul_edges": [],
+        "wired_edges": [],
         "unresolved_edges": 0,
     }
     if topology is None:
@@ -55,6 +56,11 @@ def project_topology(topology: dict[str, Any] | None, roles_by_bssid: dict[str, 
         if parent is None or child is None:
             result["unresolved_edges"] += 1
             continue
+        if str(backhaul.get("type") or "").lower() not in ("wi-fi", "wifi", "wireless"):
+            # an Agent on a wired backhaul: an Ethernet child of its parent, never a Wi-Fi edge
+            result["wired_edges"].append({"parent_role": parent, "child_role": child,
+                                          "media_type": backhaul.get("type") or "unknown"})
+            continue
         upstream = str(backhaul.get("mac") or "").lower()
         if roles_by_bssid.get(upstream) != parent:
             upstream = ""
@@ -86,4 +92,5 @@ def project_topology(topology: dict[str, Any] | None, roles_by_bssid: dict[str, 
         })
     result["nodes"].sort(key=lambda item: item["role"])
     result["backhaul_edges"].sort(key=lambda item: (item["parent_role"], item["child_role"]))
+    result["wired_edges"].sort(key=lambda item: (item["parent_role"], item["child_role"]))
     return result

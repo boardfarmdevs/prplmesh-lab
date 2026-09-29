@@ -9,6 +9,7 @@ import signal
 import subprocess
 import sys
 import time
+import urllib.request
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -273,8 +274,15 @@ def main():
                                   for name in ('room-feature-guest-audit.py', 'backhaul-native-probe.py')])
                 if helpers_ok:
                     common = ['--host', 'local', '--vm', vm, '--flavor', 'prpl', '--room-url', room_url, '--topology-url', topology_url]
+                    # the Golden World tree the room runs (worlds-wired with the wired Agent)
+                    try:
+                        with urllib.request.urlopen(room_url.rstrip('/') + '/api/demo/worlds', timeout=15) as response:
+                            worlds_root = json.load(response).get('worlds_root') or 'wmediumd/configurator/worlds'
+                    except (OSError, ValueError):
+                        worlds_root = 'wmediumd/configurator/worlds'
+                    record('rooms/worlds', 'passed', detail=worlds_root)
                     step('rooms/catalog-play', ['node', 'tests/room-feature-acceptance.js', *common,
-                         '--yes-act', '--worlds', str(ROOT / 'wmediumd/configurator/worlds/golden'), '--output', str(output / 'rooms')], 14400)
+                         '--yes-act', '--worlds', str(ROOT / worlds_root / 'golden'), '--output', str(output / 'rooms')], 14400)
                     step('rooms/geometry-play', ['node', 'tests/room-backhaul-features.js', *common,
                          '--yes-act', 'true', '--output', str(output / 'backhaul')], 3600)
             else:

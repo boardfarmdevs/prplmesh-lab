@@ -5,6 +5,9 @@ ROOT=$(cd "$(dirname "$0")/.." && pwd)
 # shellcheck source=../scripts/lib/observer-status.sh
 source "$ROOT/scripts/lib/observer-status.sh"
 agents=${PRPL_AGENT_COUNT:-4}
+# the wired Agents the lab provisions (scripts/radio-lab.sh; the VM's /etc/default/prplmesh-lab)
+wired_agents=${PROVISIONED_WIRED_AGENT_COUNT:-$(sed -n 's/^PROVISIONED_WIRED_AGENT_COUNT=//p' /etc/default/prplmesh-lab 2>/dev/null)}
+wired_agents=${wired_agents:-0}
 clients=${PRPL_CLIENT_COUNT:-20}
 topology=${PRPL_TOPOLOGY:-chain}
 medium_backend=${PRPL_MEDIUM_BACKEND:-userspace}
@@ -62,7 +65,8 @@ status_action "Starting the topology adapter and validating $topology with $clie
 "$ROOT/scripts/topology-adapter.sh" start >/dev/null
 for attempt in $(seq 1 12); do
     if "$ROOT/tests/topology-acceptance.py" \
-        --agents "$agents" --clients "$clients" --topology "$topology" \
+        --agents "$agents" --wired-agents "$wired_agents" \
+        --clients "$clients" --topology "$topology" \
         --require-metrics >"$topology_output" 2>&1; then
         cat "$topology_output"
         break

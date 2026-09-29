@@ -10,6 +10,10 @@ import time
 import urllib.error
 import urllib.request
 import uuid
+import re
+
+# The default room of each room set: the lab's own rooms (worlds) or with its wired Agent (worlds-wired).
+DEFAULT_WORLD = re.compile(r"home-five-agent(?:-(wired))?--private-client-room-walk")
 
 
 def command(*arguments):
@@ -158,7 +162,7 @@ def main():
     preflight_deadline = time.monotonic() + args.timeout
     while True:
         current = request("/api/demo/current")
-        if current.get("scenario") != "home-five-agent--private-client-room-walk":
+        if not DEFAULT_WORLD.fullmatch(current.get("scenario") or ""):
             raise RuntimeError("start acceptance from the default room")
         mac_by_role = {client["role"]: client["sta_mac"].lower() for client in current.get("network", {}).get("clients", [])}
         containers_by_role = {client["role"]: client["container"] for client in current.get("network", {}).get("clients", [])}

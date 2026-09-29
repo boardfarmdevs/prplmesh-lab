@@ -29,6 +29,9 @@ from wmdcfg.rf_qualify import association_identity
 from wmdcfg.rf_spatial import private_channels, private_radio, registered_radio, roam_client, net_command
 from wmdcfg.rf_validate import command, stop_process, scan_for_roam
 
+# The default room of each room set: the lab's own rooms (worlds) or with its wired Agent (worlds-wired).
+DEFAULT_WORLD = re.compile(r"home-five-agent(?:-(wired))?--private-client-room-walk")
+
 
 def fetch(url):
     with urllib.request.urlopen(url, timeout=10) as response:
@@ -540,7 +543,7 @@ def main():
             or state_room['playback']['status'] != 'paused' or state_room['playback']['time_ms'] != 0
             or state_room['playback']['manual_roles']
             or state_room['expected_online_clients'] != 20
-            or state_room['selected_world'] != 'home-five-agent--private-client-room-walk'):
+            or not DEFAULT_WORLD.fullmatch(state_room['selected_world'] or '')):
         raise RuntimeError('requires idle default 20-client room')
     rdk = args.stack == 'rdk'
     if not rdk:

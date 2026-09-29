@@ -90,6 +90,9 @@ def ap_stations(device, radio, bss, cache):
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--agents", type=int, default=4)
+    # Agents on a wired backhaul after the Wi-Fi Agents (scripts/radio-lab.sh): an Ethernet
+    # child of the controller, no backhaul station
+    parser.add_argument("--wired-agents", type=int, default=0)
     parser.add_argument("--clients", type=int, default=20)
     parser.add_argument("--topology", choices=("star", "branch", "chain"), default="chain")
     parser.add_argument("--require-metrics", action="store_true")
@@ -98,19 +101,26 @@ def main():
 
     data = topology(args.url)
     devices = data["devices"]
-    assert len(devices) == args.agents + 1, (len(devices), args.agents + 1)
+    mesh_agents = args.agents + args.wired_agents
+    assert len(devices) == mesh_agents + 1, (len(devices), mesh_agents + 1)
     by_name = {device["name"]: device for device in devices}
-    expected_names = {"controller", *(f"agent-{n}" for n in range(1, args.agents + 1))}
+    expected_names = {"controller", *(f"agent-{n}" for n in range(1, mesh_agents + 1))}
     assert set(by_name) == expected_names, set(by_name)
 
     ids = [device["id"] for device in devices]
     assert len(ids) == len(set(ids)), "duplicate EasyMesh device ID"
-    for node in range(args.agents + 1):
+    for node in range(mesh_agents + 1):
         name = "controller" if node == 0 else f"agent-{node}"
         device = by_name[name]
         expected_id = f"02:00:00:27:{node + 1:02x}:01"
         assert device["id"] == expected_id, (name, device["id"], expected_id)
         validate_radio_inventory(node, device["radios"])
+        if node > args.agents:
+            # a wired Agent: never a Wi-Fi child; its parent, where reported, the controller
+            backhaul = device.get("backhaul") or {}
+            assert str(backhaul.get("type") or "").lower() not in ("wi-fi", "wifi", "wireless"), backhaul
+            assert backhaul.get("parent_id") in (None, "", "02:00:00:27:01:01"), backhaul
+            continue
         if node:
             parent = expected_parent(node, args.topology)
             expected_parent_id = f"02:00:00:27:{parent + 1:02x}:01"
@@ -170,7 +180,7 @@ def main():
     bands = collections.Counter(row[1]["band"] for row in rows)
     ssid_bands = collections.Counter((row[2]["ssid"], row[1]["band"]) for row in rows)
     owners = collections.Counter(row[0]["name"] for row in rows)
-    print(f"PASS devices={len(devices)} agents={args.agents} clients={len(rows)} topology={args.topology}")
+    print(f"PASS devices={len(devices)} agents={args.agents} wired={args.wired_agents} clients={len(rows)} topology={args.topology}")
     print("SSIDs", dict(ssids), "bands", dict(bands), "owners", dict(owners))
     print("SSID/band", {f"{ssid}/{band}": count for (ssid, band), count in ssid_bands.items()})
     if args.require_metrics:
