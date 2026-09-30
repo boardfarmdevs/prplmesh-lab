@@ -13,7 +13,7 @@ from room_demo.worlds import BoundWorlds
 from wmdcfg.world import load_json
 
 REPO = Path(__file__).resolve().parents[2]
-CONFIGURATOR = REPO / "wmediumd/configurator"
+CONFIGURATOR = REPO / "medium/configurator"
 NATIVE = CONFIGURATOR / "worlds"
 WIRED = CONFIGURATOR / "worlds-wired"
 MANIFEST = REPO / "demo/manifests/private-client-room-walk-wired.json"
@@ -49,7 +49,7 @@ class WiredAgentWorldTests(unittest.TestCase):
         self.assertEqual(sorted(entry["id"] for entry in wired["worlds"]),
                          sorted([entry["id"] for entry in native["worlds"]] + list(WIRED_ONLY)))
         self.assertEqual(wired["mesh_devices"], native["mesh_devices"] + 1)
-        self.assertEqual(wired["worlds_root"], "wmediumd/configurator/worlds-wired")
+        self.assertEqual(wired["worlds_root"], "medium/configurator/worlds-wired")
 
     def test_the_goldens_match_their_layouts_and_positions(self):
         result = subprocess.run([sys.executable, str(WIRED / "build-goldens.py"), "--check"],

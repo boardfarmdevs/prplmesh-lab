@@ -2,7 +2,7 @@
   "schema": "easymesh.room-demo.v1",
   "name": "native-load-room-profile",
   "description": "Opt-in native AP-load inspection and guarded balancing; keeps the ordinary startup room and fixed client pool.",
-  "world": "wmediumd/configurator/worlds/golden/home-a-private-client-room-walk.world.json",
+  "world": "medium/configurator/worlds/golden/home-a-private-client-room-walk.world.json",
   "bindings": "demo/bindings/private-client-room-walk.json",
   "policy": "optimizer/configs/load-aware-policy.yaml",
   "hero": {

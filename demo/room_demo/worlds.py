@@ -146,7 +146,21 @@ class BoundWorlds:
         except (OSError, ValueError, TypeError, KeyError, IndexError, OverflowError) as error:
             raise InteractionError(422, "unsupported_world", str(error)) from error
 
+    def _files_stamp(self) -> tuple:
+        return tuple(sorted(
+            (str(path), path.stat().st_mtime_ns, path.stat().st_size)
+            for tree in ("golden", "layouts", "mobility")
+            for path in (self.root / tree).glob("*.json")
+        ))
+
     def catalog(self) -> dict:
+        # Every world is verified in full (its plan hash, layout and mobility), about
+        # 4 s for the 31 standard rooms, and a viewer asks again on every reconnect.
+        # The files do not change while the room runs: kept until one of them does.
+        stamp = self._files_stamp()
+        cached = getattr(self, "_catalog", None)
+        if cached is not None and cached[0] == stamp:
+            return copy.deepcopy(cached[1])
         entries = []
         for path in sorted((self.root / "golden").glob("*.world.json")):
             name = path.name.removesuffix(".world.json")
@@ -163,4 +177,5 @@ class BoundWorlds:
         repo = Path(__file__).resolve().parents[2]
         if self.root.resolve().is_relative_to(repo):
             catalog["worlds_root"] = str(self.root.resolve().relative_to(repo))
-        return catalog
+        self._catalog = (stamp, catalog)
+        return copy.deepcopy(catalog)

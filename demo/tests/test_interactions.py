@@ -149,6 +149,20 @@ class InteractiveMediumSessionTests(unittest.TestCase):
         self.addCleanup(self.session.close)
         self.lease = self.session.acquire("browser-test")
 
+    def test_an_update_set_larger_than_one_frame_spans_consecutive_generations(self):
+        from wmdcfg.actuator import MAX_FREQUENCY_UPDATES_PER_FRAME as frame
+        updates = [{"source": "42:00:00:00:00:%02x" % (index % 256), "destination": "42:00:00:01:00:%02x" % (index // 256),
+                    "frequency_mhz": 2437, "value": 10, "override": True} for index in range(frame + 5)]
+        before, generation = len(self.client.applied), self.client.generation
+        self.session._max_updates = 2 * frame  # the lab daemon's own limit is far above one frame
+        applied = self.session._apply_generation(updates)
+        self.assertEqual(len(applied), frame + 5)
+        self.assertEqual([len(item) for item in self.client.applied[before:]], [frame, 5])
+        self.assertEqual(self.client.generation, generation + 2)
+        # a set that fits stays one atomic generation
+        self.session._apply_generation(updates[:3])
+        self.assertEqual(len(self.client.applied), before + 3)
+
     def test_observer_snapshot_does_not_expire_lease_or_write_medium(self):
         before = len(self.client.applied)
         with patch.object(self.session, "_expire_lease", side_effect=AssertionError("observer mutated lease")):

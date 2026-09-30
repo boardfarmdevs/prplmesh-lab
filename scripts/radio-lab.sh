@@ -10,6 +10,9 @@ if [ -r /etc/default/prplmesh-lab ]; then
 fi
 # shellcheck source=../../manifests/lab.env
 source "$ROOT/manifests/lab.env"
+# the medium's upstream wmediumd pin (WMEDIUMD_COMMIT)
+# shellcheck source=../../medium/wmediumd/upstream.env
+source "$ROOT/medium/wmediumd/upstream.env"
 
 ACTION=${1:-status}
 RUNTIME_IMAGE=${PRPLMESH_RUNTIME_IMAGE:-prpl-runtime-local}
@@ -316,16 +319,17 @@ start_userspace_medium()
 {
     local attempt command expected_patchset hash pid provenance
 
+    # the digest the medium's build records (hashed from its wmediumd directory)
     expected_patchset=$(
-        cd "$ROOT"
-        sha256sum patches/wmediumd/*.patch | sha256sum | awk '{print $1}'
+        cd "$ROOT/medium/wmediumd"
+        sha256sum patches/*.patch | sha256sum | awk '{print $1}'
     )
     provenance="$ROOT/build/bin/wmediumd.provenance.env"
     if [ ! -r "$provenance" ] ||
        ! grep -Fxq "WMEDIUMD_COMMIT=$WMEDIUMD_COMMIT" "$provenance" ||
        ! grep -Fxq "WMEDIUMD_PATCHSET_SHA256=$expected_patchset" "$provenance"; then
         echo "wmediumd binary is stale or has no matching patch-set provenance" >&2
-        echo "rebuild it with scripts/build-wmediumd.sh" >&2
+        echo "rebuild it with medium/wmediumd/build-wmediumd.sh" >&2
         return 1
     fi
 
@@ -412,7 +416,7 @@ start_kernel_medium()
     fi
     [ -w /sys/module/mac80211_hwsim/parameters/kernel_medium ] || {
         echo "loaded mac80211_hwsim lacks the optional kernel-medium ABI" >&2
-        echo "build and load patches 0003-0007 with scripts/build-hwsim.sh" >&2
+        echo "build and load patches 0003-0007 with medium/hwsim/build-hwsim.sh" >&2
         return 1
     }
     [ -d /sys/kernel/debug/ieee80211 ] || {
@@ -427,7 +431,7 @@ start_kernel_medium()
         --radios-per-node "$RADIOS_PER_MESH_NODE" \
         --output "$KERNEL_MEDIUM_ALIASES"
     echo 1 > /sys/module/mac80211_hwsim/parameters/kernel_medium
-    PYTHONPATH="$ROOT/wmediumd/configurator" \
+    PYTHONPATH="$ROOT/medium/configurator" \
         python3 -m wmdcfg.kernel_metrics_proxy --socket "$WMEDIUMD_METRICS" \
         --aliases "$KERNEL_MEDIUM_ALIASES" \
         > "$KERNEL_MEDIUM_LOG" 2>&1 9>&- &
@@ -662,7 +666,7 @@ configure_control_priority()
     case "${WMEDIUMD_PRIORITY_QUEUES:-0}" in
         0)
             if [ -f /var/lib/wmdcfg-control-priority/prplmesh.json ]; then
-                python3 "$ROOT/wmediumd/configurator/wmdcfg/control_priority.py" --stack prplmesh --disable
+                python3 "$ROOT/medium/configurator/wmdcfg/control_priority.py" --stack prplmesh --disable
             fi
             return ;;
         1) ;;
@@ -672,7 +676,7 @@ configure_control_priority()
         echo "priority admission requires the userspace medium" >&2
         return 1
     }
-    python3 "$ROOT/wmediumd/configurator/wmdcfg/control_priority.py" --stack prplmesh --enable "$@"
+    python3 "$ROOT/medium/configurator/wmdcfg/control_priority.py" --stack prplmesh --enable "$@"
     if [ -f /etc/systemd/system/wmdcfg-control-priority.service ]; then
         systemctl start wmdcfg-control-priority.service
     fi

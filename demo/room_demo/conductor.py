@@ -1036,6 +1036,10 @@ class LiveConductor:
                                                                         original.load_settle_seconds))
         if self.profiling:
             policy_config = replace(policy_config, require_complete_client_roster=False)
+        # the mesh this room runs (with the wired Agent: six devices), as its health expects
+        expected_mesh = (self.manifest.get("health") or {}).get("expected_mesh_devices")
+        if expected_mesh is not None:
+            policy_config = replace(policy_config, expected_devices=int(expected_mesh))
         policy = policy_for(policy_config) if policy_config.load_aware_enabled else ThresholdPolicy(policy_config)
         self._start_rf_observation(policy_config.load_aware_enabled)
         self._rf_policy_enabled = policy_config.load_aware_enabled

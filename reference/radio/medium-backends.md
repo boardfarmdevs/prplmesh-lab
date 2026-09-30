@@ -23,7 +23,7 @@ Select the experimental backend only after installing the complete hwsim
 patch series:
 
 ```sh
-sudo INSTALL_MODULE=1 LOAD_MODULE=1 scripts/build-hwsim.sh
+sudo INSTALL_MODULE=1 LOAD_MODULE=1 medium/hwsim/build-hwsim.sh
 scripts/radio-lab.sh stop
 PRPL_MEDIUM_BACKEND=kernel scripts/radio-lab.sh start
 PRPL_MEDIUM_BACKEND=kernel scripts/radio-lab.sh clients
@@ -41,7 +41,7 @@ Then restart `prplmesh-lab.service`. Remove the line, or set it to
 The kernel actuator preserves the configurator contract:
 
 ```sh
-cd wmediumd/configurator
+cd medium/configurator
 python3 -m wmdcfg.cli status --backend kernel
 python3 -m wmdcfg.cli run --backend kernel /path/to/event-plan.json
 ```
@@ -67,7 +67,7 @@ traffic and scenario plans.
 Userspace exports modeled legacy-rate, 20 MHz airtime through the survey bridge
 and native BSS Load reporting. These are modeled activity counters, not calibrated
 AP capacity. The kernel backend does not implement this full survey path. See the
-[virtual RF assessment](virtual-rf-assessment.md) for provenance and qualification.
+[virtual RF assessment](https://github.com/boardfarmdevs/easymesh-medium/blob/main/docs/reference/virtual-rf-assessment.md) for provenance and qualification.
 
 Medium patch `0032` disables libnl's automatic administrative success-ACK requests
 after synchronous family lookup. It removes redundant kernel replies, not simulated

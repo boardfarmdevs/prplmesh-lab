@@ -31,8 +31,8 @@ for command in git lxc iw jq make meson ninja python3 sha256sum; do
 done
 check test -d "/lib/modules/$(uname -r)/build"
 check lxc info
-check test -r "$ROOT/patches/hwsim/0001-mac80211_hwsim-allow-multichannel-wmediumd.patch"
-check test -r "$ROOT/patches/wmediumd/0001-wmediumd-multichannel-per-freq-interference.patch"
+check test -r "$ROOT/medium/hwsim/patches/0001-mac80211_hwsim-allow-multichannel-wmediumd.patch"
+check test -r "$ROOT/medium/wmediumd/patches/0001-wmediumd-multichannel-per-freq-interference.patch"
 check test -r "$ROOT/patches/prplmesh/0001-linux-map-third-radio-interface.patch"
 
 if ! grep -Rqs '^Types:.*deb-src' /etc/apt/sources.list.d /etc/apt/sources.list 2>/dev/null; then

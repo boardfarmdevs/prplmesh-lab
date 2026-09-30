@@ -1,7 +1,7 @@
 'use strict';
 const assert = require('assert').strict;
 const path = require('path');
-const {describe} = require(path.resolve(__dirname, '../wmediumd/configurator/worlds/viewer/room-convergence.js'));
+const {describe} = require(path.resolve(__dirname, '../medium/configurator/worlds/viewer/room-convergence.js'));
 const timestamp = '2026-09-14T21:00:00Z';
 const baseline = {
   mode: 'live', connection: 'running', now: Date.parse(timestamp), environmentEpoch: 8, canPlay: true,
@@ -23,7 +23,7 @@ unlimited.optimizer.steering_safety = {paused_clients: [], rate_retry_seconds: 2
 assert.equal(describe(unlimited).state, 'ready');
 unlimited.optimizer.fleet.converged = false;
 assert.equal(describe(unlimited).title, 'RATE LIMITED');
-const {withSafety} = require('../wmediumd/configurator/worlds/viewer/room-convergence.js');
+const {withSafety} = require('../medium/configurator/worlds/viewer/room-convergence.js');
 const resumed = {steering_safety: {revision: 3, paused_clients: []}};
 assert.equal(withSafety(resumed, {steering_safety: {revision: 2}}).steering_safety, resumed.steering_safety);
 assert.equal(withSafety(resumed, {}).steering_safety, resumed.steering_safety);

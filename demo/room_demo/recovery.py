@@ -9,7 +9,7 @@ from pathlib import Path
 import threading
 from typing import Any
 
-from wmdcfg.actuator import ActuatorError, ControlClient
+from wmdcfg.actuator import ActuatorError, ControlClient, apply_frequency_frames
 from .client_wifi import reconnect_client
 from .band_profiles import restore_client_network
 
@@ -319,8 +319,7 @@ def recover_medium(
                 f"recovery requires {len(updates)} updates; daemon limit is "
                 f"{status.max_updates}"
             )
-        generation = status.generation + 1
-        applied = client.apply_frequency(generation, updates)
+        applied, generation = apply_frequency_frames(client, status.generation + 1, updates)
         if len(applied) != len(updates):
             raise ActuatorError("recovery apply count mismatch")
         for row in document["baseline"]:

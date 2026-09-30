@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import collections
 import copy
 from contextlib import nullcontext
 import datetime as dt
@@ -9,7 +10,7 @@ import threading
 import time
 from typing import Any, Callable
 
-from wmdcfg.actuator import ActuatorError, ControlClient
+from wmdcfg.actuator import MAX_FREQUENCY_UPDATES_PER_FRAME, ActuatorError, ControlClient
 from wmdcfg.geometry import directed_link, quantize_position
 from wmdcfg.runner import FREQUENCY_CAPABILITIES
 from wmdcfg.world import _hash, backhaul_rf_policy, compile_world, playback_pause_points
@@ -20,6 +21,67 @@ from .recovery import RecoveryJournal
 from .pool import expand_initial_world
 from .traffic_experiment import TrafficExperiment, phase_at
 from wmdcfg.traffic_profile import validate_traffic
+
+
+class FairRLock:
+    """A reentrant lock granted in arrival order.
+
+    The session's lock serializes every room operation. After a world loads the
+    optimizer runs its steering transactions back to back, each holding the lock
+    for its whole BTM action, and threading.RLock hands the lock to whichever
+    thread wins the race: a viewer's snapshot or lease renewal could wait behind
+    all of them, its lease expired and the room's world selector stayed disabled
+    (prpl-0929, 29 Sep). Waiting in order bounds that wait to the transactions
+    already queued.
+    """
+
+    def __init__(self):
+        self._condition = threading.Condition(threading.Lock())
+        self._owner = None
+        self._count = 0
+        self._queue: collections.deque = collections.deque()
+
+    def acquire(self, blocking: bool = True, timeout: float = -1) -> bool:
+        me = threading.get_ident()
+        with self._condition:
+            if self._owner == me:
+                self._count += 1
+                return True
+            if self._owner is None and not self._queue:
+                self._owner, self._count = me, 1
+                return True
+            if not blocking:
+                return False
+            ticket = object()
+            self._queue.append(ticket)
+            deadline = None if timeout is None or timeout < 0 else time.monotonic() + timeout
+            while not (self._owner is None and self._queue[0] is ticket):
+                remaining = None if deadline is None else deadline - time.monotonic()
+                if remaining is not None and remaining <= 0:
+                    self._queue.remove(ticket)
+                    self._condition.notify_all()
+                    return False
+                self._condition.wait(remaining)
+            self._queue.popleft()
+            self._owner, self._count = me, 1
+            return True
+
+    def release(self) -> None:
+        with self._condition:
+            if self._owner != threading.get_ident():
+                raise RuntimeError("cannot release an unowned lock")
+            self._count -= 1
+            if self._count == 0:
+                self._owner = None
+                self._condition.notify_all()
+
+    def __enter__(self):
+        self.acquire()
+        return self
+
+    def __exit__(self, *exc):
+        self.release()
+        return False
 
 
 class InteractionError(RuntimeError):
@@ -89,7 +151,7 @@ class InteractiveMediumSession:
         self.prepare_backhaul = prepare_backhaul
         self._selected_roles = set(world["roles"])
         self._selected_world = world["name"]
-        self._lock = threading.RLock()
+        self._lock = FairRLock()
         self._client: ControlClient | None = None
         self._instance_id: str | None = None
         self._generation = 0
@@ -1564,11 +1626,17 @@ class InteractiveMediumSession:
                 })
         if not updates:
             raise InteractionError(500, "no_links", f"role {role!r} resolved no live RF links")
-        if len(updates) > 30:
+        # Two directed keys per AP band: 30 for the five tri-band lab APs, more
+        # with the wired Agent.
+        limit = max(30, 2 * sum(
+            len(self.plan["bindings"][name].get("fronthaul_frequencies_mhz", {}))
+            for name, kind in self.world["roles"].items() if kind == "fronthaul_ap"
+        ))
+        if len(updates) > limit:
             raise InteractionError(
                 422,
                 "client_delta_too_large",
-                f"role {role!r} resolved {len(updates)} RF keys; client limit is 30",
+                f"role {role!r} resolved {len(updates)} RF keys; client limit is {limit}",
             )
         return updates, summary
 
@@ -1778,6 +1846,17 @@ class InteractiveMediumSession:
                 producer="interaction",
             )
             raise ActuatorError(reason)
+        # One control frame carries at most MAX_FREQUENCY_UPDATES_PER_FRAME
+        # updates. The five-agent rooms always fit one atomic generation; the
+        # wired Agent's rooms can exceed it and are applied as consecutive
+        # generations, each recorded for recovery.
+        applied = []
+        for start in range(0, len(updates), MAX_FREQUENCY_UPDATES_PER_FRAME):
+            applied.extend(self._apply_one_generation(
+                updates[start:start + MAX_FREQUENCY_UPDATES_PER_FRAME]))
+        return applied
+
+    def _apply_one_generation(self, updates: list[dict[str, Any]]) -> list[dict[str, Any]]:
         generation = self._generation + 1
         if self.recovery is not None:
             self.recovery.before_apply(self._generation, generation)

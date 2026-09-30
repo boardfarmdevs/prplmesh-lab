@@ -2,7 +2,7 @@
   "schema": "easymesh.room-demo.v1",
   "name": "native-counter-guard-room-profile",
   "description": "Opt-in native counter guard in the asymmetric ACK room; use recommend mode for shadow operation. Traffic loss alone never substitutes for native pressure.",
-  "world": "wmediumd/configurator/worlds/golden/rf-asymmetric-ack.world.json",
+  "world": "medium/configurator/worlds/golden/rf-asymmetric-ack.world.json",
   "bindings": "demo/bindings/private-client-room-walk.json",
   "policy": "optimizer/configs/load-counter-guard-policy.yaml",
   "hero": {

@@ -65,7 +65,7 @@ case "$medium_backend" in
         proxy_pid=$(cat /run/prpl-wmediumd/kernel-metrics-proxy.pid)
         kill -0 "$proxy_pid"
         proxy_rss=$(awk '/^VmRSS:/ {print $2}' "/proc/$proxy_pid/status")
-        PYTHONPATH="$ROOT/wmediumd/configurator" python3 -m wmdcfg.cli \
+        PYTHONPATH="$ROOT/medium/configurator" python3 -m wmdcfg.cli \
             status --backend kernel >/dev/null
         echo "kernel_medium metrics_proxy_RSS_KB=$proxy_rss pid=$proxy_pid"
         ;;

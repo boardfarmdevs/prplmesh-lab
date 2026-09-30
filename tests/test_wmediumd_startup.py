@@ -16,8 +16,8 @@ class WmediumdStartupTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             (root / "build/bin").mkdir(parents=True)
-            (root / "patches/wmediumd").mkdir(parents=True)
-            (root / "patches/wmediumd/test.patch").write_text("fixture\n")
+            (root / "medium/wmediumd/patches").mkdir(parents=True)
+            (root / "medium/wmediumd/patches/test.patch").write_text("fixture\n")
             (root / "config").write_text("fixture\n")
             daemon = root / "build/bin/wmediumd"
             daemon.write_text("""#!/usr/bin/env python3
@@ -54,7 +54,7 @@ export WMEDIUMD_DAEMON_MANIFEST="$ROOT/daemon-manifest"
 export WMEDIUMD_LOG="$ROOT/daemon.log"
 export WMEDIUMD_COMMIT=fixture
 export WMEDIUMD_CPU_AFFINITY=
-patchset=$(sha256sum patches/wmediumd/*.patch | sha256sum | awk '{print $1}')
+patchset=$(cd medium/wmediumd && sha256sum patches/*.patch | sha256sum | awk '{print $1}')
 printf 'WMEDIUMD_COMMIT=fixture\nWMEDIUMD_PATCHSET_SHA256=%s\n' "$patchset" > build/bin/wmediumd.provenance.env
 stop_medium() {
     if [ -f "$WMEDIUMD_PIDFILE" ]; then

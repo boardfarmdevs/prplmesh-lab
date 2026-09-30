@@ -7,11 +7,11 @@ ROOT=$(cd "$(dirname "$0")/.." && pwd)
 "$ROOT/scripts/create-build-container.sh"
 "$ROOT/scripts/build-prplmesh.sh" nl80211
 "$ROOT/scripts/package-build-artifacts.sh"
-"$ROOT/scripts/build-wmediumd.sh"
+"$ROOT/medium/wmediumd/build-wmediumd.sh" --source "$ROOT/build/wmediumd-source" --output "$ROOT/build/bin"
 IMAGE_ALIAS=${PRPLMESH_RUNTIME_IMAGE:-prpl-runtime-local} "$ROOT/scripts/build-runtime-image.sh"
 IMAGE_ALIAS=${PRPLMESH_CLIENT_IMAGE:-prpl-client-local} "$ROOT/scripts/build-runtime-image.sh" client
 
-sudo env INSTALL_MODULE=1 "$ROOT/scripts/build-hwsim.sh"
+sudo env INSTALL_MODULE=1 "$ROOT/medium/hwsim/build-hwsim.sh" --source "$ROOT/build/hwsim-source" --cfg80211 "$ROOT/build/cfg80211-source"
 sudo depmod -a "$(uname -r)"
 sudo "$ROOT/scripts/radio-lab.sh" radio-pool
 sudo "$ROOT/scripts/radio-lab.sh" deploy

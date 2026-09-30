@@ -5,7 +5,7 @@ const fs = require('fs');
 const path = require('path');
 const vm = require('vm');
 const source = fs.readFileSync(path.resolve(__dirname,
-  '../wmediumd/configurator/worlds/viewer/index.html'), 'utf8');
+  '../medium/configurator/worlds/viewer/index.html'), 'utf8');
 const helpers = source.slice(source.indexOf('  function heroRole()'), source.indexOf('  function optimizerSubjectRole()'));
 const events = source.slice(source.indexOf('  function applyDemoEvent('), source.indexOf('  function runStateFor('));
 

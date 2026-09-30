@@ -181,7 +181,7 @@ def main():
         parser.error("requires root, --yes-change-lab and a new output directory")
     service = "easymesh-room-demo" if args.stack == "rdk" else "prplmesh-room-demo"
     prefix = ROOT / ("gen" if args.stack == "rdk" else "")
-    for directory in ("demo", "optimizer", "wmediumd/configurator"):
+    for directory in ("demo", "optimizer", "medium/configurator"):
         sys.path.insert(0, str(prefix / directory))
     entrypoint = prefix / "demo/room-demo"
     journal = args.output.resolve() / "manifest-recovery.json"
@@ -262,7 +262,7 @@ def main():
                 time.sleep(2)
             else:
                 raise RuntimeError("manifest playback timeout")
-            world = json.loads((prefix / "wmediumd/configurator/worlds/golden/rf-asymmetric-ack.world.json").read_text())
+            world = json.loads((prefix / "medium/configurator/worlds/golden/rf-asymmetric-ack.world.json").read_text())
             errors = ROOMS.traffic_errors(world, room["traffic_experiment"])
             report["counter_guard_enabled"] = enabled
             report["guard_enabled_in_decisions"] = any(

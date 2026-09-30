@@ -3,7 +3,7 @@
 const assert = require('node:assert/strict');
 const vm = require('node:vm');
 const {installMetricObserver, nativeMetricObservations} = require('./controller-metric-latency.js');
-const meter = require('../wmediumd/configurator/worlds/viewer/signal-meter.js');
+const meter = require('../medium/configurator/worlds/viewer/signal-meter.js');
 
 async function main() {
   let now = 0;

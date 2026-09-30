@@ -4,7 +4,7 @@ from room_demo.rf_manifest import annotate_manifest
 
 
 def test_source_inventory_is_diagnostic_and_does_not_qualify_runtime(tmp_path):
-    folder = tmp_path / "patches" / "hwsim"
+    folder = tmp_path / "medium" / "hwsim" / "patches"
     folder.mkdir(parents=True)
     (folder / "one.patch").write_text("first patch")
     contract = {"qualification": {"physical_capacity": False}, "wire": {"state": "missing"}}
@@ -16,8 +16,8 @@ def test_source_inventory_is_diagnostic_and_does_not_qualify_runtime(tmp_path):
     assert report["qualification"] == {"physical_capacity": False}
     assert report["inventory"]["source_dirty"] is True
     assert report["inventory"]["source_commit"] == "commit-id"
-    assert report["inventory"]["patch_series"]["patches/hwsim"]["patches"] == 1
-    assert len(report["inventory"]["patch_series"]["patches/hwsim"]["sha256"]) == 64
+    assert report["inventory"]["patch_series"]["medium/hwsim/patches"]["patches"] == 1
+    assert len(report["inventory"]["patch_series"]["medium/hwsim/patches"]["sha256"]) == 64
     assert report["inventory"]["medium_binary_manifest"] is None
     assert report["inventory"]["loaded_binary_source_match"].startswith("not established")
     assert "inventory" not in contract

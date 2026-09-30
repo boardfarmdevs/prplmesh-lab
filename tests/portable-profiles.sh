@@ -40,7 +40,7 @@ fi
 
 for script in \
     controller-ui/install.sh \
-    scripts/build-wmediumd.sh \
+    medium/wmediumd/build-wmediumd.sh \
     deploy/guest/prepare-thin-firstboot.sh \
     deploy/guest/prepare-thin-image.sh \
     deploy/guest/select-thin-profile.sh \

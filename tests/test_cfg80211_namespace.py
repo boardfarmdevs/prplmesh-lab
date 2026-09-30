@@ -6,7 +6,7 @@ import pytest
 
 
 ROOT = Path(__file__).resolve().parents[1]
-DIRECTORY = ROOT / "scripts/cfg80211"
+DIRECTORY = ROOT / "medium/hwsim/cfg80211"
 PATCH = DIRECTORY / "0001-scope-socket-release-to-owner-netns.patch"
 
 

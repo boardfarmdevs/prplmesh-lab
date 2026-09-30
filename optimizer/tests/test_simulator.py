@@ -9,7 +9,7 @@ from optimizer.simulator import SimulationConfig, WorldSimulator
 
 ROOT = Path(__file__).parents[1]
 WORLD = (
-    ROOT.parent / "wmediumd" / "configurator" / "worlds" / "golden"
+    ROOT.parent / "medium" / "configurator" / "worlds" / "golden"
     / "home-a-band-walk-small.world.json"
 )
 

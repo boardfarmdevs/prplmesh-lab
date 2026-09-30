@@ -51,7 +51,7 @@
         "layout": "home-five-agent",
         "mobility": "asymmetric-link",
         "name": "home-five-agent--asymmetric-link",
-        "path": "../../wmediumd/configurator/worlds/golden/home-a-asymmetric-link.world.json",
+        "path": "../../medium/configurator/worlds/golden/home-a-asymmetric-link.world.json",
         "station_roles": [
           "sta_mobile_01",
           "sta_static_01",
@@ -128,7 +128,7 @@
         "layout": "home-five-agent",
         "mobility": "asymmetric-link",
         "name": "home-five-agent--asymmetric-link",
-        "path": "../../wmediumd/configurator/worlds/golden/home-a-asymmetric-link.world.json",
+        "path": "../../medium/configurator/worlds/golden/home-a-asymmetric-link.world.json",
         "station_roles": [
           "sta_mobile_01",
           "sta_static_01",
@@ -214,7 +214,7 @@
         "layout": "home-five-agent",
         "mobility": "band-walk-small",
         "name": "home-five-agent--band-walk-small",
-        "path": "../../wmediumd/configurator/worlds/golden/home-a-band-walk-small.world.json",
+        "path": "../../medium/configurator/worlds/golden/home-a-band-walk-small.world.json",
         "station_roles": [
           "sta_static_01",
           "sta_static_02",
@@ -300,7 +300,7 @@
         "layout": "home-five-agent",
         "mobility": "band-walk-small",
         "name": "home-five-agent--band-walk-small",
-        "path": "../../wmediumd/configurator/worlds/golden/home-a-band-walk-small.world.json",
+        "path": "../../medium/configurator/worlds/golden/home-a-band-walk-small.world.json",
         "station_roles": [
           "sta_static_01",
           "sta_static_02",
@@ -386,7 +386,7 @@
         "layout": "home-five-agent",
         "mobility": "slow-walk-ten",
         "name": "home-five-agent--slow-walk-ten",
-        "path": "../../wmediumd/configurator/worlds/golden/home-a-slow-walk-ten.world.json",
+        "path": "../../medium/configurator/worlds/golden/home-a-slow-walk-ten.world.json",
         "station_roles": [
           "sta_mobile_01",
           "sta_mobile_02",
@@ -481,7 +481,7 @@
         "layout": "home-five-agent",
         "mobility": "slow-walk-ten",
         "name": "home-five-agent--slow-walk-ten",
-        "path": "../../wmediumd/configurator/worlds/golden/home-a-slow-walk-ten.world.json",
+        "path": "../../medium/configurator/worlds/golden/home-a-slow-walk-ten.world.json",
         "station_roles": [
           "sta_mobile_01",
           "sta_mobile_02",
@@ -576,7 +576,7 @@
         "layout": "home-five-agent-shifted",
         "mobility": "slow-walk-ten",
         "name": "home-five-agent-shifted--slow-walk-ten",
-        "path": "../../wmediumd/configurator/worlds/golden/home-b-slow-walk-ten.world.json",
+        "path": "../../medium/configurator/worlds/golden/home-b-slow-walk-ten.world.json",
         "station_roles": [
           "sta_mobile_01",
           "sta_mobile_02",
@@ -671,7 +671,7 @@
         "layout": "home-five-agent-shifted",
         "mobility": "slow-walk-ten",
         "name": "home-five-agent-shifted--slow-walk-ten",
-        "path": "../../wmediumd/configurator/worlds/golden/home-b-slow-walk-ten.world.json",
+        "path": "../../medium/configurator/worlds/golden/home-b-slow-walk-ten.world.json",
         "station_roles": [
           "sta_mobile_01",
           "sta_mobile_02",
@@ -763,7 +763,7 @@
         "layout": "home-five-agent",
         "mobility": "band-walk-small",
         "name": "home-five-agent--band-walk-small",
-        "path": "../../wmediumd/configurator/worlds/golden/home-a-band-walk-small.world.json",
+        "path": "../../medium/configurator/worlds/golden/home-a-band-walk-small.world.json",
         "station_roles": [
           "sta_static_01",
           "sta_static_02",
@@ -846,7 +846,7 @@
         "layout": "home-five-agent",
         "mobility": "band-walk-small",
         "name": "home-five-agent--band-walk-small",
-        "path": "../../wmediumd/configurator/worlds/golden/home-a-band-walk-small.world.json",
+        "path": "../../medium/configurator/worlds/golden/home-a-band-walk-small.world.json",
         "station_roles": [
           "sta_static_01",
           "sta_static_02",
@@ -929,7 +929,7 @@
         "layout": "home-five-agent",
         "mobility": "slow-walk-ten",
         "name": "home-five-agent--slow-walk-ten",
-        "path": "../../wmediumd/configurator/worlds/golden/home-a-slow-walk-ten.world.json",
+        "path": "../../medium/configurator/worlds/golden/home-a-slow-walk-ten.world.json",
         "station_roles": [
           "sta_mobile_01",
           "sta_mobile_02",
@@ -1021,7 +1021,7 @@
         "layout": "home-five-agent",
         "mobility": "slow-walk-ten",
         "name": "home-five-agent--slow-walk-ten",
-        "path": "../../wmediumd/configurator/worlds/golden/home-a-slow-walk-ten.world.json",
+        "path": "../../medium/configurator/worlds/golden/home-a-slow-walk-ten.world.json",
         "station_roles": [
           "sta_mobile_01",
           "sta_mobile_02",
@@ -1113,7 +1113,7 @@
         "layout": "home-five-agent-shifted",
         "mobility": "slow-walk-ten",
         "name": "home-five-agent-shifted--slow-walk-ten",
-        "path": "../../wmediumd/configurator/worlds/golden/home-b-slow-walk-ten.world.json",
+        "path": "../../medium/configurator/worlds/golden/home-b-slow-walk-ten.world.json",
         "station_roles": [
           "sta_mobile_01",
           "sta_mobile_02",
@@ -1205,7 +1205,7 @@
         "layout": "home-five-agent-shifted",
         "mobility": "slow-walk-ten",
         "name": "home-five-agent-shifted--slow-walk-ten",
-        "path": "../../wmediumd/configurator/worlds/golden/home-b-slow-walk-ten.world.json",
+        "path": "../../medium/configurator/worlds/golden/home-b-slow-walk-ten.world.json",
         "station_roles": [
           "sta_mobile_01",
           "sta_mobile_02",
@@ -1296,7 +1296,7 @@
         "layout": "home-five-agent",
         "mobility": "band-walk-small",
         "name": "home-five-agent--band-walk-small",
-        "path": "../../wmediumd/configurator/worlds/golden/home-a-band-walk-small.world.json",
+        "path": "../../medium/configurator/worlds/golden/home-a-band-walk-small.world.json",
         "station_roles": [
           "sta_static_01",
           "sta_static_02",
@@ -1378,7 +1378,7 @@
         "layout": "home-five-agent",
         "mobility": "band-walk-small",
         "name": "home-five-agent--band-walk-small",
-        "path": "../../wmediumd/configurator/worlds/golden/home-a-band-walk-small.world.json",
+        "path": "../../medium/configurator/worlds/golden/home-a-band-walk-small.world.json",
         "station_roles": [
           "sta_static_01",
           "sta_static_02",
@@ -1460,7 +1460,7 @@
         "layout": "home-five-agent",
         "mobility": "slow-walk-ten",
         "name": "home-five-agent--slow-walk-ten",
-        "path": "../../wmediumd/configurator/worlds/golden/home-a-slow-walk-ten.world.json",
+        "path": "../../medium/configurator/worlds/golden/home-a-slow-walk-ten.world.json",
         "station_roles": [
           "sta_mobile_01",
           "sta_mobile_02",
@@ -1551,7 +1551,7 @@
         "layout": "home-five-agent",
         "mobility": "slow-walk-ten",
         "name": "home-five-agent--slow-walk-ten",
-        "path": "../../wmediumd/configurator/worlds/golden/home-a-slow-walk-ten.world.json",
+        "path": "../../medium/configurator/worlds/golden/home-a-slow-walk-ten.world.json",
         "station_roles": [
           "sta_mobile_01",
           "sta_mobile_02",
@@ -1642,7 +1642,7 @@
         "layout": "home-five-agent-shifted",
         "mobility": "slow-walk-ten",
         "name": "home-five-agent-shifted--slow-walk-ten",
-        "path": "../../wmediumd/configurator/worlds/golden/home-b-slow-walk-ten.world.json",
+        "path": "../../medium/configurator/worlds/golden/home-b-slow-walk-ten.world.json",
         "station_roles": [
           "sta_mobile_01",
           "sta_mobile_02",
@@ -1733,7 +1733,7 @@
         "layout": "home-five-agent-shifted",
         "mobility": "slow-walk-ten",
         "name": "home-five-agent-shifted--slow-walk-ten",
-        "path": "../../wmediumd/configurator/worlds/golden/home-b-slow-walk-ten.world.json",
+        "path": "../../medium/configurator/worlds/golden/home-b-slow-walk-ten.world.json",
         "station_roles": [
           "sta_mobile_01",
           "sta_mobile_02",
@@ -1821,7 +1821,7 @@
         "layout": "home-five-agent",
         "mobility": "border-hover",
         "name": "home-five-agent--border-hover",
-        "path": "../../wmediumd/configurator/worlds/golden/home-a-border-hover.world.json",
+        "path": "../../medium/configurator/worlds/golden/home-a-border-hover.world.json",
         "station_roles": [
           "sta_mobile_01",
           "sta_mobile_02",
@@ -1902,7 +1902,7 @@
         "layout": "home-five-agent",
         "mobility": "border-hover",
         "name": "home-five-agent--border-hover",
-        "path": "../../wmediumd/configurator/worlds/golden/home-a-border-hover.world.json",
+        "path": "../../medium/configurator/worlds/golden/home-a-border-hover.world.json",
         "station_roles": [
           "sta_mobile_01",
           "sta_mobile_02",
@@ -1985,7 +1985,7 @@
         "layout": "home-five-agent",
         "mobility": "stationary",
         "name": "home-five-agent--stationary",
-        "path": "../../wmediumd/configurator/worlds/golden/home-a-stationary.world.json",
+        "path": "../../medium/configurator/worlds/golden/home-a-stationary.world.json",
         "station_roles": [
           "sta_static_01",
           "sta_static_02",
@@ -2064,7 +2064,7 @@
         "layout": "home-five-agent",
         "mobility": "stationary",
         "name": "home-five-agent--stationary",
-        "path": "../../wmediumd/configurator/worlds/golden/home-a-stationary.world.json",
+        "path": "../../medium/configurator/worlds/golden/home-a-stationary.world.json",
         "station_roles": [
           "sta_static_01",
           "sta_static_02",
@@ -2151,7 +2151,7 @@
         "layout": "home-five-agent",
         "mobility": "asymmetric-link",
         "name": "home-five-agent--asymmetric-link",
-        "path": "../../wmediumd/configurator/worlds/golden/home-a-asymmetric-link.world.json",
+        "path": "../../medium/configurator/worlds/golden/home-a-asymmetric-link.world.json",
         "station_roles": [
           "sta_mobile_01",
           "sta_static_01",
@@ -2240,7 +2240,7 @@
         "layout": "home-five-agent",
         "mobility": "asymmetric-link",
         "name": "home-five-agent--asymmetric-link",
-        "path": "../../wmediumd/configurator/worlds/golden/home-a-asymmetric-link.world.json",
+        "path": "../../medium/configurator/worlds/golden/home-a-asymmetric-link.world.json",
         "station_roles": [
           "sta_mobile_01",
           "sta_static_01",
@@ -2320,7 +2320,7 @@
         "layout": "home-five-agent",
         "mobility": "asymmetric-link",
         "name": "home-five-agent--asymmetric-link",
-        "path": "../../wmediumd/configurator/worlds/golden/home-a-asymmetric-link.world.json",
+        "path": "../../medium/configurator/worlds/golden/home-a-asymmetric-link.world.json",
         "station_roles": [
           "sta_mobile_01",
           "sta_static_01",
@@ -2400,7 +2400,7 @@
         "layout": "home-five-agent",
         "mobility": "asymmetric-link",
         "name": "home-five-agent--asymmetric-link",
-        "path": "../../wmediumd/configurator/worlds/golden/home-a-asymmetric-link.world.json",
+        "path": "../../medium/configurator/worlds/golden/home-a-asymmetric-link.world.json",
         "station_roles": [
           "sta_mobile_01",
           "sta_static_01",
@@ -2469,7 +2469,7 @@
         "layout": "home-five-agent",
         "mobility": "asymmetric-link",
         "name": "home-five-agent--asymmetric-link",
-        "path": "../../wmediumd/configurator/worlds/golden/home-a-asymmetric-link.world.json",
+        "path": "../../medium/configurator/worlds/golden/home-a-asymmetric-link.world.json",
         "station_roles": [
           "sta_mobile_01",
           "sta_static_01",
@@ -2538,7 +2538,7 @@
         "layout": "home-five-agent",
         "mobility": "asymmetric-link",
         "name": "home-five-agent--asymmetric-link",
-        "path": "../../wmediumd/configurator/worlds/golden/home-a-asymmetric-link.world.json",
+        "path": "../../medium/configurator/worlds/golden/home-a-asymmetric-link.world.json",
         "station_roles": [
           "sta_mobile_01",
           "sta_static_01",
@@ -2616,7 +2616,7 @@
         "layout": "home-five-agent",
         "mobility": "asymmetric-link",
         "name": "home-five-agent--asymmetric-link",
-        "path": "../../wmediumd/configurator/worlds/golden/home-a-asymmetric-link.world.json",
+        "path": "../../medium/configurator/worlds/golden/home-a-asymmetric-link.world.json",
         "station_roles": [
           "sta_mobile_01",
           "sta_static_01",
@@ -2694,7 +2694,7 @@
         "layout": "home-five-agent",
         "mobility": "asymmetric-link",
         "name": "home-five-agent--asymmetric-link",
-        "path": "../../wmediumd/configurator/worlds/golden/home-a-asymmetric-link.world.json",
+        "path": "../../medium/configurator/worlds/golden/home-a-asymmetric-link.world.json",
         "station_roles": [
           "sta_mobile_01",
           "sta_static_01",
@@ -2774,7 +2774,7 @@
         "layout": "home-five-agent",
         "mobility": "asymmetric-link",
         "name": "home-five-agent--asymmetric-link",
-        "path": "../../wmediumd/configurator/worlds/golden/home-a-asymmetric-link.world.json",
+        "path": "../../medium/configurator/worlds/golden/home-a-asymmetric-link.world.json",
         "station_roles": [
           "sta_mobile_01",
           "sta_static_01",
@@ -2854,7 +2854,7 @@
         "layout": "home-five-agent",
         "mobility": "asymmetric-link",
         "name": "home-five-agent--asymmetric-link",
-        "path": "../../wmediumd/configurator/worlds/golden/home-a-asymmetric-link.world.json",
+        "path": "../../medium/configurator/worlds/golden/home-a-asymmetric-link.world.json",
         "station_roles": [
           "sta_mobile_01",
           "sta_static_01",
@@ -2943,7 +2943,7 @@
         "layout": "home-five-agent",
         "mobility": "band-walk-small",
         "name": "home-five-agent--band-walk-small",
-        "path": "../../wmediumd/configurator/worlds/golden/home-a-band-walk-small.world.json",
+        "path": "../../medium/configurator/worlds/golden/home-a-band-walk-small.world.json",
         "station_roles": [
           "sta_static_01",
           "sta_static_02",
@@ -3032,7 +3032,7 @@
         "layout": "home-five-agent",
         "mobility": "band-walk-small",
         "name": "home-five-agent--band-walk-small",
-        "path": "../../wmediumd/configurator/worlds/golden/home-a-band-walk-small.world.json",
+        "path": "../../medium/configurator/worlds/golden/home-a-band-walk-small.world.json",
         "station_roles": [
           "sta_static_01",
           "sta_static_02",
@@ -3112,7 +3112,7 @@
         "layout": "home-five-agent",
         "mobility": "band-walk-small",
         "name": "home-five-agent--band-walk-small",
-        "path": "../../wmediumd/configurator/worlds/golden/home-a-band-walk-small.world.json",
+        "path": "../../medium/configurator/worlds/golden/home-a-band-walk-small.world.json",
         "station_roles": [
           "sta_static_01",
           "sta_static_02",
@@ -3192,7 +3192,7 @@
         "layout": "home-five-agent",
         "mobility": "band-walk-small",
         "name": "home-five-agent--band-walk-small",
-        "path": "../../wmediumd/configurator/worlds/golden/home-a-band-walk-small.world.json",
+        "path": "../../medium/configurator/worlds/golden/home-a-band-walk-small.world.json",
         "station_roles": [
           "sta_static_01",
           "sta_static_02",
@@ -3261,7 +3261,7 @@
         "layout": "home-five-agent",
         "mobility": "band-walk-small",
         "name": "home-five-agent--band-walk-small",
-        "path": "../../wmediumd/configurator/worlds/golden/home-a-band-walk-small.world.json",
+        "path": "../../medium/configurator/worlds/golden/home-a-band-walk-small.world.json",
         "station_roles": [
           "sta_static_01",
           "sta_static_02",
@@ -3330,7 +3330,7 @@
         "layout": "home-five-agent",
         "mobility": "band-walk-small",
         "name": "home-five-agent--band-walk-small",
-        "path": "../../wmediumd/configurator/worlds/golden/home-a-band-walk-small.world.json",
+        "path": "../../medium/configurator/worlds/golden/home-a-band-walk-small.world.json",
         "station_roles": [
           "sta_static_01",
           "sta_static_02",
@@ -3408,7 +3408,7 @@
         "layout": "home-five-agent",
         "mobility": "band-walk-small",
         "name": "home-five-agent--band-walk-small",
-        "path": "../../wmediumd/configurator/worlds/golden/home-a-band-walk-small.world.json",
+        "path": "../../medium/configurator/worlds/golden/home-a-band-walk-small.world.json",
         "station_roles": [
           "sta_static_01",
           "sta_static_02",
@@ -3486,7 +3486,7 @@
         "layout": "home-five-agent",
         "mobility": "band-walk-small",
         "name": "home-five-agent--band-walk-small",
-        "path": "../../wmediumd/configurator/worlds/golden/home-a-band-walk-small.world.json",
+        "path": "../../medium/configurator/worlds/golden/home-a-band-walk-small.world.json",
         "station_roles": [
           "sta_static_01",
           "sta_static_02",
@@ -3566,7 +3566,7 @@
         "layout": "home-five-agent",
         "mobility": "band-walk-small",
         "name": "home-five-agent--band-walk-small",
-        "path": "../../wmediumd/configurator/worlds/golden/home-a-band-walk-small.world.json",
+        "path": "../../medium/configurator/worlds/golden/home-a-band-walk-small.world.json",
         "station_roles": [
           "sta_static_01",
           "sta_static_02",
@@ -3646,7 +3646,7 @@
         "layout": "home-five-agent",
         "mobility": "band-walk-small",
         "name": "home-five-agent--band-walk-small",
-        "path": "../../wmediumd/configurator/worlds/golden/home-a-band-walk-small.world.json",
+        "path": "../../medium/configurator/worlds/golden/home-a-band-walk-small.world.json",
         "station_roles": [
           "sta_static_01",
           "sta_static_02",
@@ -3735,7 +3735,7 @@
         "layout": "home-five-agent",
         "mobility": "border-hover",
         "name": "home-five-agent--border-hover",
-        "path": "../../wmediumd/configurator/worlds/golden/home-a-border-hover.world.json",
+        "path": "../../medium/configurator/worlds/golden/home-a-border-hover.world.json",
         "station_roles": [
           "sta_mobile_01",
           "sta_mobile_02",
@@ -3826,7 +3826,7 @@
         "layout": "home-five-agent",
         "mobility": "border-hover",
         "name": "home-five-agent--border-hover",
-        "path": "../../wmediumd/configurator/worlds/golden/home-a-border-hover.world.json",
+        "path": "../../medium/configurator/worlds/golden/home-a-border-hover.world.json",
         "station_roles": [
           "sta_mobile_01",
           "sta_mobile_02",
@@ -3908,7 +3908,7 @@
         "layout": "home-five-agent",
         "mobility": "border-hover",
         "name": "home-five-agent--border-hover",
-        "path": "../../wmediumd/configurator/worlds/golden/home-a-border-hover.world.json",
+        "path": "../../medium/configurator/worlds/golden/home-a-border-hover.world.json",
         "station_roles": [
           "sta_mobile_01",
           "sta_mobile_02",
@@ -3990,7 +3990,7 @@
         "layout": "home-five-agent",
         "mobility": "border-hover",
         "name": "home-five-agent--border-hover",
-        "path": "../../wmediumd/configurator/worlds/golden/home-a-border-hover.world.json",
+        "path": "../../medium/configurator/worlds/golden/home-a-border-hover.world.json",
         "station_roles": [
           "sta_mobile_01",
           "sta_mobile_02",
@@ -4061,7 +4061,7 @@
         "layout": "home-five-agent",
         "mobility": "border-hover",
         "name": "home-five-agent--border-hover",
-        "path": "../../wmediumd/configurator/worlds/golden/home-a-border-hover.world.json",
+        "path": "../../medium/configurator/worlds/golden/home-a-border-hover.world.json",
         "station_roles": [
           "sta_mobile_01",
           "sta_mobile_02",
@@ -4132,7 +4132,7 @@
         "layout": "home-five-agent",
         "mobility": "border-hover",
         "name": "home-five-agent--border-hover",
-        "path": "../../wmediumd/configurator/worlds/golden/home-a-border-hover.world.json",
+        "path": "../../medium/configurator/worlds/golden/home-a-border-hover.world.json",
         "station_roles": [
           "sta_mobile_01",
           "sta_mobile_02",
@@ -4212,7 +4212,7 @@
         "layout": "home-five-agent",
         "mobility": "border-hover",
         "name": "home-five-agent--border-hover",
-        "path": "../../wmediumd/configurator/worlds/golden/home-a-border-hover.world.json",
+        "path": "../../medium/configurator/worlds/golden/home-a-border-hover.world.json",
         "station_roles": [
           "sta_mobile_01",
           "sta_mobile_02",
@@ -4292,7 +4292,7 @@
         "layout": "home-five-agent",
         "mobility": "border-hover",
         "name": "home-five-agent--border-hover",
-        "path": "../../wmediumd/configurator/worlds/golden/home-a-border-hover.world.json",
+        "path": "../../medium/configurator/worlds/golden/home-a-border-hover.world.json",
         "station_roles": [
           "sta_mobile_01",
           "sta_mobile_02",
@@ -4374,7 +4374,7 @@
         "layout": "home-five-agent",
         "mobility": "border-hover",
         "name": "home-five-agent--border-hover",
-        "path": "../../wmediumd/configurator/worlds/golden/home-a-border-hover.world.json",
+        "path": "../../medium/configurator/worlds/golden/home-a-border-hover.world.json",
         "station_roles": [
           "sta_mobile_01",
           "sta_mobile_02",
@@ -4456,7 +4456,7 @@
         "layout": "home-five-agent",
         "mobility": "border-hover",
         "name": "home-five-agent--border-hover",
-        "path": "../../wmediumd/configurator/worlds/golden/home-a-border-hover.world.json",
+        "path": "../../medium/configurator/worlds/golden/home-a-border-hover.world.json",
         "station_roles": [
           "sta_mobile_01",
           "sta_mobile_02",
@@ -4547,7 +4547,7 @@
         "layout": "home-five-agent",
         "mobility": "disappear-reappear",
         "name": "home-five-agent--disappear-reappear",
-        "path": "../../wmediumd/configurator/worlds/golden/home-a-disappear-reappear.world.json",
+        "path": "../../medium/configurator/worlds/golden/home-a-disappear-reappear.world.json",
         "station_roles": [
           "sta_mobile_01",
           "sta_mobile_02",
@@ -4638,7 +4638,7 @@
         "layout": "home-five-agent",
         "mobility": "disappear-reappear",
         "name": "home-five-agent--disappear-reappear",
-        "path": "../../wmediumd/configurator/worlds/golden/home-a-disappear-reappear.world.json",
+        "path": "../../medium/configurator/worlds/golden/home-a-disappear-reappear.world.json",
         "station_roles": [
           "sta_mobile_01",
           "sta_mobile_02",
@@ -4720,7 +4720,7 @@
         "layout": "home-five-agent",
         "mobility": "disappear-reappear",
         "name": "home-five-agent--disappear-reappear",
-        "path": "../../wmediumd/configurator/worlds/golden/home-a-disappear-reappear.world.json",
+        "path": "../../medium/configurator/worlds/golden/home-a-disappear-reappear.world.json",
         "station_roles": [
           "sta_mobile_01",
           "sta_mobile_02",
@@ -4802,7 +4802,7 @@
         "layout": "home-five-agent",
         "mobility": "disappear-reappear",
         "name": "home-five-agent--disappear-reappear",
-        "path": "../../wmediumd/configurator/worlds/golden/home-a-disappear-reappear.world.json",
+        "path": "../../medium/configurator/worlds/golden/home-a-disappear-reappear.world.json",
         "station_roles": [
           "sta_mobile_01",
           "sta_mobile_02",
@@ -4873,7 +4873,7 @@
         "layout": "home-five-agent",
         "mobility": "disappear-reappear",
         "name": "home-five-agent--disappear-reappear",
-        "path": "../../wmediumd/configurator/worlds/golden/home-a-disappear-reappear.world.json",
+        "path": "../../medium/configurator/worlds/golden/home-a-disappear-reappear.world.json",
         "station_roles": [
           "sta_mobile_01",
           "sta_mobile_02",
@@ -4944,7 +4944,7 @@
         "layout": "home-five-agent",
         "mobility": "disappear-reappear",
         "name": "home-five-agent--disappear-reappear",
-        "path": "../../wmediumd/configurator/worlds/golden/home-a-disappear-reappear.world.json",
+        "path": "../../medium/configurator/worlds/golden/home-a-disappear-reappear.world.json",
         "station_roles": [
           "sta_mobile_01",
           "sta_mobile_02",
@@ -5024,7 +5024,7 @@
         "layout": "home-five-agent",
         "mobility": "disappear-reappear",
         "name": "home-five-agent--disappear-reappear",
-        "path": "../../wmediumd/configurator/worlds/golden/home-a-disappear-reappear.world.json",
+        "path": "../../medium/configurator/worlds/golden/home-a-disappear-reappear.world.json",
         "station_roles": [
           "sta_mobile_01",
           "sta_mobile_02",
@@ -5104,7 +5104,7 @@
         "layout": "home-five-agent",
         "mobility": "disappear-reappear",
         "name": "home-five-agent--disappear-reappear",
-        "path": "../../wmediumd/configurator/worlds/golden/home-a-disappear-reappear.world.json",
+        "path": "../../medium/configurator/worlds/golden/home-a-disappear-reappear.world.json",
         "station_roles": [
           "sta_mobile_01",
           "sta_mobile_02",
@@ -5186,7 +5186,7 @@
         "layout": "home-five-agent",
         "mobility": "disappear-reappear",
         "name": "home-five-agent--disappear-reappear",
-        "path": "../../wmediumd/configurator/worlds/golden/home-a-disappear-reappear.world.json",
+        "path": "../../medium/configurator/worlds/golden/home-a-disappear-reappear.world.json",
         "station_roles": [
           "sta_mobile_01",
           "sta_mobile_02",
@@ -5268,7 +5268,7 @@
         "layout": "home-five-agent",
         "mobility": "disappear-reappear",
         "name": "home-five-agent--disappear-reappear",
-        "path": "../../wmediumd/configurator/worlds/golden/home-a-disappear-reappear.world.json",
+        "path": "../../medium/configurator/worlds/golden/home-a-disappear-reappear.world.json",
         "station_roles": [
           "sta_mobile_01",
           "sta_mobile_02",
@@ -5359,7 +5359,7 @@
         "layout": "home-five-agent",
         "mobility": "extender-loss-recovery",
         "name": "home-five-agent--extender-loss-recovery",
-        "path": "../../wmediumd/configurator/worlds/golden/home-a-extender-loss-recovery.world.json",
+        "path": "../../medium/configurator/worlds/golden/home-a-extender-loss-recovery.world.json",
         "station_roles": [
           "sta_static_01",
           "sta_static_02",
@@ -5447,7 +5447,7 @@
         "layout": "home-five-agent",
         "mobility": "extender-loss-recovery",
         "name": "home-five-agent--extender-loss-recovery",
-        "path": "../../wmediumd/configurator/worlds/golden/home-a-extender-loss-recovery.world.json",
+        "path": "../../medium/configurator/worlds/golden/home-a-extender-loss-recovery.world.json",
         "station_roles": [
           "sta_static_01",
           "sta_static_02",
@@ -5526,7 +5526,7 @@
         "layout": "home-five-agent",
         "mobility": "extender-loss-recovery",
         "name": "home-five-agent--extender-loss-recovery",
-        "path": "../../wmediumd/configurator/worlds/golden/home-a-extender-loss-recovery.world.json",
+        "path": "../../medium/configurator/worlds/golden/home-a-extender-loss-recovery.world.json",
         "station_roles": [
           "sta_static_01",
           "sta_static_02",
@@ -5605,7 +5605,7 @@
         "layout": "home-five-agent",
         "mobility": "extender-loss-recovery",
         "name": "home-five-agent--extender-loss-recovery",
-        "path": "../../wmediumd/configurator/worlds/golden/home-a-extender-loss-recovery.world.json",
+        "path": "../../medium/configurator/worlds/golden/home-a-extender-loss-recovery.world.json",
         "station_roles": [
           "sta_static_01",
           "sta_static_02",
@@ -5673,7 +5673,7 @@
         "layout": "home-five-agent",
         "mobility": "extender-loss-recovery",
         "name": "home-five-agent--extender-loss-recovery",
-        "path": "../../wmediumd/configurator/worlds/golden/home-a-extender-loss-recovery.world.json",
+        "path": "../../medium/configurator/worlds/golden/home-a-extender-loss-recovery.world.json",
         "station_roles": [
           "sta_static_01",
           "sta_static_02",
@@ -5741,7 +5741,7 @@
         "layout": "home-five-agent",
         "mobility": "extender-loss-recovery",
         "name": "home-five-agent--extender-loss-recovery",
-        "path": "../../wmediumd/configurator/worlds/golden/home-a-extender-loss-recovery.world.json",
+        "path": "../../medium/configurator/worlds/golden/home-a-extender-loss-recovery.world.json",
         "station_roles": [
           "sta_static_01",
           "sta_static_02",
@@ -5818,7 +5818,7 @@
         "layout": "home-five-agent",
         "mobility": "extender-loss-recovery",
         "name": "home-five-agent--extender-loss-recovery",
-        "path": "../../wmediumd/configurator/worlds/golden/home-a-extender-loss-recovery.world.json",
+        "path": "../../medium/configurator/worlds/golden/home-a-extender-loss-recovery.world.json",
         "station_roles": [
           "sta_static_01",
           "sta_static_02",
@@ -5895,7 +5895,7 @@
         "layout": "home-five-agent",
         "mobility": "extender-loss-recovery",
         "name": "home-five-agent--extender-loss-recovery",
-        "path": "../../wmediumd/configurator/worlds/golden/home-a-extender-loss-recovery.world.json",
+        "path": "../../medium/configurator/worlds/golden/home-a-extender-loss-recovery.world.json",
         "station_roles": [
           "sta_static_01",
           "sta_static_02",
@@ -5974,7 +5974,7 @@
         "layout": "home-five-agent",
         "mobility": "extender-loss-recovery",
         "name": "home-five-agent--extender-loss-recovery",
-        "path": "../../wmediumd/configurator/worlds/golden/home-a-extender-loss-recovery.world.json",
+        "path": "../../medium/configurator/worlds/golden/home-a-extender-loss-recovery.world.json",
         "station_roles": [
           "sta_static_01",
           "sta_static_02",
@@ -6053,7 +6053,7 @@
         "layout": "home-five-agent",
         "mobility": "extender-loss-recovery",
         "name": "home-five-agent--extender-loss-recovery",
-        "path": "../../wmediumd/configurator/worlds/golden/home-a-extender-loss-recovery.world.json",
+        "path": "../../medium/configurator/worlds/golden/home-a-extender-loss-recovery.world.json",
         "station_roles": [
           "sta_static_01",
           "sta_static_02",
@@ -6141,7 +6141,7 @@
         "layout": "home-five-agent",
         "mobility": "fast-transit",
         "name": "home-five-agent--fast-transit",
-        "path": "../../wmediumd/configurator/worlds/golden/home-a-fast-transit.world.json",
+        "path": "../../medium/configurator/worlds/golden/home-a-fast-transit.world.json",
         "station_roles": [
           "sta_mobile_01",
           "sta_mobile_02",
@@ -6231,7 +6231,7 @@
         "layout": "home-five-agent",
         "mobility": "fast-transit",
         "name": "home-five-agent--fast-transit",
-        "path": "../../wmediumd/configurator/worlds/golden/home-a-fast-transit.world.json",
+        "path": "../../medium/configurator/worlds/golden/home-a-fast-transit.world.json",
         "station_roles": [
           "sta_mobile_01",
           "sta_mobile_02",
@@ -6312,7 +6312,7 @@
         "layout": "home-five-agent",
         "mobility": "fast-transit",
         "name": "home-five-agent--fast-transit",
-        "path": "../../wmediumd/configurator/worlds/golden/home-a-fast-transit.world.json",
+        "path": "../../medium/configurator/worlds/golden/home-a-fast-transit.world.json",
         "station_roles": [
           "sta_mobile_01",
           "sta_mobile_02",
@@ -6393,7 +6393,7 @@
         "layout": "home-five-agent",
         "mobility": "fast-transit",
         "name": "home-five-agent--fast-transit",
-        "path": "../../wmediumd/configurator/worlds/golden/home-a-fast-transit.world.json",
+        "path": "../../medium/configurator/worlds/golden/home-a-fast-transit.world.json",
         "station_roles": [
           "sta_mobile_01",
           "sta_mobile_02",
@@ -6463,7 +6463,7 @@
         "layout": "home-five-agent",
         "mobility": "fast-transit",
         "name": "home-five-agent--fast-transit",
-        "path": "../../wmediumd/configurator/worlds/golden/home-a-fast-transit.world.json",
+        "path": "../../medium/configurator/worlds/golden/home-a-fast-transit.world.json",
         "station_roles": [
           "sta_mobile_01",
           "sta_mobile_02",
@@ -6533,7 +6533,7 @@
         "layout": "home-five-agent",
         "mobility": "fast-transit",
         "name": "home-five-agent--fast-transit",
-        "path": "../../wmediumd/configurator/worlds/golden/home-a-fast-transit.world.json",
+        "path": "../../medium/configurator/worlds/golden/home-a-fast-transit.world.json",
         "station_roles": [
           "sta_mobile_01",
           "sta_mobile_02",
@@ -6612,7 +6612,7 @@
         "layout": "home-five-agent",
         "mobility": "fast-transit",
         "name": "home-five-agent--fast-transit",
-        "path": "../../wmediumd/configurator/worlds/golden/home-a-fast-transit.world.json",
+        "path": "../../medium/configurator/worlds/golden/home-a-fast-transit.world.json",
         "station_roles": [
           "sta_mobile_01",
           "sta_mobile_02",
@@ -6691,7 +6691,7 @@
         "layout": "home-five-agent",
         "mobility": "fast-transit",
         "name": "home-five-agent--fast-transit",
-        "path": "../../wmediumd/configurator/worlds/golden/home-a-fast-transit.world.json",
+        "path": "../../medium/configurator/worlds/golden/home-a-fast-transit.world.json",
         "station_roles": [
           "sta_mobile_01",
           "sta_mobile_02",
@@ -6772,7 +6772,7 @@
         "layout": "home-five-agent",
         "mobility": "fast-transit",
         "name": "home-five-agent--fast-transit",
-        "path": "../../wmediumd/configurator/worlds/golden/home-a-fast-transit.world.json",
+        "path": "../../medium/configurator/worlds/golden/home-a-fast-transit.world.json",
         "station_roles": [
           "sta_mobile_01",
           "sta_mobile_02",
@@ -6853,7 +6853,7 @@
         "layout": "home-five-agent",
         "mobility": "fast-transit",
         "name": "home-five-agent--fast-transit",
-        "path": "../../wmediumd/configurator/worlds/golden/home-a-fast-transit.world.json",
+        "path": "../../medium/configurator/worlds/golden/home-a-fast-transit.world.json",
         "station_roles": [
           "sta_mobile_01",
           "sta_mobile_02",
@@ -6943,7 +6943,7 @@
         "layout": "home-five-agent",
         "mobility": "flash-crowd",
         "name": "home-five-agent--flash-crowd",
-        "path": "../../wmediumd/configurator/worlds/golden/home-a-flash-crowd.world.json",
+        "path": "../../medium/configurator/worlds/golden/home-a-flash-crowd.world.json",
         "station_roles": [
           "sta_mobile_01",
           "sta_mobile_02",
@@ -7042,7 +7042,7 @@
         "layout": "home-five-agent",
         "mobility": "flash-crowd",
         "name": "home-five-agent--flash-crowd",
-        "path": "../../wmediumd/configurator/worlds/golden/home-a-flash-crowd.world.json",
+        "path": "../../medium/configurator/worlds/golden/home-a-flash-crowd.world.json",
         "station_roles": [
           "sta_mobile_01",
           "sta_mobile_02",
@@ -7132,7 +7132,7 @@
         "layout": "home-five-agent",
         "mobility": "flash-crowd",
         "name": "home-five-agent--flash-crowd",
-        "path": "../../wmediumd/configurator/worlds/golden/home-a-flash-crowd.world.json",
+        "path": "../../medium/configurator/worlds/golden/home-a-flash-crowd.world.json",
         "station_roles": [
           "sta_mobile_01",
           "sta_mobile_02",
@@ -7222,7 +7222,7 @@
         "layout": "home-five-agent",
         "mobility": "flash-crowd",
         "name": "home-five-agent--flash-crowd",
-        "path": "../../wmediumd/configurator/worlds/golden/home-a-flash-crowd.world.json",
+        "path": "../../medium/configurator/worlds/golden/home-a-flash-crowd.world.json",
         "station_roles": [
           "sta_mobile_01",
           "sta_mobile_02",
@@ -7301,7 +7301,7 @@
         "layout": "home-five-agent",
         "mobility": "flash-crowd",
         "name": "home-five-agent--flash-crowd",
-        "path": "../../wmediumd/configurator/worlds/golden/home-a-flash-crowd.world.json",
+        "path": "../../medium/configurator/worlds/golden/home-a-flash-crowd.world.json",
         "station_roles": [
           "sta_mobile_01",
           "sta_mobile_02",
@@ -7380,7 +7380,7 @@
         "layout": "home-five-agent",
         "mobility": "flash-crowd",
         "name": "home-five-agent--flash-crowd",
-        "path": "../../wmediumd/configurator/worlds/golden/home-a-flash-crowd.world.json",
+        "path": "../../medium/configurator/worlds/golden/home-a-flash-crowd.world.json",
         "station_roles": [
           "sta_mobile_01",
           "sta_mobile_02",
@@ -7468,7 +7468,7 @@
         "layout": "home-five-agent",
         "mobility": "flash-crowd",
         "name": "home-five-agent--flash-crowd",
-        "path": "../../wmediumd/configurator/worlds/golden/home-a-flash-crowd.world.json",
+        "path": "../../medium/configurator/worlds/golden/home-a-flash-crowd.world.json",
         "station_roles": [
           "sta_mobile_01",
           "sta_mobile_02",
@@ -7556,7 +7556,7 @@
         "layout": "home-five-agent",
         "mobility": "flash-crowd",
         "name": "home-five-agent--flash-crowd",
-        "path": "../../wmediumd/configurator/worlds/golden/home-a-flash-crowd.world.json",
+        "path": "../../medium/configurator/worlds/golden/home-a-flash-crowd.world.json",
         "station_roles": [
           "sta_mobile_01",
           "sta_mobile_02",
@@ -7646,7 +7646,7 @@
         "layout": "home-five-agent",
         "mobility": "flash-crowd",
         "name": "home-five-agent--flash-crowd",
-        "path": "../../wmediumd/configurator/worlds/golden/home-a-flash-crowd.world.json",
+        "path": "../../medium/configurator/worlds/golden/home-a-flash-crowd.world.json",
         "station_roles": [
           "sta_mobile_01",
           "sta_mobile_02",
@@ -7736,7 +7736,7 @@
         "layout": "home-five-agent",
         "mobility": "flash-crowd",
         "name": "home-five-agent--flash-crowd",
-        "path": "../../wmediumd/configurator/worlds/golden/home-a-flash-crowd.world.json",
+        "path": "../../medium/configurator/worlds/golden/home-a-flash-crowd.world.json",
         "station_roles": [
           "sta_mobile_01",
           "sta_mobile_02",
@@ -7835,7 +7835,7 @@
         "layout": "home-five-agent",
         "mobility": "slow-walk-ten",
         "name": "home-five-agent--slow-walk-ten",
-        "path": "../../wmediumd/configurator/worlds/golden/home-a-slow-walk-ten.world.json",
+        "path": "../../medium/configurator/worlds/golden/home-a-slow-walk-ten.world.json",
         "station_roles": [
           "sta_mobile_01",
           "sta_mobile_02",
@@ -7933,7 +7933,7 @@
         "layout": "home-five-agent",
         "mobility": "slow-walk-ten",
         "name": "home-five-agent--slow-walk-ten",
-        "path": "../../wmediumd/configurator/worlds/golden/home-a-slow-walk-ten.world.json",
+        "path": "../../medium/configurator/worlds/golden/home-a-slow-walk-ten.world.json",
         "station_roles": [
           "sta_mobile_01",
           "sta_mobile_02",
@@ -8022,7 +8022,7 @@
         "layout": "home-five-agent",
         "mobility": "slow-walk-ten",
         "name": "home-five-agent--slow-walk-ten",
-        "path": "../../wmediumd/configurator/worlds/golden/home-a-slow-walk-ten.world.json",
+        "path": "../../medium/configurator/worlds/golden/home-a-slow-walk-ten.world.json",
         "station_roles": [
           "sta_mobile_01",
           "sta_mobile_02",
@@ -8111,7 +8111,7 @@
         "layout": "home-five-agent",
         "mobility": "slow-walk-ten",
         "name": "home-five-agent--slow-walk-ten",
-        "path": "../../wmediumd/configurator/worlds/golden/home-a-slow-walk-ten.world.json",
+        "path": "../../medium/configurator/worlds/golden/home-a-slow-walk-ten.world.json",
         "station_roles": [
           "sta_mobile_01",
           "sta_mobile_02",
@@ -8189,7 +8189,7 @@
         "layout": "home-five-agent",
         "mobility": "slow-walk-ten",
         "name": "home-five-agent--slow-walk-ten",
-        "path": "../../wmediumd/configurator/worlds/golden/home-a-slow-walk-ten.world.json",
+        "path": "../../medium/configurator/worlds/golden/home-a-slow-walk-ten.world.json",
         "station_roles": [
           "sta_mobile_01",
           "sta_mobile_02",
@@ -8267,7 +8267,7 @@
         "layout": "home-five-agent",
         "mobility": "slow-walk-ten",
         "name": "home-five-agent--slow-walk-ten",
-        "path": "../../wmediumd/configurator/worlds/golden/home-a-slow-walk-ten.world.json",
+        "path": "../../medium/configurator/worlds/golden/home-a-slow-walk-ten.world.json",
         "station_roles": [
           "sta_mobile_01",
           "sta_mobile_02",
@@ -8354,7 +8354,7 @@
         "layout": "home-five-agent",
         "mobility": "slow-walk-ten",
         "name": "home-five-agent--slow-walk-ten",
-        "path": "../../wmediumd/configurator/worlds/golden/home-a-slow-walk-ten.world.json",
+        "path": "../../medium/configurator/worlds/golden/home-a-slow-walk-ten.world.json",
         "station_roles": [
           "sta_mobile_01",
           "sta_mobile_02",
@@ -8441,7 +8441,7 @@
         "layout": "home-five-agent",
         "mobility": "slow-walk-ten",
         "name": "home-five-agent--slow-walk-ten",
-        "path": "../../wmediumd/configurator/worlds/golden/home-a-slow-walk-ten.world.json",
+        "path": "../../medium/configurator/worlds/golden/home-a-slow-walk-ten.world.json",
         "station_roles": [
           "sta_mobile_01",
           "sta_mobile_02",
@@ -8530,7 +8530,7 @@
         "layout": "home-five-agent",
         "mobility": "slow-walk-ten",
         "name": "home-five-agent--slow-walk-ten",
-        "path": "../../wmediumd/configurator/worlds/golden/home-a-slow-walk-ten.world.json",
+        "path": "../../medium/configurator/worlds/golden/home-a-slow-walk-ten.world.json",
         "station_roles": [
           "sta_mobile_01",
           "sta_mobile_02",
@@ -8619,7 +8619,7 @@
         "layout": "home-five-agent",
         "mobility": "slow-walk-ten",
         "name": "home-five-agent--slow-walk-ten",
-        "path": "../../wmediumd/configurator/worlds/golden/home-a-slow-walk-ten.world.json",
+        "path": "../../medium/configurator/worlds/golden/home-a-slow-walk-ten.world.json",
         "station_roles": [
           "sta_mobile_01",
           "sta_mobile_02",
@@ -8717,7 +8717,7 @@
         "layout": "home-five-agent",
         "mobility": "stationary",
         "name": "home-five-agent--stationary",
-        "path": "../../wmediumd/configurator/worlds/golden/home-a-stationary.world.json",
+        "path": "../../medium/configurator/worlds/golden/home-a-stationary.world.json",
         "station_roles": [
           "sta_static_01",
           "sta_static_02",
@@ -8804,7 +8804,7 @@
         "layout": "home-five-agent",
         "mobility": "stationary",
         "name": "home-five-agent--stationary",
-        "path": "../../wmediumd/configurator/worlds/golden/home-a-stationary.world.json",
+        "path": "../../medium/configurator/worlds/golden/home-a-stationary.world.json",
         "station_roles": [
           "sta_static_01",
           "sta_static_02",
@@ -8882,7 +8882,7 @@
         "layout": "home-five-agent",
         "mobility": "stationary",
         "name": "home-five-agent--stationary",
-        "path": "../../wmediumd/configurator/worlds/golden/home-a-stationary.world.json",
+        "path": "../../medium/configurator/worlds/golden/home-a-stationary.world.json",
         "station_roles": [
           "sta_static_01",
           "sta_static_02",
@@ -8960,7 +8960,7 @@
         "layout": "home-five-agent",
         "mobility": "stationary",
         "name": "home-five-agent--stationary",
-        "path": "../../wmediumd/configurator/worlds/golden/home-a-stationary.world.json",
+        "path": "../../medium/configurator/worlds/golden/home-a-stationary.world.json",
         "station_roles": [
           "sta_static_01",
           "sta_static_02",
@@ -9027,7 +9027,7 @@
         "layout": "home-five-agent",
         "mobility": "stationary",
         "name": "home-five-agent--stationary",
-        "path": "../../wmediumd/configurator/worlds/golden/home-a-stationary.world.json",
+        "path": "../../medium/configurator/worlds/golden/home-a-stationary.world.json",
         "station_roles": [
           "sta_static_01",
           "sta_static_02",
@@ -9094,7 +9094,7 @@
         "layout": "home-five-agent",
         "mobility": "stationary",
         "name": "home-five-agent--stationary",
-        "path": "../../wmediumd/configurator/worlds/golden/home-a-stationary.world.json",
+        "path": "../../medium/configurator/worlds/golden/home-a-stationary.world.json",
         "station_roles": [
           "sta_static_01",
           "sta_static_02",
@@ -9170,7 +9170,7 @@
         "layout": "home-five-agent",
         "mobility": "stationary",
         "name": "home-five-agent--stationary",
-        "path": "../../wmediumd/configurator/worlds/golden/home-a-stationary.world.json",
+        "path": "../../medium/configurator/worlds/golden/home-a-stationary.world.json",
         "station_roles": [
           "sta_static_01",
           "sta_static_02",
@@ -9246,7 +9246,7 @@
         "layout": "home-five-agent",
         "mobility": "stationary",
         "name": "home-five-agent--stationary",
-        "path": "../../wmediumd/configurator/worlds/golden/home-a-stationary.world.json",
+        "path": "../../medium/configurator/worlds/golden/home-a-stationary.world.json",
         "station_roles": [
           "sta_static_01",
           "sta_static_02",
@@ -9324,7 +9324,7 @@
         "layout": "home-five-agent",
         "mobility": "stationary",
         "name": "home-five-agent--stationary",
-        "path": "../../wmediumd/configurator/worlds/golden/home-a-stationary.world.json",
+        "path": "../../medium/configurator/worlds/golden/home-a-stationary.world.json",
         "station_roles": [
           "sta_static_01",
           "sta_static_02",
@@ -9402,7 +9402,7 @@
         "layout": "home-five-agent",
         "mobility": "stationary",
         "name": "home-five-agent--stationary",
-        "path": "../../wmediumd/configurator/worlds/golden/home-a-stationary.world.json",
+        "path": "../../medium/configurator/worlds/golden/home-a-stationary.world.json",
         "station_roles": [
           "sta_static_01",
           "sta_static_02",
@@ -9489,7 +9489,7 @@
         "layout": "home-five-agent-shifted",
         "mobility": "slow-walk-ten",
         "name": "home-five-agent-shifted--slow-walk-ten",
-        "path": "../../wmediumd/configurator/worlds/golden/home-b-slow-walk-ten.world.json",
+        "path": "../../medium/configurator/worlds/golden/home-b-slow-walk-ten.world.json",
         "station_roles": [
           "sta_mobile_01",
           "sta_mobile_02",
@@ -9587,7 +9587,7 @@
         "layout": "home-five-agent-shifted",
         "mobility": "slow-walk-ten",
         "name": "home-five-agent-shifted--slow-walk-ten",
-        "path": "../../wmediumd/configurator/worlds/golden/home-b-slow-walk-ten.world.json",
+        "path": "../../medium/configurator/worlds/golden/home-b-slow-walk-ten.world.json",
         "station_roles": [
           "sta_mobile_01",
           "sta_mobile_02",
@@ -9676,7 +9676,7 @@
         "layout": "home-five-agent-shifted",
         "mobility": "slow-walk-ten",
         "name": "home-five-agent-shifted--slow-walk-ten",
-        "path": "../../wmediumd/configurator/worlds/golden/home-b-slow-walk-ten.world.json",
+        "path": "../../medium/configurator/worlds/golden/home-b-slow-walk-ten.world.json",
         "station_roles": [
           "sta_mobile_01",
           "sta_mobile_02",
@@ -9765,7 +9765,7 @@
         "layout": "home-five-agent-shifted",
         "mobility": "slow-walk-ten",
         "name": "home-five-agent-shifted--slow-walk-ten",
-        "path": "../../wmediumd/configurator/worlds/golden/home-b-slow-walk-ten.world.json",
+        "path": "../../medium/configurator/worlds/golden/home-b-slow-walk-ten.world.json",
         "station_roles": [
           "sta_mobile_01",
           "sta_mobile_02",
@@ -9843,7 +9843,7 @@
         "layout": "home-five-agent-shifted",
         "mobility": "slow-walk-ten",
         "name": "home-five-agent-shifted--slow-walk-ten",
-        "path": "../../wmediumd/configurator/worlds/golden/home-b-slow-walk-ten.world.json",
+        "path": "../../medium/configurator/worlds/golden/home-b-slow-walk-ten.world.json",
         "station_roles": [
           "sta_mobile_01",
           "sta_mobile_02",
@@ -9921,7 +9921,7 @@
         "layout": "home-five-agent-shifted",
         "mobility": "slow-walk-ten",
         "name": "home-five-agent-shifted--slow-walk-ten",
-        "path": "../../wmediumd/configurator/worlds/golden/home-b-slow-walk-ten.world.json",
+        "path": "../../medium/configurator/worlds/golden/home-b-slow-walk-ten.world.json",
         "station_roles": [
           "sta_mobile_01",
           "sta_mobile_02",
@@ -10008,7 +10008,7 @@
         "layout": "home-five-agent-shifted",
         "mobility": "slow-walk-ten",
         "name": "home-five-agent-shifted--slow-walk-ten",
-        "path": "../../wmediumd/configurator/worlds/golden/home-b-slow-walk-ten.world.json",
+        "path": "../../medium/configurator/worlds/golden/home-b-slow-walk-ten.world.json",
         "station_roles": [
           "sta_mobile_01",
           "sta_mobile_02",
@@ -10095,7 +10095,7 @@
         "layout": "home-five-agent-shifted",
         "mobility": "slow-walk-ten",
         "name": "home-five-agent-shifted--slow-walk-ten",
-        "path": "../../wmediumd/configurator/worlds/golden/home-b-slow-walk-ten.world.json",
+        "path": "../../medium/configurator/worlds/golden/home-b-slow-walk-ten.world.json",
         "station_roles": [
           "sta_mobile_01",
           "sta_mobile_02",
@@ -10184,7 +10184,7 @@
         "layout": "home-five-agent-shifted",
         "mobility": "slow-walk-ten",
         "name": "home-five-agent-shifted--slow-walk-ten",
-        "path": "../../wmediumd/configurator/worlds/golden/home-b-slow-walk-ten.world.json",
+        "path": "../../medium/configurator/worlds/golden/home-b-slow-walk-ten.world.json",
         "station_roles": [
           "sta_mobile_01",
           "sta_mobile_02",
@@ -10273,7 +10273,7 @@
         "layout": "home-five-agent-shifted",
         "mobility": "slow-walk-ten",
         "name": "home-five-agent-shifted--slow-walk-ten",
-        "path": "../../wmediumd/configurator/worlds/golden/home-b-slow-walk-ten.world.json",
+        "path": "../../medium/configurator/worlds/golden/home-b-slow-walk-ten.world.json",
         "station_roles": [
           "sta_mobile_01",
           "sta_mobile_02",
@@ -10359,7 +10359,7 @@
         "layout": "home-five-agent",
         "mobility": "disappear-reappear",
         "name": "home-five-agent--disappear-reappear",
-        "path": "../../wmediumd/configurator/worlds/golden/home-a-disappear-reappear.world.json",
+        "path": "../../medium/configurator/worlds/golden/home-a-disappear-reappear.world.json",
         "station_roles": [
           "sta_mobile_01",
           "sta_mobile_02",
@@ -10438,7 +10438,7 @@
         "layout": "home-five-agent",
         "mobility": "disappear-reappear",
         "name": "home-five-agent--disappear-reappear",
-        "path": "../../wmediumd/configurator/worlds/golden/home-a-disappear-reappear.world.json",
+        "path": "../../medium/configurator/worlds/golden/home-a-disappear-reappear.world.json",
         "station_roles": [
           "sta_mobile_01",
           "sta_mobile_02",
@@ -10518,7 +10518,7 @@
         "layout": "home-five-agent",
         "mobility": "extender-loss-recovery",
         "name": "home-five-agent--extender-loss-recovery",
-        "path": "../../wmediumd/configurator/worlds/golden/home-a-extender-loss-recovery.world.json",
+        "path": "../../medium/configurator/worlds/golden/home-a-extender-loss-recovery.world.json",
         "station_roles": [
           "sta_static_01",
           "sta_static_02",
@@ -10595,7 +10595,7 @@
         "layout": "home-five-agent",
         "mobility": "extender-loss-recovery",
         "name": "home-five-agent--extender-loss-recovery",
-        "path": "../../wmediumd/configurator/worlds/golden/home-a-extender-loss-recovery.world.json",
+        "path": "../../medium/configurator/worlds/golden/home-a-extender-loss-recovery.world.json",
         "station_roles": [
           "sta_static_01",
           "sta_static_02",
@@ -10672,7 +10672,7 @@
         "layout": "home-five-agent",
         "mobility": "fast-transit",
         "name": "home-five-agent--fast-transit",
-        "path": "../../wmediumd/configurator/worlds/golden/home-a-fast-transit.world.json",
+        "path": "../../medium/configurator/worlds/golden/home-a-fast-transit.world.json",
         "station_roles": [
           "sta_mobile_01",
           "sta_mobile_02",
@@ -10751,7 +10751,7 @@
         "layout": "home-five-agent",
         "mobility": "fast-transit",
         "name": "home-five-agent--fast-transit",
-        "path": "../../wmediumd/configurator/worlds/golden/home-a-fast-transit.world.json",
+        "path": "../../medium/configurator/worlds/golden/home-a-fast-transit.world.json",
         "station_roles": [
           "sta_mobile_01",
           "sta_mobile_02",
@@ -10835,7 +10835,7 @@
         "layout": "home-five-agent",
         "mobility": "flash-crowd",
         "name": "home-five-agent--flash-crowd",
-        "path": "../../wmediumd/configurator/worlds/golden/home-a-flash-crowd.world.json",
+        "path": "../../medium/configurator/worlds/golden/home-a-flash-crowd.world.json",
         "station_roles": [
           "sta_mobile_01",
           "sta_mobile_02",
@@ -10928,7 +10928,7 @@
         "layout": "home-five-agent",
         "mobility": "flash-crowd",
         "name": "home-five-agent--flash-crowd",
-        "path": "../../wmediumd/configurator/worlds/golden/home-a-flash-crowd.world.json",
+        "path": "../../medium/configurator/worlds/golden/home-a-flash-crowd.world.json",
         "station_roles": [
           "sta_mobile_01",
           "sta_mobile_02",
@@ -11020,7 +11020,7 @@
         "layout": "home-five-agent",
         "mobility": "stationary",
         "name": "home-five-agent--stationary",
-        "path": "../../wmediumd/configurator/worlds/golden/home-a-stationary.world.json",
+        "path": "../../medium/configurator/worlds/golden/home-a-stationary.world.json",
         "station_roles": [
           "sta_static_01",
           "sta_static_02",
@@ -11100,7 +11100,7 @@
         "layout": "home-five-agent",
         "mobility": "stationary",
         "name": "home-five-agent--stationary",
-        "path": "../../wmediumd/configurator/worlds/golden/home-a-stationary.world.json",
+        "path": "../../medium/configurator/worlds/golden/home-a-stationary.world.json",
         "station_roles": [
           "sta_static_01",
           "sta_static_02",
@@ -11169,7 +11169,7 @@
         "layout": "home-five-agent",
         "mobility": "stationary",
         "name": "home-five-agent--stationary",
-        "path": "../../wmediumd/configurator/worlds/golden/home-a-stationary.world.json",
+        "path": "../../medium/configurator/worlds/golden/home-a-stationary.world.json",
         "station_roles": [
           "sta_static_01",
           "sta_static_02",
@@ -11238,7 +11238,7 @@
         "layout": "home-five-agent",
         "mobility": "stationary",
         "name": "home-five-agent--stationary",
-        "path": "../../wmediumd/configurator/worlds/golden/home-a-stationary.world.json",
+        "path": "../../medium/configurator/worlds/golden/home-a-stationary.world.json",
         "station_roles": [
           "sta_static_01",
           "sta_static_02",
@@ -11318,7 +11318,7 @@
         "layout": "home-five-agent",
         "mobility": "band-walk-small",
         "name": "home-five-agent--band-walk-small",
-        "path": "../../wmediumd/configurator/worlds/golden/home-a-band-walk-small.world.json",
+        "path": "../../medium/configurator/worlds/golden/home-a-band-walk-small.world.json",
         "station_roles": [
           "sta_static_01",
           "sta_static_02",
@@ -11400,7 +11400,7 @@
         "layout": "home-five-agent",
         "mobility": "band-walk-small",
         "name": "home-five-agent--band-walk-small",
-        "path": "../../wmediumd/configurator/worlds/golden/home-a-band-walk-small.world.json",
+        "path": "../../medium/configurator/worlds/golden/home-a-band-walk-small.world.json",
         "station_roles": [
           "sta_static_01",
           "sta_static_02",
@@ -11480,7 +11480,7 @@
         "layout": "home-five-agent",
         "mobility": "band-walk-small",
         "name": "home-five-agent--band-walk-small",
-        "path": "../../wmediumd/configurator/worlds/golden/home-a-band-walk-small.world.json",
+        "path": "../../medium/configurator/worlds/golden/home-a-band-walk-small.world.json",
         "station_roles": [
           "sta_static_01",
           "sta_static_02",
@@ -11560,7 +11560,7 @@
         "layout": "home-five-agent",
         "mobility": "band-walk-small",
         "name": "home-five-agent--band-walk-small",
-        "path": "../../wmediumd/configurator/worlds/golden/home-a-band-walk-small.world.json",
+        "path": "../../medium/configurator/worlds/golden/home-a-band-walk-small.world.json",
         "station_roles": [
           "sta_static_01",
           "sta_static_02",
@@ -11642,7 +11642,7 @@
         "layout": "home-five-agent",
         "mobility": "slow-walk-ten",
         "name": "home-five-agent--slow-walk-ten",
-        "path": "../../wmediumd/configurator/worlds/golden/home-a-slow-walk-ten.world.json",
+        "path": "../../medium/configurator/worlds/golden/home-a-slow-walk-ten.world.json",
         "station_roles": [
           "sta_mobile_01",
           "sta_mobile_02",
@@ -11733,7 +11733,7 @@
         "layout": "home-five-agent",
         "mobility": "slow-walk-ten",
         "name": "home-five-agent--slow-walk-ten",
-        "path": "../../wmediumd/configurator/worlds/golden/home-a-slow-walk-ten.world.json",
+        "path": "../../medium/configurator/worlds/golden/home-a-slow-walk-ten.world.json",
         "station_roles": [
           "sta_mobile_01",
           "sta_mobile_02",
@@ -11822,7 +11822,7 @@
         "layout": "home-five-agent",
         "mobility": "slow-walk-ten",
         "name": "home-five-agent--slow-walk-ten",
-        "path": "../../wmediumd/configurator/worlds/golden/home-a-slow-walk-ten.world.json",
+        "path": "../../medium/configurator/worlds/golden/home-a-slow-walk-ten.world.json",
         "station_roles": [
           "sta_mobile_01",
           "sta_mobile_02",
@@ -11911,7 +11911,7 @@
         "layout": "home-five-agent",
         "mobility": "slow-walk-ten",
         "name": "home-five-agent--slow-walk-ten",
-        "path": "../../wmediumd/configurator/worlds/golden/home-a-slow-walk-ten.world.json",
+        "path": "../../medium/configurator/worlds/golden/home-a-slow-walk-ten.world.json",
         "station_roles": [
           "sta_mobile_01",
           "sta_mobile_02",
@@ -12002,7 +12002,7 @@
         "layout": "home-five-agent-shifted",
         "mobility": "slow-walk-ten",
         "name": "home-five-agent-shifted--slow-walk-ten",
-        "path": "../../wmediumd/configurator/worlds/golden/home-b-slow-walk-ten.world.json",
+        "path": "../../medium/configurator/worlds/golden/home-b-slow-walk-ten.world.json",
         "station_roles": [
           "sta_mobile_01",
           "sta_mobile_02",
@@ -12093,7 +12093,7 @@
         "layout": "home-five-agent-shifted",
         "mobility": "slow-walk-ten",
         "name": "home-five-agent-shifted--slow-walk-ten",
-        "path": "../../wmediumd/configurator/worlds/golden/home-b-slow-walk-ten.world.json",
+        "path": "../../medium/configurator/worlds/golden/home-b-slow-walk-ten.world.json",
         "station_roles": [
           "sta_mobile_01",
           "sta_mobile_02",
@@ -12182,7 +12182,7 @@
         "layout": "home-five-agent-shifted",
         "mobility": "slow-walk-ten",
         "name": "home-five-agent-shifted--slow-walk-ten",
-        "path": "../../wmediumd/configurator/worlds/golden/home-b-slow-walk-ten.world.json",
+        "path": "../../medium/configurator/worlds/golden/home-b-slow-walk-ten.world.json",
         "station_roles": [
           "sta_mobile_01",
           "sta_mobile_02",
@@ -12271,7 +12271,7 @@
         "layout": "home-five-agent-shifted",
         "mobility": "slow-walk-ten",
         "name": "home-five-agent-shifted--slow-walk-ten",
-        "path": "../../wmediumd/configurator/worlds/golden/home-b-slow-walk-ten.world.json",
+        "path": "../../medium/configurator/worlds/golden/home-b-slow-walk-ten.world.json",
         "station_roles": [
           "sta_mobile_01",
           "sta_mobile_02",

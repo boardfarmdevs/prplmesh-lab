@@ -51,7 +51,7 @@ def test_native_steps_hold_room_stopped_until_after_churn(tmp_path):
     assert names.index('soak/churn') < names.index('restore/release-room-guard') < names.index('restore/start-room')
     assert sum('acquire' in command for command in calls) == 1
     assert sum('start' in command for command in calls) == 1
-    readiness = next(command for command in calls if 'wmediumd/observer/check-ready.py' in command)
+    readiness = next(command for command in calls if 'medium/observer/check-ready.py' in command)
     assert 'http://192.0.2.1:42001/' in readiness
 
 

@@ -2,7 +2,7 @@
 const assert = require('node:assert/strict');
 
 async function main() {
-  const {MediumModel, nativeLoadValue} = await import('../wmediumd/observer/web/ng/model.mjs');
+  const {MediumModel, nativeLoadValue} = await import('../medium/observer/web/ng/model.mjs');
   const now = Date.now(), timestamp = new Date(now).toISOString();
   const mac = ordinal => `42:00:00:00:${ordinal.toString(16).padStart(2, '0')}:00`;
   const radios = [], roles = [];

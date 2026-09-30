@@ -143,7 +143,7 @@ the render-device group; do not change lab CPU limits or device permissions.
 
 ## Current RF hardening checks
 
-[RF qualification](../radio/virtual-rf-assessment.md#september-15-reliability-and-priority-qualification)
+[RF qualification](https://github.com/boardfarmdevs/easymesh-medium/blob/main/docs/reference/virtual-rf-assessment.md#september-15-reliability-and-priority-qualification)
 records non-turbo/priority profiles. Earlier evidence on rev150 remains under
 `/home/rev/work/rf-demand-0913/evidence/` and
 `/home/rev/work/rf-reliability-0913/evidence/`; cooling mitigation is not repair.
@@ -182,7 +182,7 @@ Evidence: `/home/rev/work/rf14-0913/evidence/` on rev150:
 From the RDK guest's `gen/`:
 
 ```sh
-sudo env PYTHONPATH=optimizer:wmediumd/configurator python3 tests/rdk-reporting-policy-acceptance.py \
+sudo env PYTHONPATH=optimizer:medium/configurator python3 tests/rdk-reporting-policy-acceptance.py \
   --live --extended --root "$PWD" --output /tmp/rdk-rf14-new
 ```
 
@@ -223,7 +223,7 @@ client roster before starting the room.
 From RDK `gen/` or prpl root, substitute `prpl` for the second stack:
 
 ```sh
-sudo env PYTHONPATH=optimizer:wmediumd/configurator python3 tests/native-retry-counter-acceptance.py \
+sudo env PYTHONPATH=optimizer:medium/configurator python3 tests/native-retry-counter-acceptance.py \
   --stack rdk --output /tmp/retry-qualification-new --yes-change-lab
 ```
 
@@ -372,7 +372,7 @@ acceptance reference, not a cross-stack latency claim.
 1. Reserve the lab. Save initial room/service configuration, native/container/
    medium identities and source revisions. No other operator lease or RF writer
    may be active. Do not alter native policy, metrics intervals or VM resources.
-2. Copy the **deployed guest's** `wmediumd/configurator/worlds/golden/*.world.json`
+2. Copy the **deployed guest's** `medium/configurator/worlds/golden/*.world.json`
    to the observer evidence directory. Match hashes to the loaded world.
 3. Copy `tests/room-feature-guest-audit.py` and
    `tests/room-feature-rf-audit.py` into the guest's `/tmp/`, keeping names.
@@ -488,7 +488,7 @@ the default twenty-client room paused at zero and unleased:
 
 ```sh
 ROOT=/opt/prplmesh-lab
-PYTHONPATH="$ROOT/optimizer:$ROOT/wmediumd/configurator" \
+PYTHONPATH="$ROOT/optimizer:$ROOT/medium/configurator" \
   python3 "$ROOT/tests/load-policy-acceptance.py" --stack prpl \
   --root "$ROOT" --output /tmp/load-policy-new --yes-change-lab
 ```

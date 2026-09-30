@@ -3,7 +3,7 @@
 const assert = require('assert').strict;
 const fs = require('fs');
 const path = require('path');
-const helperPath = path.resolve(__dirname, '../wmediumd/configurator/worlds/viewer/fullscreen-control.js');
+const helperPath = path.resolve(__dirname, '../medium/configurator/worlds/viewer/fullscreen-control.js');
 const helper = require(helperPath);
 const embedded = fs.readFileSync(path.resolve(__dirname,
   '../controller-ui/web/static/fullscreen-control.js'), 'utf8');

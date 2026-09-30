@@ -1,6 +1,6 @@
 'use strict';
 const assert = require('node:assert/strict');
-const {describe, render} = require('../wmediumd/configurator/worlds/viewer/rf-inspector.js');
+const {describe, render} = require('../medium/configurator/worlds/viewer/rf-inspector.js');
 const now = Date.parse('2026-09-14T12:00:00Z');
 const observation = {role: 'gateway', bssid: 'ap', radio_id: 'radio', channel: 36, utilization: 0,
   station_count: 0, observed_at: new Date(now - 100).toISOString(), source: 'native_ap_metrics',

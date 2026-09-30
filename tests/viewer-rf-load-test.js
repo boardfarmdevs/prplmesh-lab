@@ -1,6 +1,6 @@
 'use strict';
 const assert = require('node:assert/strict');
-const {rows} = require('../wmediumd/configurator/worlds/viewer/rf-load.js');
+const {rows} = require('../medium/configurator/worlds/viewer/rf-load.js');
 const sample = {frequency_mhz: 5180, state: 'valid', value: 0, age_ms: 100, window_ms: 100};
 const report = {state: 'valid', channels: [sample]};
 assert.equal(rows(report)[1].samples[0].value, 0);

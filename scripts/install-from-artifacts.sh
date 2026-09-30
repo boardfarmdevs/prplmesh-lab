@@ -21,12 +21,12 @@ if ! lxc image info "$BASE_ALIAS" >/dev/null 2>&1; then
 fi
 
 if [ ! -x "$ROOT/build/bin/wmediumd" ]; then
-    "$ROOT/scripts/build-wmediumd.sh"
+    "$ROOT/medium/wmediumd/build-wmediumd.sh" --source "$ROOT/build/wmediumd-source" --output "$ROOT/build/bin"
 fi
 SOURCE_IMAGE=$BASE_ALIAS IMAGE_ALIAS=${PRPLMESH_RUNTIME_IMAGE:-prpl-runtime-local} "$ROOT/scripts/build-runtime-image.sh"
 SOURCE_IMAGE=$BASE_ALIAS IMAGE_ALIAS=${PRPLMESH_CLIENT_IMAGE:-prpl-client-local} "$ROOT/scripts/build-runtime-image.sh" client
 
-sudo env INSTALL_MODULE=1 "$ROOT/scripts/build-hwsim.sh"
+sudo env INSTALL_MODULE=1 "$ROOT/medium/hwsim/build-hwsim.sh" --source "$ROOT/build/hwsim-source" --cfg80211 "$ROOT/build/cfg80211-source"
 sudo depmod -a "$(uname -r)"
 if [ "$MODE" = --prepare-only ]; then
     echo 'Mesh/client images and radio modules installed; reboot before provisioning the radio pool.'

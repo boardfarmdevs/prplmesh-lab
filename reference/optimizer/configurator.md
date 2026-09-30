@@ -147,7 +147,7 @@ Run offline code and language tests first:
 cd optimizer
 python3 -m pytest -q
 
-cd ../wmediumd/configurator
+cd ../medium/configurator
 python3 -m pytest -q
 worlds/build-goldens.sh --check
 ```
@@ -155,7 +155,7 @@ worlds/build-goldens.sh --check
 Inspect the live medium and frozen inventory:
 
 ```sh
-cd wmediumd/configurator
+cd medium/configurator
 python3 -m wmdcfg.cli status
 python3 -m wmdcfg.cli inventory -o /tmp/prpl-inventory.json
 ```
@@ -164,7 +164,7 @@ Watch one associated client's RCPI follow a live ramp and return to its
 captured baseline:
 
 ```sh
-wmediumd/configurator/run-rcpi-monitor.sh prpl-client-01
+medium/configurator/run-rcpi-monitor.sh prpl-client-01
 ```
 
 Run the full five-node crossover in recommendation mode:

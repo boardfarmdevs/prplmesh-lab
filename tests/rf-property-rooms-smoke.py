@@ -186,7 +186,7 @@ def main():
         for name in ROOMS:
             result = {"room": name, "passed": False, "samples": [], "errors": []}
             report["rooms"].append(result)
-            world = json.loads((ROOT / f"wmediumd/configurator/worlds/golden/{name}.world.json").read_text())
+            world = json.loads((ROOT / f"medium/configurator/worlds/golden/{name}.world.json").read_text())
             result["world_sha256"] = world["golden_sha256"]
             result["applied"] = mutate("world/apply", {"world": name})
             result["initial"] = settle(10, 60)

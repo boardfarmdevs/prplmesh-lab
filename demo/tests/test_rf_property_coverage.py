@@ -11,7 +11,7 @@ from wmdcfg.world import compile_world, verify_world_plan
 
 
 ROOT = Path(__file__).resolve().parents[2]
-WORLDS = ROOT / "wmediumd/configurator/worlds"
+WORLDS = ROOT / "medium/configurator/worlds"
 NEW_ROOMS = ("rf-packet-size-counters", "rf-asymmetric-ack")
 
 

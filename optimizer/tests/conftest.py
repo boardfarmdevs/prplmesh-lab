@@ -6,7 +6,7 @@ import sys
 
 
 ROOT = Path(__file__).resolve().parents[1]
-CONFIGURATOR = ROOT.parent / "wmediumd" / "configurator"
+CONFIGURATOR = ROOT.parent / "medium" / "configurator"
 sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(CONFIGURATOR))
 

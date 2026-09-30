@@ -41,9 +41,8 @@ EOF
 chmod 0755 "$fake_bin/git" "$fake_bin/make"
 
 if PATH="$fake_bin:$PATH" WMEDIUMD_TEST_GIT_LOG="$git_log" \
-        WMEDIUMD_SOURCE_DIR="$source_dir" \
-        WMEDIUMD_OUTPUT_DIR="$output_dir" \
-        "$ROOT/scripts/build-wmediumd.sh" --offline >/dev/null 2>&1; then
+        "$ROOT/medium/wmediumd/build-wmediumd.sh" --offline \
+        --source "$source_dir" --output "$output_dir" >/dev/null 2>&1; then
     echo 'offline build accepted a missing source cache' >&2
     exit 1
 fi
@@ -51,15 +50,14 @@ test ! -s "$git_log"
 
 mkdir -p "$source_dir/.git"
 PATH="$fake_bin:$PATH" WMEDIUMD_TEST_GIT_LOG="$git_log" \
-    WMEDIUMD_SOURCE_DIR="$source_dir" \
-    WMEDIUMD_OUTPUT_DIR="$output_dir" \
-    "$ROOT/scripts/build-wmediumd.sh" --offline >/dev/null
+    "$ROOT/medium/wmediumd/build-wmediumd.sh" --offline \
+    --source "$source_dir" --output "$output_dir" >/dev/null
 test -x "$output_dir/wmediumd"
 test -r "$output_dir/wmediumd.provenance.env"
 ! grep -Eq '(^| )(clone|fetch)( |$)' "$git_log"
 grep -Fq 'WMEDIUMD_COMMIT=' "$output_dir/wmediumd.provenance.env"
 grep -Fq 'WMEDIUMD_PATCHSET_SHA256=' "$output_dir/wmediumd.provenance.env"
-for patch in "$ROOT"/patches/wmediumd/*.patch; do
+for patch in "$ROOT"/medium/wmediumd/patches/*.patch; do
     grep -Fqx -- "-C $source_dir apply --check $patch" "$git_log"
     grep -Fqx -- "-C $source_dir apply $patch" "$git_log"
 done

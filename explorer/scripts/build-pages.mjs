@@ -14,7 +14,7 @@ import { execFileSync } from 'node:child_process';
 const root = fileURLToPath(new URL('../', import.meta.url));
 const repository = path.resolve(root, '..');
 const output = path.join(root, 'site');
-const worlds = path.join(repository, 'wmediumd/configurator/worlds');
+const worlds = path.join(repository, 'medium/configurator/worlds');
 const viewer = readFileSync(path.join(worlds, 'viewer/index.html'), 'utf8');
 if (!viewer.includes('<meta name="room-viewer-mode" content="no-connect">')) {
   throw new Error('Public viewer must default to disconnected mode');

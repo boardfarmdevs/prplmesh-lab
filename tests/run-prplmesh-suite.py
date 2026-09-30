@@ -46,7 +46,7 @@ def main():
     for variable in ('DISPLAY', 'WAYLAND_DISPLAY'):
         environment.pop(variable, None)
     environment['PYTHONPATH'] = ':'.join(str(ROOT / entry) for entry in (
-        'optimizer', 'demo', 'demo/tests', 'wmediumd/configurator', 'tests'))
+        'optimizer', 'demo', 'demo/tests', 'medium/configurator', 'tests'))
     environment['PLAYWRIGHT_MODULE'] = 'playwright-core'
     records = []
     room_restore = False
@@ -156,8 +156,8 @@ def main():
             step('static/unattended-lxd', [sys.executable, 'tests/unattended-lxd.py'])
             step('static/thin-firstboot', ['bash', 'tests/thin-firstboot.sh'])
             step('static/python', [sys.executable, '-m', 'pytest', '--import-mode=importlib', '-q',
-                                  'wmediumd/configurator/tests', 'optimizer/tests', 'demo/tests', 'tests'], 1200)
-            step('static/console-go', ['go', 'test', './...'], cwd=ROOT / 'wmediumd/observer')
+                                  'medium/configurator/tests', 'optimizer/tests', 'demo/tests', 'tests'], 1200)
+            step('static/console-go', ['go', 'test', './...'], cwd=ROOT / 'medium/observer')
             if step('static/topology-assets', ['bash', 'controller-ui/prepare-web-assets.sh']):
                 step('static/topology-go', ['go', 'test', './...'], cwd=ROOT / 'controller-ui')
         if 'webui' in chosen:
@@ -174,7 +174,7 @@ def main():
                 step('webui/' + filename.stem, command)
             for filename in sorted((ROOT / 'tests').glob('test-*.js')):
                 step('webui/' + filename.stem, ['node', str(filename)])
-            step('webui/console-ng', ['node', '--test', 'wmediumd/observer/web/ng/model.test.mjs'])
+            step('webui/console-ng', ['node', '--test', 'medium/observer/web/ng/model.test.mjs'])
         needs_browser = bool(chosen & {'browser', 'rooms'})
         browser_ok = browser_ready() if needs_browser else False
         if 'browser' in chosen:
@@ -220,7 +220,7 @@ def main():
                         '--pressure-access-category', 'voice', '--pressure-snr', '2',
                         '--rescue-snr', '32', '--background-packets-per-second', '300']
                     if not step('rf-actions/' + scenario, guest('env',
-                        'PYTHONPATH=/opt/prplmesh-lab/optimizer:/opt/prplmesh-lab/wmediumd/configurator',
+                        'PYTHONPATH=/opt/prplmesh-lab/optimizer:/opt/prplmesh-lab/medium/configurator',
                         'python3', '/opt/prplmesh-lab/tests/load-policy-acceptance.py', '--stack', 'prpl',
                         '--root', '/opt/prplmesh-lab', '--policy',
                         '/opt/prplmesh-lab/optimizer/configs/load-counter-guard-policy.yaml',
@@ -246,7 +246,7 @@ def main():
                 'tests/test_candidate_event_memory.py', 'tests/test_neighbor_cache_memory.py',
                 'tests/test_frequency_slot_allocation.py',
                 'tests/test_console_ng_contract.py',
-                'wmediumd/configurator/tests/test_rf_contract.py'])
+                'medium/configurator/tests/test_rf_contract.py'])
             contracts_ok = step('rf/viewer', ['node', 'tests/viewer-room-guide-test.js']) and contracts_ok
             contracts_ok = step('rf/inspector', ['node', 'tests/viewer-rf-inspector-test.js']) and contracts_ok
             contracts_ok = step('rf/documentation', [sys.executable, 'tests/test_documentation.py']) and contracts_ok
@@ -257,7 +257,7 @@ def main():
                     manifest_ok = step('rf/counter-manifest', guest('python3', '/opt/prplmesh-lab/tests/counter-guard-room-smoke.py',
                         '--stack', 'prpl', '--yes-change-lab', '--output', f'/var/lib/prplmesh-lab/test-results/{stamp}-counter-manifest'), 1200)
                     if manifest_ok:
-                        step('rf/counter-shadow', guest('env', 'PYTHONPATH=/opt/prplmesh-lab/optimizer:/opt/prplmesh-lab/wmediumd/configurator',
+                        step('rf/counter-shadow', guest('env', 'PYTHONPATH=/opt/prplmesh-lab/optimizer:/opt/prplmesh-lab/medium/configurator',
                             'python3', '/opt/prplmesh-lab/tests/native-retry-counter-acceptance.py', '--stack', 'prpl',
                             '--yes-change-lab', '--seconds', '8', '--shadow-counter-policy',
                             '/opt/prplmesh-lab/optimizer/configs/load-counter-guard-policy.yaml', '--output',
@@ -277,9 +277,9 @@ def main():
                     # the Golden World tree the room runs (worlds-wired with the wired Agent)
                     try:
                         with urllib.request.urlopen(room_url.rstrip('/') + '/api/demo/worlds', timeout=15) as response:
-                            worlds_root = json.load(response).get('worlds_root') or 'wmediumd/configurator/worlds'
+                            worlds_root = json.load(response).get('worlds_root') or 'medium/configurator/worlds'
                     except (OSError, ValueError):
-                        worlds_root = 'wmediumd/configurator/worlds'
+                        worlds_root = 'medium/configurator/worlds'
                     record('rooms/worlds', 'passed', detail=worlds_root)
                     step('rooms/catalog-play', ['node', 'tests/room-feature-acceptance.js', *common,
                          '--yes-act', '--worlds', str(ROOT / worlds_root / 'golden'), '--output', str(output / 'rooms')], 14400)
@@ -289,7 +289,7 @@ def main():
                 record('rooms/playback', 'blocked', detail='browser or matching-VM prerequisites unavailable')
         if chosen & {'live', 'soak'}:
             if live_ok:
-                step('live/console-ng', [sys.executable, 'wmediumd/observer/check-ready.py', '--url', console_url], 90)
+                step('live/console-ng', [sys.executable, 'medium/observer/check-ready.py', '--url', console_url], 90)
                 if browser_ok:
                     step('live/rf-hover', ['node', 'tests/webui-rf-hover-browser-test.js', topology_url, str(output / 'rf-hover.json')])
             if live_ok and stop_room():

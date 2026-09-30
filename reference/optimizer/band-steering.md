@@ -26,7 +26,7 @@ policy, with a one-second new-scan hold, three-second dwell and two-second age
 budget. Missing serving reception fails closed, and unknown/absent candidates
 do not acquire HAL-matrix values. Both rooms now pass initial, checkpoint and
 final native ownership/traffic and room/topology checks on both backends.
-See [RF work and measured results](../radio/virtual-rf-assessment.md#127-rf-increments-and-short-qualification).
+See [RF work and measured results](https://github.com/boardfarmdevs/easymesh-medium/blob/main/docs/reference/virtual-rf-assessment.md#127-rf-increments-and-short-qualification).
 
 Only explicitly profiled room clients gain cross-band eligibility. The scanner
 reads each client's kernel radio capabilities and supplicant security capabilities.

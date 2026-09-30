@@ -4,7 +4,7 @@ const assert = require('assert').strict;
 const fs = require('fs');
 const path = require('path');
 const vm = require('vm');
-const source = fs.readFileSync(path.resolve(__dirname, '../wmediumd/configurator/worlds/viewer/index.html'), 'utf8');
+const source = fs.readFileSync(path.resolve(__dirname, '../medium/configurator/worlds/viewer/index.html'), 'utf8');
 const wrapper = source.slice(source.indexOf('  let updateQueued = false;'), source.indexOf('  function updateFrame()'));
 const frames = [];
 let submissions = 0;

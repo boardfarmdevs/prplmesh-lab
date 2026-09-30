@@ -4,9 +4,9 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 const vm = require('node:vm');
-const THREE = require('../wmediumd/configurator/worlds/viewer/vendor/three.min.js');
+const THREE = require('../medium/configurator/worlds/viewer/vendor/three.min.js');
 const source = fs.readFileSync(path.resolve(__dirname,
-  '../wmediumd/configurator/worlds/viewer/index.html'), 'utf8');
+  '../medium/configurator/worlds/viewer/index.html'), 'utf8');
 const helpers = source.slice(source.indexOf('  function roomCameraRadius('),
   source.indexOf('  function fitWorldCamera('));
 const context = vm.createContext({});

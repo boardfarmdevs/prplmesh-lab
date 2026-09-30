@@ -55,6 +55,13 @@ reserves inactive slots without changing active state until validation passes.
 The compiled regression covers a 3,060-key room, sparse/full tables and rejected
 transactions. It preserves RF semantics and atomic generation application.
 
+`wmediumd/0036-wmediumd-index-frequency-overrides-per-pair.patch` (the RDK
+lab's 0035) sizes the frequency-override table by its slots per radio pair
+instead of one 64-KiB control frame (about 3,275 overrides) and chains each
+pair's overrides, so a lookup walks a pair's few frequencies. The wired
+Agent's rooms install about 3,690 overrides, applied as consecutive
+generations by the configurator. `wmediumd -T` covers the index.
+
 ## prplMesh native-platform correction
 
 `prplmesh/0030-owned-candidate-event.patch` uses a typed shared pointer for
@@ -197,4 +204,4 @@ STA networks so a backhaul-only BSS accepts the replacement association.
 ## Wireless kernel namespace isolation
 
 The hwsim builder also installs the namespace-safe cfg80211 companion module.
-See [its build, restart and regression instructions](../scripts/cfg80211/README.md).
+See [its build, restart and regression instructions](../medium/hwsim/cfg80211/README.md).

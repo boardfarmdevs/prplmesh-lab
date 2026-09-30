@@ -15,7 +15,7 @@ from .helpers import snapshot
 def test_small_band_walk_yields_one_bssid_recommendation(source_band, target_band):
     root = Path(__file__).resolve().parents[2]
     world_path = (
-        root / "wmediumd" / "configurator" / "worlds" / "golden"
+        root / "medium" / "configurator" / "worlds" / "golden"
         / "home-a-band-walk-small.world.json"
     )
     world = json.loads(world_path.read_text(encoding="utf-8"))

@@ -3,7 +3,7 @@ const assert = require('assert').strict;
 const fs = require('fs');
 const path = require('path');
 const vm = require('vm');
-const root = path.resolve(__dirname, '../wmediumd/configurator/worlds/viewer');
+const root = path.resolve(__dirname, '../medium/configurator/worlds/viewer');
 const html = fs.readFileSync(path.join(root, 'index.html'), 'utf8');
 const context = {liveMode: true, replayMode: false, performance: {now: () => 500},
   liveClock: {serverMs: Date.parse('2026-09-07T05:00:00Z'), receivedMs: 500},

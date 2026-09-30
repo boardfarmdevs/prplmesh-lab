@@ -21,6 +21,7 @@ scenario_log=$(mktemp /tmp/prpl-optimizer-scenario.XXXXXX.log)
 scenario_output=$(mktemp -d /tmp/prpl-optimizer-run.XXXXXX)
 optimizer_log=$(mktemp /tmp/prpl-optimizer-output.XXXXXX.log)
 scenario_pid=
+policy=
 
 cleanup()
 {
@@ -28,11 +29,11 @@ cleanup()
         kill -TERM "$scenario_pid" 2>/dev/null || true
         wait "$scenario_pid" 2>/dev/null || true
     fi
-    rm -f "$inventory" "$profile_scenario" "$plan"
+    rm -f "$inventory" "$profile_scenario" "$plan" ${policy:+"$policy"}
 }
 trap cleanup EXIT
 
-cd "$ROOT/wmediumd/configurator"
+cd "$ROOT/medium/configurator"
 status_section "Closed-loop prplMesh optimizer: $MODE"
 status_action "Discovering the complete radio inventory and current associations."
 python3 -m wmdcfg.cli inventory -o "$inventory"
@@ -155,10 +156,14 @@ python3 "$ROOT/tests/optimizer-scenario-ready.py" "$plan" "$scenario_output" \
     --pid "$scenario_pid" --timeout 90
 
 cd "$ROOT/optimizer"
+# the lab's mesh: the controller, the Wi-Fi Agents and any wired Agent
+policy=$(mktemp /tmp/prpl-optimizer-policy.XXXXXX.yaml)
+sed "s/^expected_devices: .*/expected_devices: $((5 + ${PROVISIONED_WIRED_AGENT_COUNT:-0}))/" \
+    configs/threshold-policy.yaml > "$policy"
 args=(
     "$MODE" --backend prplmesh --base-url http://127.0.0.1:8092
     --candidate-provider controller --allow-simulated-candidates
-    --policy configs/threshold-policy.yaml --journal "$journal"
+    --policy "$policy" --journal "$journal"
     --expected-clients "$expected_clients"
     --candidate-timeout "$candidate_timeout"
     --count 30 --interval 1

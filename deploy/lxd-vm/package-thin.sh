@@ -60,6 +60,15 @@ SOURCE_BUNDLE=$SOURCE_STAGE/prplmesh-lab.bundle
 git -C "$ROOT" bundle create "$SOURCE_BUNDLE" HEAD
 git -C "$ROOT" bundle verify "$SOURCE_BUNDLE" >/dev/null
 SOURCE_BUNDLE_SHA256=$(sha256sum "$SOURCE_BUNDLE" | awk '{print $1}')
+# the RF medium at the commit this lab pins (the medium submodule)
+MEDIUM_COMMIT=$(git -C "$ROOT" rev-parse HEAD:medium)
+[ "$(git -C "$ROOT/medium" rev-parse HEAD 2>/dev/null)" = "$MEDIUM_COMMIT" ] || {
+    echo "medium is not at the pinned $MEDIUM_COMMIT: git submodule update --init medium" >&2
+    exit 1
+}
+MEDIUM_BUNDLE=$SOURCE_STAGE/easymesh-medium.bundle
+git -C "$ROOT/medium" bundle create "$MEDIUM_BUNDLE" HEAD
+git -C "$ROOT/medium" bundle verify "$MEDIUM_BUNDLE" >/dev/null
 rm -rf -- "$BUNDLE"
 mkdir -p "$BUNDLE"
 [ "$(lxc list "$NAME" -c t --format csv)" = VIRTUAL-MACHINE ] || {
@@ -117,7 +126,8 @@ fi
 lxc exec "$NAME" -- systemctl stop prplmesh-room-demo.service
 lxc exec "$NAME" -- systemctl stop prplmesh-lab.service
 lxc file push "$SOURCE_BUNDLE" "$NAME/run/prplmesh-thin-source.bundle"
-lxc exec "$NAME" -- env SOURCE_COMMIT="$SOURCE_COMMIT" bash -c '
+lxc file push "$MEDIUM_BUNDLE" "$NAME/run/prplmesh-thin-medium.bundle"
+lxc exec "$NAME" -- env SOURCE_COMMIT="$SOURCE_COMMIT" MEDIUM_COMMIT="$MEDIUM_COMMIT" bash -c '
     set -euo pipefail
     next=/opt/prplmesh-lab.thin-new
     previous=/opt/prplmesh-lab.ready-base
@@ -139,7 +149,10 @@ lxc exec "$NAME" -- env SOURCE_COMMIT="$SOURCE_COMMIT" bash -c '
     trap rollback EXIT
     rm -rf -- "$next" "$previous"
     git clone /run/prplmesh-thin-source.bundle "$next"
+    git -C "$next" config submodule.medium.url /run/prplmesh-thin-medium.bundle
+    git -c protocol.file.allow=always -C "$next" submodule update --init medium
     [ "$(git -C "$next" rev-parse HEAD)" = "$SOURCE_COMMIT" ]
+    [ "$(git -C "$next/medium" rev-parse HEAD)" = "$MEDIUM_COMMIT" ]
     [ -z "$(git -C "$next" status --porcelain)" ]
     [ -d /opt/prplmesh-lab/build/wmediumd-source/.git ]
     [ -x /opt/prplmesh-lab/build/bin/wmediumd ]
@@ -156,7 +169,8 @@ lxc exec "$NAME" -- env SOURCE_COMMIT="$SOURCE_COMMIT" bash -c '
         mv "$previous" /opt/prplmesh-lab
         exit 1
     fi
-    /opt/prplmesh-lab/scripts/build-wmediumd.sh --offline
+    /opt/prplmesh-lab/medium/wmediumd/build-wmediumd.sh --offline \
+        --source /opt/prplmesh-lab/build/wmediumd-source --output /opt/prplmesh-lab/build/bin
     (cd /opt/prplmesh-lab/artifacts && sha256sum -c SHA256SUMS)
     /opt/prplmesh-lab/deploy/guest/install-service.sh /opt/prplmesh-lab
     rm -rf -- "$previous"
@@ -164,6 +178,7 @@ lxc exec "$NAME" -- env SOURCE_COMMIT="$SOURCE_COMMIT" bash -c '
     trap - EXIT
 '
 lxc file delete "$NAME/run/prplmesh-thin-source.bundle"
+lxc file delete "$NAME/run/prplmesh-thin-medium.bundle"
 [ "$(lxc exec "$NAME" -- git -C /opt/prplmesh-lab rev-parse HEAD)" = "$SOURCE_COMMIT" ]
 [ -z "$(lxc exec "$NAME" -- git -C /opt/prplmesh-lab status --porcelain)" ]
 lxc exec "$NAME" -- /opt/prplmesh-lab/scripts/radio-lab.sh stop

@@ -4,7 +4,7 @@ const assert = require('assert').strict;
 const fs = require('fs');
 const path = require('path');
 const vm = require('vm');
-const root = path.resolve(__dirname, '../wmediumd/configurator/worlds');
+const root = path.resolve(__dirname, '../medium/configurator/worlds');
 const guide = require(path.join(root, 'viewer/room-guide.js'));
 const html = fs.readFileSync(path.join(root, 'viewer/index.html'), 'utf8');
 const catalog = Array.from(vm.runInNewContext(html.match(/const GOLDEN = (\[[\s\S]*?\]);/)[1]));

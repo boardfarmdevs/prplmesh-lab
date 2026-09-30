@@ -7,9 +7,9 @@ import pytest
 
 
 ROOT = Path(__file__).resolve().parents[1]
-PATCHES = ROOT / "patches/wmediumd"
+PATCHES = ROOT / "medium/wmediumd/patches"
 BASE = PATCHES / "0012-wmediumd-add-frequency-qualified-snr-control.patch"
-FIX = PATCHES / "0035-wmediumd-linear-frequency-slot-allocation.patch"
+FIX = PATCHES / "0034-wmediumd-linear-frequency-slot-allocation.patch"
 
 
 def control_hunks(path):

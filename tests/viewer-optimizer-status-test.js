@@ -3,10 +3,10 @@ const assert = require('assert').strict;
 const fs = require('fs');
 const path = require('path');
 const vm = require('vm');
-const html = fs.readFileSync(path.resolve(__dirname, '../wmediumd/configurator/worlds/viewer/index.html'), 'utf8');
+const html = fs.readFileSync(path.resolve(__dirname, '../medium/configurator/worlds/viewer/index.html'), 'utf8');
 const elements = {};
 const context = {
-  RoomConvergence: require('../wmediumd/configurator/worlds/viewer/room-convergence.js'),
+  RoomConvergence: require('../medium/configurator/worlds/viewer/room-convergence.js'),
   optimizerState: {}, networkState: {mesh: {nodes: []}}, healthState: {healthy: true}, selected: 'client',
   profilingState: null, actionState: null, verificationState: null,
   interactiveLiveMode: true, interaction: {apiEnabled: true},

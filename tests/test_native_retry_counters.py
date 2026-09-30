@@ -20,7 +20,7 @@ def offline(monkeypatch):
     def unexpected(*arguments, **keywords):
         pytest.fail("unexpected runtime operation")
 
-    monkeypatch.syspath_prepend(str(Path(__file__).resolve().parents[1] / "wmediumd/configurator"))
+    monkeypatch.syspath_prepend(str(Path(__file__).resolve().parents[1] / "medium/configurator"))
     monkeypatch.setattr(DRIVER.subprocess, "run", unexpected)
     monkeypatch.setattr(DRIVER.subprocess, "Popen", unexpected)
     monkeypatch.setattr(DRIVER.urllib.request, "urlopen", unexpected)

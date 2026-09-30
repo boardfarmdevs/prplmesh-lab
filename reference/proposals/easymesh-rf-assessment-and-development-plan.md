@@ -12,7 +12,7 @@ its historical source baseline is not current release qualification.
 The shared RF catalog, cached native observations, independent publication and
 room/topology/Console NG inspection are implemented. Native backhaul paths and
 exact-context load are observation-only; missing traffic counters stay unknown.
-See the [maintained assessment](../radio/virtual-rf-assessment.md#94-shared-consumer-access-and-next-rf-increment).
+See the [maintained assessment](https://github.com/boardfarmdevs/easymesh-medium/blob/main/docs/reference/virtual-rf-assessment.md#94-current-consumer-access-gaps).
 
 1. Build a fresh prpl VM and qualify shared access, load/discovery and backhaul
    rooms with bounded tests. Source tests do not establish live qualification.
@@ -433,13 +433,13 @@ These are existing extension points, not instructions to edit every file. RDK pa
 
 | Workstream | RDK location | prpl counterpart |
 | --- | --- | --- |
-| Medium | `gen/wmediumd/patches/`, assembled `wmediumd.c`, `control.c`, `airtime.c`, `per.c` | `patches/wmediumd/`, assembled equivalent |
-| Kernel/context/survey | `gen/hwsim/patches/` | `patches/hwsim/` |
-| Scenario and RF contracts | `gen/wmediumd/configurator/wmdcfg/`: `geometry.py`, `world.py`, `compiler.py`, `actuator.py`, `runner.py`, `rf_contract.py`, `survey_bridge.py` | `wmediumd/configurator/wmdcfg/` |
+| Medium | `gen/medium/wmediumd/patches/`, assembled `wmediumd.c`, `control.c`, `airtime.c`, `per.c` | `medium/wmediumd/patches/`, assembled equivalent |
+| Kernel/context/survey | `gen/medium/hwsim/patches/` | `medium/hwsim/patches/` |
+| Scenario and RF contracts | `gen/medium/configurator/wmdcfg/`: `geometry.py`, `world.py`, `compiler.py`, `actuator.py`, `runner.py`, `rf_contract.py`, `survey_bridge.py` | `medium/configurator/wmdcfg/` |
 | Optimizer schema/policy | `gen/optimizer/optimizer/`: `model.py`, `observer.py`, `load_observer.py`, `load_policy.py`, `candidates.py`, `planners.py` | `optimizer/optimizer/` |
 | Actions and evidence | Same package: `actuator.py`, `verifier.py`, `recorder.py`, `experiments.py`, `traffic.py` | Equivalent optimizer package |
 | Room orchestration | `gen/demo/room_demo/`: `server.py`, `conductor.py`, `engine.py`, `interactions.py`, `journal.py`, `events.py` | `demo/room_demo/` |
-| Browser | `gen/wmediumd/configurator/worlds/viewer/`: `index.html`, `interaction-model.js`, `rf-load.js`, `signal-meter.js` | Confirm corresponding deployed viewer source |
+| Browser | `gen/medium/configurator/worlds/viewer/`: `index.html`, `interaction-model.js`, `rf-load.js`, `signal-meter.js` | Confirm corresponding deployed viewer source |
 | Native integration | `recipes-ccsp/hal/`, OneWifi and unified-wifi-mesh recipes | `patches/prplmesh/`, `scripts/container/`, `manifests/`, `topology-adapter/server.py` |
 
 Keep model functions testable outside transport/event-loop code. Extend structured observation and interaction modules rather than placing physical calculations or policy logic inside browser event handlers.
@@ -510,7 +510,7 @@ All repository links below are pinned to the assessed revision. Proposed schemas
 - **S2 — Optimizer capabilities, native-load policy and planner limits:** [optimizer README](https://github.com/boardfarmdevs/meta-cmf-bananapi-vcpe/blob/a41216dba48c9fc91dbb37456e207549462d99a9/gen/optimizer/README.md).
 - **S3 — Current immutable observation types and load policy:** [model.py](https://github.com/boardfarmdevs/meta-cmf-bananapi-vcpe/blob/a41216dba48c9fc91dbb37456e207549462d99a9/gen/optimizer/optimizer/model.py), [load_policy.py](https://github.com/boardfarmdevs/meta-cmf-bananapi-vcpe/blob/a41216dba48c9fc91dbb37456e207549462d99a9/gen/optimizer/optimizer/load_policy.py).
 - **S4 — Room authority, observations and recovery:** [room coordination](https://github.com/boardfarmdevs/meta-cmf-bananapi-vcpe/blob/a41216dba48c9fc91dbb37456e207549462d99a9/doc/easymesh/reference/rooms/architecture.md), [room package](https://github.com/boardfarmdevs/meta-cmf-bananapi-vcpe/blob/a41216dba48c9fc91dbb37456e207549462d99a9/gen/demo/README.md).
-- **S5 — Existing geometry/world and browser behavior:** [worlds README](https://github.com/boardfarmdevs/meta-cmf-bananapi-vcpe/blob/a41216dba48c9fc91dbb37456e207549462d99a9/gen/wmediumd/configurator/worlds/README.md), [load card](https://github.com/boardfarmdevs/meta-cmf-bananapi-vcpe/blob/a41216dba48c9fc91dbb37456e207549462d99a9/gen/wmediumd/configurator/worlds/viewer/rf-load.js).
-- **S6 — Medium source preparation and patch series:** [build script](https://github.com/boardfarmdevs/meta-cmf-bananapi-vcpe/blob/a41216dba48c9fc91dbb37456e207549462d99a9/gen/wmediumd/build-wmediumd.sh), [patch directory](https://github.com/boardfarmdevs/meta-cmf-bananapi-vcpe/tree/a41216dba48c9fc91dbb37456e207549462d99a9/gen/wmediumd/patches).
-- **S7 — Existing contracts and compiler/runner boundary:** [rf_contract.py](https://github.com/boardfarmdevs/meta-cmf-bananapi-vcpe/blob/a41216dba48c9fc91dbb37456e207549462d99a9/gen/wmediumd/configurator/wmdcfg/rf_contract.py), [configurator README](https://github.com/boardfarmdevs/meta-cmf-bananapi-vcpe/blob/a41216dba48c9fc91dbb37456e207549462d99a9/gen/wmediumd/configurator/README.md).
+- **S5 — Existing geometry/world and browser behavior:** [worlds README](https://github.com/boardfarmdevs/meta-cmf-bananapi-vcpe/blob/a41216dba48c9fc91dbb37456e207549462d99a9/gen/medium/configurator/worlds/README.md), [load card](https://github.com/boardfarmdevs/meta-cmf-bananapi-vcpe/blob/a41216dba48c9fc91dbb37456e207549462d99a9/gen/medium/configurator/worlds/viewer/rf-load.js).
+- **S6 — Medium source preparation and patch series:** [build script](https://github.com/boardfarmdevs/meta-cmf-bananapi-vcpe/blob/a41216dba48c9fc91dbb37456e207549462d99a9/gen/medium/wmediumd/build-wmediumd.sh), [patch directory](https://github.com/boardfarmdevs/meta-cmf-bananapi-vcpe/tree/a41216dba48c9fc91dbb37456e207549462d99a9/gen/medium/wmediumd/patches).
+- **S7 — Existing contracts and compiler/runner boundary:** [rf_contract.py](https://github.com/boardfarmdevs/meta-cmf-bananapi-vcpe/blob/a41216dba48c9fc91dbb37456e207549462d99a9/gen/medium/configurator/wmdcfg/rf_contract.py), [configurator README](https://github.com/boardfarmdevs/meta-cmf-bananapi-vcpe/blob/a41216dba48c9fc91dbb37456e207549462d99a9/gen/medium/configurator/README.md).
 - **S8 — Android comparison:** [MAC registration fix](https://android.googlesource.com/platform/external/wmediumd/+/d10ac94fa3129f81248119038edf3af6a5582a4c), [legacy API fix](https://android.googlesource.com/platform/external/wmediumd/+/1acf4f52a4dacaf3df7a0dce7b9e0e64ef0a809e), [rate/timing adjustment](https://android.googlesource.com/platform/external/wmediumd/+/cf21e00750345a38cb6803a232fa57fbd058773d).

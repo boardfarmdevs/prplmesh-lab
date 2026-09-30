@@ -4,7 +4,7 @@ const fs = require('fs');
 const path = require('path');
 const {chromium} = require(process.env.PLAYWRIGHT_MODULE || 'playwright-core');
 const {baseline} = require('./viewer-room-convergence-test.js');
-const root = path.resolve(__dirname, '../wmediumd/configurator/worlds/viewer');
+const root = path.resolve(__dirname, '../medium/configurator/worlds/viewer');
 const html = fs.readFileSync(path.join(root, 'index.html'), 'utf8');
 const stylesheet = html.match(/<style>[\s\S]*?<\/style>/)[0] + '<style>' +
   fs.readFileSync(path.join(root, 'room-convergence.css'), 'utf8') + '</style>';

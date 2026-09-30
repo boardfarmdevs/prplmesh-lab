@@ -4,7 +4,7 @@ const assert = require('assert').strict;
 const fs = require('fs');
 const path = require('path');
 const vm = require('vm');
-const html = fs.readFileSync(path.resolve(__dirname, '../wmediumd/configurator/worlds/viewer/index.html'), 'utf8');
+const html = fs.readFileSync(path.resolve(__dirname, '../medium/configurator/worlds/viewer/index.html'), 'utf8');
 const configuration = html.slice(html.indexOf('  const requestedMode ='), html.indexOf('  let liveSource ='));
 
 function mode(search, serverMode) {

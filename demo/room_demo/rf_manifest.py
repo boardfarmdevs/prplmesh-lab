@@ -9,9 +9,9 @@ from wmdcfg.rf_audit import git_command, read_text
 
 def annotate_manifest(manifest, root, stack, owner, policy):
     root = Path(root)
-    folders = (["gen/hwsim/patches", "gen/wmediumd/patches",
+    folders = (["gen/medium/hwsim/patches", "gen/medium/wmediumd/patches",
                 "recipes-ccsp/hal/rdk-wifi-hal", "recipes-ccsp/unified-wifi-mesh/unified-wifi-mesh"]
-               if stack == "rdk" else ["patches/hwsim", "patches/wmediumd", "patches/prplmesh"])
+               if stack == "rdk" else ["medium/hwsim/patches", "medium/wmediumd/patches", "patches/prplmesh"])
     series = {}
     for folder in folders:
         checksum = hashlib.sha256()

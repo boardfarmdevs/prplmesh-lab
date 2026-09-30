@@ -489,7 +489,7 @@ The implementation should be additive and opt-in:
 
 ## 12. Suggested implementation slices
 
-The exact file layout should be confirmed in M0. Existing areas to extend are the world compiler/runner under `gen/wmediumd/configurator/`, the room orchestration under `gen/demo/room_demo/`, the existing room viewer, and platform adapters. New directories or API names below are proposals, not existing interfaces.
+The exact file layout should be confirmed in M0. Existing areas to extend are the world compiler/runner under `gen/medium/configurator/`, the room orchestration under `gen/demo/room_demo/`, the existing room viewer, and platform adapters. New directories or API names below are proposals, not existing interfaces.
 
 | Slice | Scope | Review boundary |
 | --- | --- | --- |

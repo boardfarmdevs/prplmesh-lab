@@ -4,7 +4,7 @@ const assert = require('assert').strict;
 const fs = require('fs');
 const path = require('path');
 const {chromium} = require('playwright-core');
-const source = fs.readFileSync(path.resolve(__dirname, '../wmediumd/configurator/worlds/viewer/index.html'), 'utf8');
+const source = fs.readFileSync(path.resolve(__dirname, '../medium/configurator/worlds/viewer/index.html'), 'utf8');
 const styles = source.match(/<style>[\s\S]*?<\/style>/)[0];
 const sidebar = source.match(/<aside\b[^>]*>[\s\S]*?<\/aside>/)[0];
 const functions = ['esc', 'phaseClass', 'renderSteeringResume', 'optimizerBadgeClasses', 'optimizerReason', 'renderOptimizerStatus',
@@ -23,7 +23,7 @@ async function main() {
       await page.setViewportSize(viewport);
       await page.setContent('<!doctype html><html><head>' + styles + '</head><body class="live-presentation">' +
         sidebar + '<div id="roomPanelDivider"></div><main></main><dialog id="viewerManual"></dialog></body></html>');
-      await page.addScriptTag({path: path.resolve(__dirname, '../wmediumd/configurator/worlds/viewer/room-convergence.js')});
+      await page.addScriptTag({path: path.resolve(__dirname, '../medium/configurator/worlds/viewer/room-convergence.js')});
       await page.addScriptTag({content: `
         var optimizerState = null, networkState = null, healthState = {healthy: true}, profilingState = null;
         var liveMode = true, replayMode = false, liveClock = {serverMs: Date.now(), receivedMs: performance.now()};

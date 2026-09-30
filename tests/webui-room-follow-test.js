@@ -8,13 +8,13 @@ global.window = {addEventListener() {}};
 const Controller = require(source);
 const {positions, pack} = require(path.join(path.dirname(source), 'room-topology.js'));
 const cues = require(path.join(path.dirname(source), 'steering-cues.js'));
-const roomProjection = require('../wmediumd/configurator/worlds/viewer/room-projection.js');
-const roomName = require('../wmediumd/configurator/worlds/viewer/room-name.js');
+const roomProjection = require('../medium/configurator/worlds/viewer/room-projection.js');
+const roomName = require('../medium/configurator/worlds/viewer/room-name.js');
 assert.equal(roomName.format('home-five-agent--private-client-room-walk'), 'Home five agent — Private client room walk');
 assert.equal(roomName.format('custom_room'), 'Custom room');
 assert.equal(roomName.format(''), 'Waiting for room');
 const controller = new Controller();
-const golden = path.resolve(__dirname, '../wmediumd/configurator/worlds/golden');
+const golden = path.resolve(__dirname, '../medium/configurator/worlds/golden');
 let frames = 0;
 for (const file of fs.readdirSync(golden).filter(name => name.endsWith('.world.json'))) {
   const world = JSON.parse(fs.readFileSync(path.join(golden, file)));

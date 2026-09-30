@@ -4,7 +4,7 @@ const assert = require('assert').strict;
 const fs = require('fs');
 const path = require('path');
 const vm = require('vm');
-const viewerRoot = path.resolve(__dirname, '../wmediumd/configurator/worlds/viewer');
+const viewerRoot = path.resolve(__dirname, '../medium/configurator/worlds/viewer');
 const signalMeter = require(path.join(viewerRoot, 'signal-meter.js'));
 
 assert.equal(signalMeter.segmentCount, 10);

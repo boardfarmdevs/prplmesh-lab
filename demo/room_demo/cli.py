@@ -40,7 +40,7 @@ from .client_wifi import disconnected_client, resume_bound_client
 
 DEMO_ROOT = Path(__file__).resolve().parents[1]
 REPO_ROOT = DEMO_ROOT.parent
-CONFIGURATOR = REPO_ROOT / "wmediumd/configurator"
+CONFIGURATOR = REPO_ROOT / "medium/configurator"
 DEFAULT_MANIFEST = DEMO_ROOT / "manifests/private-client-room-walk.json"
 # A room variant (the lab's own rooms with its wired Agent, worlds-wired) is selected by
 # manifest only: EASYMESH_ROOM_MANIFEST (repository-relative or absolute) replaces the default.

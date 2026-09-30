@@ -15,7 +15,7 @@ belongs in its owning subsystem contract, not in an indefinitely growing plan.
   illustration from the supplied archive; discovery/contention fidelity levels,
   external AP actors and scenario acceptance gates. **Proposed, not implemented.**
 
-The [virtual RF assessment](../radio/virtual-rf-assessment.md) owns the current
+The [virtual RF assessment](https://github.com/boardfarmdevs/easymesh-medium/blob/main/docs/reference/virtual-rf-assessment.md) owns the current
 radio-capability audit and completed common/RDK/prpl implementation evidence.
 The future RF plan defines proposed follow-on work, not a replacement for that
 evidence. Consult the audit before relying on baseline observations in either

@@ -39,8 +39,12 @@ def arp_probe(interface="br-lan", target="192.168.77.1", timeout=1):
 
 
 def eth1_master():
-    master = Path("/sys/class/net/eth1/master")
-    return master.resolve().name if master.exists() else ""
+    # netlink, not /sys/class/net: the probe enters only the Agent's network namespace,
+    # and sysfs there still shows the VM's own interfaces
+    link = subprocess.run(["ip", "-o", "link", "show", "eth1"], capture_output=True,
+                          text=True, timeout=3)
+    fields = link.stdout.split()
+    return fields[fields.index("master") + 1] if "master" in fields else ""
 
 
 def native_probe(role, wired=False):

@@ -5,7 +5,7 @@ const fs = require('fs');
 const path = require('path');
 const vm = require('vm');
 const source = fs.readFileSync(path.resolve(__dirname,
-  '../wmediumd/configurator/worlds/viewer/index.html'), 'utf8');
+  '../medium/configurator/worlds/viewer/index.html'), 'utf8');
 const orbitSource = source.slice(source.indexOf('  (function bindOrbit()'), source.indexOf('  function resize()'));
 const commitSource = source.slice(source.indexOf('  async function commitDraggedRole('), source.indexOf('  async function beginDestinationSelection('));
 const permissionSource = source.slice(source.indexOf('  function canInteractWith('), source.indexOf('  function setPositionOverride('));

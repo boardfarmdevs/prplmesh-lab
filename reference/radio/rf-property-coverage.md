@@ -1,10 +1,13 @@
 # RF property demonstration coverage
 
 [Radio reference](README.md) · [Room catalog](../rooms/catalog.md) ·
-[Field guide](console-rf-properties.md)
+[Field guide](https://github.com/boardfarmdevs/easymesh-medium/blob/main/docs/reference/console-rf-properties.md)
 
-This is the maintained shared property-to-room contract, not a declaration that
-every room or daemon mode is live-qualified. The complete property inventory
+The shared property-to-room contract is the medium's
+[RF property coverage](https://github.com/boardfarmdevs/easymesh-medium/blob/main/docs/reference/rf-property-coverage.md); this page is
+that contract as this lab applies it, with prplMesh's own qualification
+results. It is not a declaration that every room or daemon mode is
+live-qualified. The complete property inventory
 is `PROPERTIES` in [rf_observations.py](../../optimizer/optimizer/rf_observations.py).
 [rf_coverage.py](../../optimizer/optimizer/rf_coverage.py) adds named
 rooms, machine-readable check categories and expectations to both generated
@@ -133,11 +136,11 @@ These must also retain named observation checks, including disabled modes.
 | Multicast fan-out, management/control/data, EAPOL, selected-window lease and ring overwrites | `received-discovery-recovery`, `rf-asymmetric-ack`: observe discovery/echo traffic within selected-window budget; missing history remains missing | Patch 0032 and Console detail tests; no payload capture or assumption that every modeled ACK is captured |
 | Beacon station count, utilization, available admission capacity | `rf-packet-size-counters`, `home-a-flash-crowd`: fresh received IE and exact context; capacity stays diagnostic in 32 µs/s units | Console BSS Load parsing tests; AP Metrics is not beacon proof; no ESP/free-bandwidth inference |
 
-Source anchors are the [world compiler](../../wmediumd/configurator/wmdcfg/world.py),
+Source anchors are the [world compiler](../../medium/configurator/wmdcfg/world.py),
 [native load provider](../../optimizer/optimizer/load_observer.py),
 [load policy](../../optimizer/optimizer/load_policy.py),
-[medium patches](../../patches/wmediumd/) and
-[field guide](console-rf-properties.md). Independent TX power, noise and CCA
+[medium patches](../../medium/wmediumd/patches/) and
+[field guide](https://github.com/boardfarmdevs/easymesh-medium/blob/main/docs/reference/console-rf-properties.md). Independent TX power, noise and CCA
 controls, adjacent-channel spectra, receiver collision/capture, MIMO,
 OFDMA/MLO and calibrated HT/VHT/HE/EHT capacity remain unsupported. Named
 negative controls make these omissions visible; they do not simulate them.
@@ -189,7 +192,7 @@ and native deltas, confirms ownership before/after each trial, restores exact
 frequency overrides and restarts the unchanged room service:
 
 ```sh
-PYTHONPATH=optimizer:wmediumd/configurator python3 tests/native-retry-counter-acceptance.py \
+PYTHONPATH=optimizer:medium/configurator python3 tests/native-retry-counter-acceptance.py \
   --stack prpl --yes-change-lab --seconds 8 \
   --shadow-counter-policy optimizer/configs/load-counter-guard-policy.yaml \
   --output /tmp/native-counter-shadow-new
@@ -581,7 +584,7 @@ python3 tests/rf-property-rooms-smoke.py --yes-act --host local \
   --vm "$PRPLMESH_VM_NAME" --room-url "$ROOM_URL" --output /tmp/prpl-rf-rooms-new.json
 lxc exec "$PRPLMESH_VM_NAME" -- python3 /opt/prplmesh-lab/tests/counter-guard-room-smoke.py \
   --stack prpl --yes-change-lab --output /var/lib/prplmesh-lab/test-results/counter-manifest-new
-lxc exec "$PRPLMESH_VM_NAME" -- env PYTHONPATH=/opt/prplmesh-lab/optimizer:/opt/prplmesh-lab/wmediumd/configurator \
+lxc exec "$PRPLMESH_VM_NAME" -- env PYTHONPATH=/opt/prplmesh-lab/optimizer:/opt/prplmesh-lab/medium/configurator \
   python3 /opt/prplmesh-lab/tests/native-retry-counter-acceptance.py \
   --stack prpl --yes-change-lab --seconds 8 \
   --shadow-counter-policy /opt/prplmesh-lab/optimizer/configs/load-counter-guard-policy.yaml \

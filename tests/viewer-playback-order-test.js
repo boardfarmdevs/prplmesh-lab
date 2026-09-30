@@ -5,7 +5,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const vm = require('node:vm');
 const source = fs.readFileSync(process.argv[2] || path.resolve(__dirname,
-  '../wmediumd/configurator/worlds/viewer/index.html'), 'utf8');
+  '../medium/configurator/worlds/viewer/index.html'), 'utf8');
 const elements = new Map();
 const state = vm.createContext({
   world: {roles: {client: 'station'}, duration_ms: 60000},

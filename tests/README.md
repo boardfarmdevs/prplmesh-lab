@@ -29,7 +29,7 @@ node tests/viewer-room-guide-browser-test.js
 node tests/viewer-room-convergence-browser-test.js
 node tests/viewer-steering-resume-browser-test.js
 node tests/pane-divider-browser-test.js
-PYTHONPATH=demo:wmediumd/configurator:optimizer:demo/tests python3 -m unittest test_room_layout test_server test_world_switch
+PYTHONPATH=demo:medium/configurator:optimizer:demo/tests python3 -m unittest test_room_layout test_server test_world_switch
 (cd controller-ui && bash prepare-web-assets.sh && go test -race ./...)
 ```
 
@@ -85,20 +85,20 @@ expanded 105-instance capacity, fingerprint binding and pre-provision failure.
 They do not replace fresh-artifact 0→105/native100 acceptance.
 
 Phase 0 RF contract/provenance tests and the short read-only live audit are in
-the [RF assessment](../reference/radio/virtual-rf-assessment.md#123-implemented-phase-0-truthfulness-baseline).
+the [RF assessment](https://github.com/boardfarmdevs/easymesh-medium/blob/main/docs/reference/virtual-rf-assessment.md#123-implemented-phase-0-truthfulness-baseline).
 
 ## Netlink transport
 
-After a normal `scripts/build-wmediumd.sh` build, run these bounded host-only
+After a normal `medium/wmediumd/build-wmediumd.sh` build, run these bounded host-only
 checks against the actual patched source (compiler, pkg-config and libnl
 development headers required):
 
 ```sh
 source_dir=${WMEDIUMD_SOURCE_DIR:-$PWD/build/wmediumd-source}
 results=$(mktemp -d)
-python3 wmediumd/tests/netlink-ack-test.py --source "$source_dir/wmediumd/wmediumd.c" --output "$results/ack.json"
-python3 wmediumd/tests/netlink-receive-test.py --source "$source_dir/wmediumd/wmediumd.c" --output "$results/receive.json"
-cc -std=gnu11 -Wall -Wextra -Werror wmediumd/tests/kernel-ack-query-test.c -o "$results/kernel-ack"
+python3 medium/wmediumd/tests/netlink-ack-test.py --source "$source_dir/wmediumd/wmediumd.c" --output "$results/ack.json"
+python3 medium/wmediumd/tests/netlink-receive-test.py --source "$source_dir/wmediumd/wmediumd.c" --output "$results/receive.json"
+cc -std=gnu11 -Wall -Wextra -Werror medium/wmediumd/tests/kernel-ack-query-test.c -o "$results/kernel-ack"
 timeout 10 "$results/kernel-ack"
 timeout 60 "$source_dir/wmediumd/wmediumd" -T
 bash tests/wmediumd-offline-build.sh
@@ -131,8 +131,8 @@ Local deterministic gates (no lab required):
 
 ```sh
 python3 -m unittest discover -s tests -p test_wmediumd_startup.py
-PYTHONPATH=demo:wmediumd/configurator:optimizer python3 -m unittest discover -s demo/tests
-PYTHONPATH=optimizer:wmediumd/configurator python3 -m pytest optimizer/tests wmediumd/configurator/tests
+PYTHONPATH=demo:medium/configurator:optimizer python3 -m unittest discover -s demo/tests
+PYTHONPATH=optimizer:medium/configurator python3 -m pytest optimizer/tests medium/configurator/tests
 node tests/viewer-play-drag-test.js
 node tests/viewer-world-loading-test.js
 node tests/signal-meter-test.js
@@ -141,9 +141,9 @@ node tests/signal-meter-test.js
 For the combined Python regression suite, including shared test fixtures:
 
 ```sh
-PYTHONPATH="$PWD/wmediumd/configurator:$PWD/optimizer:$PWD/demo:$PWD/demo/tests:$PWD/tests" \
+PYTHONPATH="$PWD/medium/configurator:$PWD/optimizer:$PWD/demo:$PWD/demo/tests:$PWD/tests" \
   python3 -m pytest --import-mode=importlib \
-  wmediumd/configurator/tests optimizer/tests demo/tests tests
+  medium/configurator/tests optimizer/tests demo/tests tests
 ```
 
 Run adapter-specific suites separately if their module names collide with
@@ -329,7 +329,7 @@ journal. Act mode additionally requires a successful BTM action and observed
 target ownership. Both modes wait for and verify the configurator's exact
 restore. The selected target must differ from the client's current owner.
 
-`wmediumd/configurator/run-rcpi-monitor.sh` is the simpler measurement-path
+`medium/configurator/run-rcpi-monitor.sh` is the simpler measurement-path
 acceptance. It varies one associated link between 45 and 25 dB SNR, keeps
 traffic flowing, and requires at least a 30-RCPI observed span before restoring
 the captured link.

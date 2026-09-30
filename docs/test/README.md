@@ -102,4 +102,4 @@ Progress, per-step logs, durations, `results.tsv`, `summary.json`, source identi
 and browser/room evidence go to a new `test-results/TIMESTAMP-VM/` directory.
 Retain failed reports. Room counts, client identities, native ownership, fresh
 metrics and traffic must agree; a green animation alone is not convergence.
-For RF-specific qualification see the [assessment](../../reference/radio/virtual-rf-assessment.md).
+For RF-specific qualification see the [assessment](https://github.com/boardfarmdevs/easymesh-medium/blob/main/docs/reference/virtual-rf-assessment.md).

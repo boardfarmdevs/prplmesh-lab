@@ -19,7 +19,7 @@ def test_prepare_only_installs_without_touching_loaded_radios(tmp_path, argument
     scripts = tmp_path / "scripts"
     commands = tmp_path / "commands"
     artifacts = tmp_path / "artifacts"
-    for directory in (scripts, commands, artifacts, tmp_path / "build/bin"):
+    for directory in (scripts, commands, artifacts, tmp_path / "build/bin", tmp_path / "medium/hwsim"):
         directory.mkdir(parents=True)
     shutil.copyfile(ROOT / "scripts/install-from-artifacts.sh", scripts / "install-from-artifacts.sh")
     (artifacts / "SHA256SUMS").write_text("")
@@ -28,7 +28,7 @@ def test_prepare_only_installs_without_touching_loaded_radios(tmp_path, argument
     programs = {
         scripts / "preflight.sh": 'echo preflight >> "$CALLS"',
         scripts / "build-runtime-image.sh": 'echo "image ${1:-mesh}" >> "$CALLS"',
-        scripts / "build-hwsim.sh": 'test "$INSTALL_MODULE" = 1; echo modules >> "$CALLS"',
+        tmp_path / "medium/hwsim/build-hwsim.sh": 'test "$INSTALL_MODULE" = 1; echo modules >> "$CALLS"',
         scripts / "radio-lab.sh": 'echo "$1" >> "$CALLS"',
         commands / "sudo": 'exec "$@"',
         commands / "lxc": 'test "$*" = "image info prpl-ubuntu-22.04-base"',

@@ -6,7 +6,7 @@ const http = require('node:http');
 const path = require('node:path');
 const { chromium } = require('playwright-core');
 
-const root = path.resolve(__dirname, '../wmediumd/observer/web');
+const root = path.resolve(__dirname, '../medium/observer/web');
 const server = http.createServer((request, response) => {
   const pathname = new URL(request.url, 'http://localhost').pathname;
   const filename = path.resolve(root, pathname === '/' ? 'ng/index.html' : `.${pathname}`);

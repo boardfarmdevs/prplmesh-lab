@@ -1,6 +1,6 @@
 # Current prplMesh lab
 
-Reviewed 22 September 2026. This is the source/checkpoint and last-tested
+Reviewed 29 September 2026. This is the source/checkpoint and last-tested
 deployment summary, not a live health monitor. See [operations](operations.md).
 
 ## Identity and release status
@@ -8,19 +8,33 @@ deployment summary, not a live health monitor. See [operations](operations.md).
 | Item | Current value |
 | --- | --- |
 | Canonical branch | `main` |
-| Development checkout | `rev150:/home/rev/git/prplmesh-lab-0916-clean` |
-| Last-tested build host checkout | `rev120:/home/rev/git/prplmesh-lab` |
-| Last-tested VM | `rev120:demo-prpl` |
+| Development checkout | `rev140:/home/rev/git/easymesh-labs/prplmesh-lab` (umbrella workspace) |
+| Last-tested build host checkout | `rev140:/home/rev/git/easymesh-labs/prplmesh-lab` |
+| Last-tested VM | `rev140:prpl-0929` (fresh, 29 Sep) |
 | Guest checkout | `/opt/prplmesh-lab` |
 | Platform | Ubuntu 24.04 / Linux 7 radio host, native prplMesh, userspace wmediumd |
-| Fixed pool | 100 clients; five mesh containers / six displayed roles |
-| Current classification | Development checkpoint; fresh-VM/full-suite acceptance pending |
-| RDK peer | Separate repository; last-tested VM `rev140:demo-a` |
+| Fixed pool | 100 clients; four Wi-Fi Agents and one wired Agent (`prpl-agent-05`, `extender_5`) |
+| Current classification | Fresh VM with the wired Agent, full suite passed (below) |
+| RDK peer | meta-cmf-bananapi-vcpe; last-tested VM `rev140:rdk-0929` |
 
 Default selects ten private and ten IoT clients. Room loading changes presence,
 not permanent container/radio identities. Preserve disabled VM autostart.
 
 ## Qualification and remaining gaps
+
+**29 September, `prpl-0929` (fresh VM on rev140, with the wired Agent):** the
+expanded acceptance and the optimizer check passed with six devices; the room
+catalog passed 26 of 27 rooms, and `band-upgrade-24-5` (an extra observed band
+transition) passed alone; the geometry rooms passed all four, including
+`backhaul-isolation-recovery` for the first time and `backhaul-wired-parent`
+(a Wi-Fi Agent takes the wired Agent as its parent), with
+`backhaul-parent-handover` passing on a rerun; the static, WebUI and browser
+sections passed. The browser ran on rev150: on rev140, with three lab VMs, the
+page hung after world loads and half the catalog timed out. The fixes for the
+sixth AP are prplmesh-lab `11101aa`, `69b8e7b`, `9fb9017`, `1c5cd54`,
+`89e1304` and `ff40440`.
+
+The older record follows.
 
 The ordinary catalog has passing evidence for **24 rooms across two runs**:
 19/24 initially, followed by successful targeted reruns of all five failures.

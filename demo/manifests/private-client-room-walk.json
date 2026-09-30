@@ -2,7 +2,7 @@
   "schema": "easymesh.room-demo.v1",
   "name": "private-client-room-walk",
   "description": "One private 5 GHz client walks from Extender-1 toward Extender-4.",
-  "world": "wmediumd/configurator/worlds/golden/home-a-private-client-room-walk.world.json",
+  "world": "medium/configurator/worlds/golden/home-a-private-client-room-walk.world.json",
   "bindings": "demo/bindings/private-client-room-walk.json",
   "policy": "optimizer/configs/threshold-policy.yaml",
   "hero": {

@@ -4,7 +4,7 @@ const assert = require('assert').strict;
 const fs = require('fs');
 const path = require('path');
 const vm = require('vm');
-const source = fs.readFileSync(path.join(__dirname, '../wmediumd/configurator/worlds/viewer/index.html'), 'utf8');
+const source = fs.readFileSync(path.join(__dirname, '../medium/configurator/worlds/viewer/index.html'), 'utf8');
 const elements = Object.fromEntries(['#profilingAuthority', '#fullscreenAuthority', '#backhaulPolicyTitle',
   '#backhaulPolicyDetail', '#backhaulPolicyCard'].map(selector => [selector, {textContent: '', dataset: {}}]));
 const context = {profilingState: null, noConnectMode: false, $: selector => elements[selector],

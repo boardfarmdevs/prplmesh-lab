@@ -3,7 +3,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 const vm = require('node:vm');
-const source = fs.readFileSync(path.resolve(__dirname, '../wmediumd/configurator/worlds/viewer/index.html'), 'utf8');
+const source = fs.readFileSync(path.resolve(__dirname, '../medium/configurator/worlds/viewer/index.html'), 'utf8');
 const observed = {display_name: 'iot-10', sta_mac: '02:00:00:20:0a:00', cohort: 'iot'};
 const context = {observedMeshNode: () => null, observedClient: () => observed, shortRole: role => role};
 vm.createContext(context);

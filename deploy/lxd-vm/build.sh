@@ -126,7 +126,7 @@ check_vm() (
         set -eu
         inventory=$(mktemp /tmp/prpl-check-inventory.XXXXXX.json)
         trap "rm -f -- $inventory" EXIT
-        cd /opt/prplmesh-lab/wmediumd/configurator
+        cd /opt/prplmesh-lab/medium/configurator
         python3 -m wmdcfg.cli inventory -o "$inventory" >/dev/null
         /opt/prplmesh-lab/deploy/lxd-vm/select-optimizer-stimulus.py \
             "$inventory" prpl-agent-02
@@ -185,10 +185,21 @@ PY
     commit=$(git -C "$ROOT" rev-parse HEAD)
     git -C "$ROOT" bundle create "$bundle" HEAD
     git bundle verify "$bundle" >/dev/null
+    # the RF medium: easymesh-medium at the commit this lab pins (the medium submodule)
+    medium=$(git -C "$ROOT" rev-parse HEAD:medium)
+    [ "$(git -C "$ROOT/medium" rev-parse HEAD 2>/dev/null)" = "$medium" ] || {
+        echo "medium is not at the pinned $medium: git submodule update --init medium" >&2
+        exit 1
+    }
+    git -C "$ROOT/medium" bundle create "$stage/easymesh-medium.bundle" HEAD
+    git bundle verify "$stage/easymesh-medium.bundle" >/dev/null
+    # the Console is built here, as in the RDK lab: the medium does not commit binaries
+    bash "$ROOT/medium/observer/build.sh" "$stage/wmediumd-console" >&2
+    test -z "$(git -C "$ROOT/medium" status --porcelain)"
     cp --reflink=auto "$RUNTIME_DEPS" "$PRPL_INSTALL" "$HOSTAP_RUNTIME" "$stage/"
     (
         cd "$stage"
-        sha256sum prplmesh-lab.bundle \
+        sha256sum prplmesh-lab.bundle easymesh-medium.bundle wmediumd-console \
             "$(basename "$RUNTIME_DEPS")" \
             "$(basename "$PRPL_INSTALL")" \
             "$(basename "$HOSTAP_RUNTIME")" > SHA256SUMS
@@ -244,8 +255,12 @@ PY
         sha256sum -c SHA256SUMS
         rm -rf /opt/prplmesh-lab
         git clone prplmesh-lab.bundle /opt/prplmesh-lab
+        git -C /opt/prplmesh-lab config submodule.medium.url /opt/prplmesh-stage/easymesh-medium.bundle
+        git -c protocol.file.allow=always -C /opt/prplmesh-lab submodule update --init medium
+        install -m 0755 wmediumd-console /opt/prplmesh-lab/medium/observer/wmediumd-console
     '
     [ "$(run git -C /opt/prplmesh-lab rev-parse HEAD)" = "$commit" ]
+    [ "$(run git -C /opt/prplmesh-lab/medium rev-parse HEAD)" = "$medium" ]
     run install -d -m 0755 /var/lib/prplmesh-lab
     run python3 /opt/prplmesh-lab/scripts/generate-wmediumd-config.py \
         --radios "$RADIOS" --output /var/lib/prplmesh-lab/wmediumd.conf
@@ -290,7 +305,10 @@ EOF"
         PRPLMESH_NESTED_STORAGE_DRIVER="$NESTED_DRIVER" PRPLMESH_NESTED_STORAGE_SIZE="$NESTED_SIZE" \
         bash /opt/prplmesh-lab/deploy/guest/setup-nested-storage.sh
     run bash /opt/prplmesh-lab/scripts/install-from-artifacts.sh --prepare-only
-    lxc restart "$NAME" --timeout 120
+    # the guest's nested LXD can hold its shutdown past the timeout (prpl-0930):
+    # everything is on the disk by now, so a forced restart loses nothing
+    run sync
+    lxc restart "$NAME" --timeout 120 || lxc restart "$NAME" --force
     wait_agent
     run bash /opt/prplmesh-lab/scripts/radio-lab.sh radio-pool
     run bash /opt/prplmesh-lab/scripts/radio-lab.sh deploy

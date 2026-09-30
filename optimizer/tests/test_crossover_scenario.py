@@ -16,7 +16,7 @@ from .helpers import snapshot
 @pytest.mark.scenario
 def test_existing_two_ap_crossover_yields_one_report_based_recommendation():
     root = Path(__file__).resolve().parents[2]
-    scenario_path = root / "wmediumd" / "configurator" / "scenarios" / "two-ap-crossover.wmd"
+    scenario_path = root / "medium" / "configurator" / "scenarios" / "two-ap-crossover.wmd"
     scenario = parse(scenario_path.read_text(encoding="utf-8"))
     assert [phase.name for phase in scenario.phases] == [
         "baseline",
@@ -56,7 +56,7 @@ def test_live_acceptance_crossover_isolates_one_target_in_five_agent_lab():
     root = Path(__file__).resolve().parents[2]
     scenario_path = (
         root
-        / "wmediumd"
+        / "medium"
         / "configurator"
         / "scenarios"
         / "optimizer-five-ap-crossover.wmd"

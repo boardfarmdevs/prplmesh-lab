@@ -141,7 +141,7 @@ test('all room files ship and representative previews remain disconnected', asyn
   const manifest = await (await request.get('/prplmesh-lab/build.json')).json();
   expect(manifest.mode).toBe('disconnected');
   const names = readdirSync(
-    path.resolve('../wmediumd/configurator/worlds/golden'),
+    path.resolve('../medium/configurator/worlds/golden'),
   )
     .filter((name) => name.endsWith('.world.json'))
     .sort();
@@ -152,7 +152,7 @@ test('all room files ship and representative previews remain disconnected', asyn
     expect(await response.json()).toEqual(
       JSON.parse(
         readFileSync(
-          path.resolve('../wmediumd/configurator/worlds/golden', filename),
+          path.resolve('../medium/configurator/worlds/golden', filename),
           'utf8',
         ),
       ),

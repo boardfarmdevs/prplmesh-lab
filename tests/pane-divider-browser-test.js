@@ -3,7 +3,7 @@ const assert = require('assert/strict');
 const fs = require('fs');
 const path = require('path');
 const {chromium} = require(process.env.PLAYWRIGHT_MODULE || 'playwright-core');
-const root = path.resolve(__dirname, '../wmediumd/configurator/worlds/viewer');
+const root = path.resolve(__dirname, '../medium/configurator/worlds/viewer');
 const html = '<!doctype html><html><head><style>' + fs.readFileSync(path.join(root, 'pane-divider.css'), 'utf8') +
   'body{margin:0;height:100vh;display:grid;grid-template-columns:var(--panel,280px) 8px minmax(0,1fr)}' +
   '@media(max-width:760px){body{grid-template-columns:1fr}#divider{display:none}}</style></head><body>' +

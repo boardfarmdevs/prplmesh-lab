@@ -98,7 +98,7 @@ def main(flavor):
     if flavor not in ('rdk', 'prpl'):
         raise ValueError('RF audit requires rdk or prpl')
     root = Path('/home/easymesh/git/meta-cmf-bananapi-vcpe' if flavor == 'rdk' else '/opt/prplmesh-lab')
-    configurator = root / ('gen/wmediumd/configurator' if flavor == 'rdk' else 'wmediumd/configurator')
+    configurator = root / ('gen/medium/configurator' if flavor == 'rdk' else 'medium/configurator')
     sys.path.insert(0, str(configurator))
     from wmdcfg.actuator import ControlClient
 

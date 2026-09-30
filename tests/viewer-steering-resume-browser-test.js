@@ -4,7 +4,7 @@ const assert = require('assert').strict;
 const fs = require('fs');
 const path = require('path');
 const {chromium} = require('playwright-core');
-const source = fs.readFileSync(path.resolve(__dirname, '../wmediumd/configurator/worlds/viewer/index.html'), 'utf8');
+const source = fs.readFileSync(path.resolve(__dirname, '../medium/configurator/worlds/viewer/index.html'), 'utf8');
 const functions = ['esc', 'interactionMessage', 'newCommandId', 'apiJson', 'acquireInteractionLease',
   'sendControl', 'renderSteeringResume', 'resumeSteering'].map(name =>
   source.match(new RegExp('  (?:async )?function ' + name + '\\([\\s\\S]*?\\n  \\}'))[0]).join('\n');
@@ -37,7 +37,7 @@ async function main() {
       return route.fulfill({contentType: 'application/json', body: JSON.stringify(response)});
     });
     await page.goto('http://room.test/');
-    await page.addScriptTag({path: path.resolve(__dirname, '../wmediumd/configurator/worlds/viewer/room-convergence.js')});
+    await page.addScriptTag({path: path.resolve(__dirname, '../medium/configurator/worlds/viewer/room-convergence.js')});
     await page.addScriptTag({content: `
       var interactiveLiveMode = true, world = {name: 'unchanged'};
       var optimizerState = {steering_safety: ${JSON.stringify(safety)}};
