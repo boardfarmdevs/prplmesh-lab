@@ -22,10 +22,16 @@ an undersized host.
 ```sh
 sudo apt update
 sudo apt install -y git ca-certificates
-git clone https://github.com/boardfarmdevs/prplmesh-lab.git
+git clone --recurse-submodules https://github.com/boardfarmdevs/prplmesh-lab.git
 cd prplmesh-lab
 sudo bash deploy/lxd-vm/install-host.sh
 ```
+
+The submodules are the RF medium (`medium`,
+[easymesh-medium](https://github.com/boardfarmdevs/easymesh-medium)) and the
+optimizer (`optimizer`,
+[easymesh-optimizer](https://github.com/boardfarmdevs/easymesh-optimizer)), at
+the commits this lab pins.
 
 Log out/in for LXD group membership, return to the checkout, then check:
 

@@ -5,6 +5,13 @@ named VM, keeps the full-pool baseline stable across native tiers, restores
 the room once and records results. The individual tools below are for focused
 diagnostics; run mutating ones only in the documented command context.
 
+Two groups of tests this guide describes live with the code they test, and the
+runner runs them from there: the room viewer's and Console NG's tests are
+easymesh-medium's (`medium/configurator/tests/viewer`, `medium/observer/tests`), and
+the room and optimizer acceptance tools, with their tests, easymesh-optimizer's
+(`optimizer/acceptance`). This directory keeps the lab's own: its dashboard, suite,
+native acceptance and provisioning tests.
+
 `live/controller-memory` follows native acceptance and precedes any soak:
 90-second RSS sampling, 100-client traffic and one-second native metrics.
 See [controller-memory contract](../reference/testing/controller-memory.md).
@@ -22,14 +29,14 @@ Room/topology UI regression checks (no live RF changes):
 node tests/webui-room-follow-test.js controller-ui/web/static/script.js
 node tests/steering-cues-test.js controller-ui/web/static/steering-cues.js
 node tests/steering-cues-browser-test.js controller-ui/web/static/steering-cues.js controller-ui/web/static/vendor/d3-7.9.0.min.js
-node tests/viewer-room-guide-test.js
-node tests/viewer-room-convergence-test.js
+node medium/configurator/tests/viewer/viewer-room-guide-test.js
+node medium/configurator/tests/viewer/viewer-room-convergence-test.js
 node tests/webui-room-follow-browser-test.js controller-ui/web/static
-node tests/viewer-room-guide-browser-test.js
-node tests/viewer-room-convergence-browser-test.js
-node tests/viewer-steering-resume-browser-test.js
-node tests/pane-divider-browser-test.js
-PYTHONPATH=demo:medium/configurator:optimizer:demo/tests python3 -m unittest test_room_layout test_server test_world_switch
+node medium/configurator/tests/viewer/viewer-room-guide-browser-test.js
+node medium/configurator/tests/viewer/viewer-room-convergence-browser-test.js
+node medium/configurator/tests/viewer/viewer-steering-resume-browser-test.js
+node medium/configurator/tests/viewer/pane-divider-browser-test.js
+PYTHONPATH=medium/configurator:optimizer python3 -m pytest optimizer/tests/room/test_room_layout.py optimizer/tests/room/test_server.py optimizer/tests/room/test_world_switch.py
 (cd controller-ui && bash prepare-web-assets.sh && go test -race ./...)
 ```
 
@@ -75,7 +82,7 @@ is retained. Run/world/daemon changes and query errors fail immediately. The
 10-second collection budget and20-second process bound stay within the existing
 30-second caller timeout; no playback pause, RF writes or room deadline changes.
 No coherent snapshot means a nonzero exit with all attempts in stderr.
-Offline fixtures: `python3 -m pytest -q tests/test_room_feature_rf_audit.py`.
+Offline fixtures: `python3 -m pytest -q optimizer/acceptance/test_room_feature_rf_audit.py`.
 
 Packaging-only offline checks (no LXD/VM actions):
 `python3 -m pytest -q tests/test_thin_image_guard.py`,
@@ -118,7 +125,7 @@ With the default 20-client room service already running, inside the appliance:
 
 ```sh
 cd /opt/prplmesh-lab
-python3 tests/room-world-switch-smoke.py --yes-act --timeout 900 --output /root/room-worlds.json
+python3 optimizer/acceptance/room-world-switch-smoke.py --stack prpl --yes-act --timeout 900 --output /root/room-worlds.json
 ```
 
 This opt-in test changes live RF, tests several room sizes and client absence/
@@ -131,19 +138,19 @@ Local deterministic gates (no lab required):
 
 ```sh
 python3 -m unittest discover -s tests -p test_wmediumd_startup.py
-PYTHONPATH=demo:medium/configurator:optimizer python3 -m unittest discover -s demo/tests
+PYTHONPATH=medium/configurator:optimizer python3 -m pytest rooms/tests optimizer/tests/room
 PYTHONPATH=optimizer:medium/configurator python3 -m pytest optimizer/tests medium/configurator/tests
-node tests/viewer-play-drag-test.js
-node tests/viewer-world-loading-test.js
-node tests/signal-meter-test.js
+node medium/configurator/tests/viewer/viewer-play-drag-test.js
+node medium/configurator/tests/viewer/viewer-world-loading-test.js
+node medium/configurator/tests/viewer/signal-meter-test.js
 ```
 
 For the combined Python regression suite, including shared test fixtures:
 
 ```sh
-PYTHONPATH="$PWD/medium/configurator:$PWD/optimizer:$PWD/demo:$PWD/demo/tests:$PWD/tests" \
+PYTHONPATH="$PWD/medium/configurator:$PWD/optimizer:$PWD/rooms:$PWD/rooms/tests:$PWD/tests" \
   python3 -m pytest --import-mode=importlib \
-  medium/configurator/tests optimizer/tests demo/tests tests
+  medium/configurator/tests optimizer/tests rooms/tests tests
 ```
 
 Run adapter-specific suites separately if their module names collide with
@@ -157,7 +164,7 @@ client containers. Enter the selected VM as root from its outer host, then load
 the immutable profile before running tests:
 
 ```sh
-VM=prplmesh-0913
+VM=<vm-name>
 lxc exec "$VM" -- bash
 
 cd /opt/prplmesh-lab
@@ -365,7 +372,7 @@ as the RDK appliance. Capture a PSS-based ready-state sample as root inside the
 outer VM:
 
 ```sh
-sudo tests/lab-performance-snapshot.py \
+sudo optimizer/acceptance/lab-performance-snapshot.py \
   --stack prplmesh --profile 20 --label ready \
   --output /var/tmp/prplmesh-ready.json
 ```

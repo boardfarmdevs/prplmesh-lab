@@ -20,10 +20,10 @@ when profiling native behavior, not a deterministic RF-assisted demonstration.
 
 ## Tools and evidence
 
-The repository's `tests/room-feature-acceptance.js` records browser/API
+The repository's `optimizer/acceptance/room-feature-acceptance.js` records browser/API
 samples and selected SSE; its report helper aggregates action/collection
 timings. The [room test plan](room-acceptance.md) owns invocation and gates.
-`tests/room-feature-host-monitor.py` samples physical-host load separately.
+`optimizer/acceptance/room-feature-host-monitor.py` samples physical-host load separately.
 
 During a separately controlled moving-room test, run the read-only
 `tests/controller-render-latency.js --url TOPOLOGY_URL --seconds 90 --output NEW_DIR`

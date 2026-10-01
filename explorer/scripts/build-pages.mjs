@@ -44,6 +44,15 @@ const publicViewer = viewer.replace(
   '<title>prplMesh — Room sandbox</title>',
 );
 writeFileSync(path.join(output, 'viewer/index.html'), publicViewer);
+// The room manual is the medium's, shared by both labs: its public sandbox is ours here.
+const manualPath = path.join(output, 'viewer/manual.html');
+writeFileSync(
+  manualPath,
+  readFileSync(manualPath, 'utf8').replaceAll(
+    'https://boardfarmdevs.github.io/meta-cmf-bananapi-vcpe/viewer/',
+    'https://boardfarmdevs.github.io/prplmesh-lab/viewer/',
+  ),
+);
 writeFileSync(path.join(output, '.nojekyll'), '');
 writeFileSync(
   path.join(output, 'build.json'),

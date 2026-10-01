@@ -342,7 +342,7 @@ def test_rollback_refuses_operator_modified_host_setting(module, fake_host):
     assert fake_host.host_settings["core.metrics_address"] == "192.0.2.20:9444"
 
 
-@pytest.mark.parametrize("script", ("enable-outer-metrics.sh", "disable-outer-metrics.sh", "enable-rev140-outer-lxd-metrics.sh"))
+@pytest.mark.parametrize("script", ("enable-outer-metrics.sh", "disable-outer-metrics.sh"))
 def test_new_shell_syntax(script):
     subprocess.run(["bash", "-n", str(BUNDLE / script)], check=True)
 

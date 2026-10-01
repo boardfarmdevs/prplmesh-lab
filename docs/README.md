@@ -8,7 +8,7 @@ This is prplMesh's equivalent of RDK's `doc/easymesh/README.md`.
 | Find running services, downloads and known limits | [Current state](current-state.md) |
 | Install, start, stop or recover | [Operations](operations.md) |
 | Understand the native stack and radio host | [Architecture](architecture.md) |
-| Use the room and topology | [Room manual](live-room-demo/README.md) |
+| Use the room and topology | [Room manual](room-service/README.md) |
 | Choose a short demonstration | [Room catalog](../reference/rooms/catalog.md) |
 | Develop or diagnose external policy | [Optimizer reference](../reference/optimizer/README.md) |
 | Understand RF and the medium | [Radio reference](../reference/radio/README.md) |

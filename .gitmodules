@@ -1,3 +1,6 @@
 [submodule "medium"]
 	path = medium
 	url = ../easymesh-medium.git
+[submodule "optimizer"]
+	path = optimizer
+	url = ../easymesh-optimizer.git

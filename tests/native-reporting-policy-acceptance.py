@@ -14,7 +14,7 @@ import urllib.request
 
 from optimizer.load_observer import NativeLoadProvider
 from optimizer.prplmesh import PrplMeshObserver
-from room_demo.traffic_experiment import namespace_udp
+from room_service.traffic_experiment import namespace_udp
 import re
 
 # The default room of each room set: the lab's own rooms (worlds) or with its wired Agent (worlds-wired).
@@ -116,7 +116,7 @@ def main():
                               "configured_interval_seconds": saved["LinkMetricsRequestIntervalSec"]}
 
         station = execute("lxc", "exec",
-            json.loads((args.root / "demo/bindings/private-client-room-walk.json").read_text())["roles"]["sta_static_01"],
+            json.loads((args.root / "rooms/bindings/private-client-room-walk.json").read_text())["roles"]["sta_static_01"],
             "--", "cat", "/sys/class/net/wlan0/address").stdout.strip().lower()
         client = next(row for row in snapshot.clients if row.sta_mac == station)
         current_load = provider.loads.get((client.connected_device_id, client.connected_bssid))
@@ -142,7 +142,7 @@ def main():
             max((row["captured_monotonic_ns"] - query_mark) / 1e9 for row in queried
                 if row["source"] in expected_sources), "sources": sorted(query_sources)}
 
-        binding = json.loads((args.root / "demo/bindings/private-client-room-walk.json").read_text())["roles"]
+        binding = json.loads((args.root / "rooms/bindings/private-client-room-walk.json").read_text())["roles"]
         traffic_started = threading.Event()
         phase = {"role": "sta_static_01", "start_ms": 0, "end_ms": 18000,
                  "mode": "udp", "offered_mbps": 12, "payload_bytes": 1200}

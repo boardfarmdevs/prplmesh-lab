@@ -5,7 +5,7 @@ const path = require('node:path');
 const {execFileSync} = require('node:child_process');
 const {stopTrace} = require('./controller-render-latency.js');
 const {presentationFrames} = require('./controller-presentation-latency.js');
-const {distribution} = require('./room-feature-acceptance.js');
+const {distribution} = require('../optimizer/acceptance/room-feature-acceptance.js');
 const {remoteTimeBounds, startNativeTrace} = require('./native-controller-latency.js');
 
 function installRoomObserver() {

@@ -1,0 +1,96 @@
+Subject: [PATCH] controller: remove a wired neighbor only on its parent's report
+
+handle_dead_neighbors() compares the 1905 neighbors in a Topology Response
+with the neighbors the database holds for the reporter. A missing wireless
+neighbor is removed only when its bSTA uses a BSS of the reporter. A missing
+wired neighbor is removed whoever reports it missing.
+
+A wireless Agent that leaves a wired Agent's backhaul BSS stops listing that
+wired Agent as a neighbor once 63 s pass without its discovery messages. The
+controller then removed the wired Agent, its radios and its stations from the
+model, although it stayed connected to its own parent and kept sending
+reports. Those reports only refresh Agents the database still knows ("Agent
+with mac is not found in database"), so the Agent stayed missing until it
+restarted. In the lab this happened in four of the six backhaul-wired-parent
+runs that played on 30 Sep, on the first report after prpl-agent-03, back
+from the wired prpl-agent-05, aged it out.
+
+Remove a missing wired neighbor only when the reporter is the wired parent
+that the Ethernet neighbor graph inferred for it. When that parent is not
+known, keep the Agent; its parent's own report still removes it. Wireless
+neighbors are unchanged. Upstream master (e90ebe9) has the same code.
+
+tests/test_dead_neighbor_removal.py compiles the function before and after
+the change. The unpatched function must remove the wired Agent when a
+wireless neighbor roams off it; both must remove a wired child that its
+parent no longer reports and keep the wireless rules.
+
+--- a/controller/src/beerocks/master/tasks/topology_task.cpp
++++ b/controller/src/beerocks/master/tasks/topology_task.cpp
+@@ -1027,58 +1027,66 @@ void topology_task::handle_bss_configuration_report_tlv(
+ void topology_task::handle_dead_neighbors(const sMacAddr &src_mac, const sMacAddr &al_mac,
+                                           std::unordered_set<sMacAddr> reported_neighbor_al_macs)
+ {
+     LOG(TRACE) << "Checking if one of " << src_mac << " neighbors is no longer connected";
+ 
+     auto neighbor_al_macs_on_db = database.get_1905_1_neighbors(al_mac);
+     LOG(DEBUG) << "Comparing reported neighbors to neighbors on the database, neighbors_on_db="
+                << neighbor_al_macs_on_db.size();
+ 
+     for (const auto &neighbor_al_mac_on_db : neighbor_al_macs_on_db) {
+ 
+         LOG(DEBUG) << "Checks if al_mac " << al_mac << " neighbor " << neighbor_al_mac_on_db
+                    << " is reported in this message";
+ 
+         // If reported al_mac is on the db skip it, otherwise remove the node.
+         if (reported_neighbor_al_macs.find(neighbor_al_mac_on_db) !=
+             reported_neighbor_al_macs.end()) {
+             continue;
+         }
+ 
+         std::shared_ptr<Agent> neighbor = database.get_agent(neighbor_al_mac_on_db);
+         if (!neighbor) {
+             LOG(ERROR) << "Failed to get neighbor instance";
+             continue;
+         }
+         std::shared_ptr<Station> neighbor_bh_sta = database.get_station(neighbor->parent_mac);
+         if (!neighbor_bh_sta) {
+             LOG(ERROR) << "Failed to get neighbor station instance";
+             continue;
+         }
+ 
+         if (neighbor_bh_sta->get_bss()) {
+             std::shared_ptr<Agent> neighbor_parent_agent =
+                 database.get_agent_by_radio_uid(neighbor_bh_sta->get_bss()->radio.radio_uid);
+             if (!neighbor_parent_agent) {
+                 LOG(ERROR) << "Failed to get neighbor parent agent instance";
+                 continue;
+             }
+             // It is possible that re-routing took place, and the node is now a neighbour of some
+             // other node. To filter such cases, compare the current al_mac of the neighbor to the
+             // al_mac of the reporter. If they are not equal then it means than the neighbor is
+             // currently under another node.
+             if (neighbor_parent_agent->al_mac != src_mac) {
+                 LOG(ERROR)
+                     << "The neighbor's parent's al_mac is not equal to the reporter's al_mac";
+                 continue;
+             }
+         } else {
++            // Only the Agent a wired neighbor hangs off may declare it gone. A reporter whose
++            // backhaul left that neighbor stops listing it while it stays connected elsewhere.
++            auto neighbor_wired_parent = neighbor->backhaul.parent_agent.lock();
++            if (!neighbor_wired_parent || neighbor_wired_parent->al_mac != src_mac) {
++                LOG(DEBUG) << "Wired neighbor " << neighbor_al_mac_on_db
++                           << " is not a child of the reporter " << src_mac << ", keeping it";
++                continue;
++            }
+             LOG(INFO) << "Wired connection";
+         }
+ 
+         LOG(DEBUG) << "known neighbor al_mac  " << neighbor_al_mac_on_db
+                    << " is not reported on 1905 Neighbor Device TLV, removing the al_mac node";
+         son_actions::handle_dead_station(tlvf::mac_to_string(neighbor->parent_mac), true, database,
+                                          tasks);
+         database.remove_agent(neighbor->al_mac);
+     }
+ }

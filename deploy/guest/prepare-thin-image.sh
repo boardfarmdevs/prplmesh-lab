@@ -28,7 +28,7 @@ lxc image info "$CLIENT_IMAGE" >/dev/null 2>&1 || {
 }
 [[ "$CLIENT_IMAGE" != "$RUNTIME_IMAGE" ]] || { echo 'Mesh and client aliases must differ' >&2; exit 1; }
 
-systemctl stop prplmesh-room-demo.service
+systemctl stop prplmesh-room-service.service
 systemctl stop prplmesh-lab.service
 expected_instances=(prpl-controller)
 for ordinal in $(seq 1 "$agents"); do

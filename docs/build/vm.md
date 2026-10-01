@@ -151,6 +151,14 @@ bash deploy/lxd-vm/build.sh delete
 bash deploy/lxd-vm/build.sh build
 ```
 
+`bash deploy/lxd-vm/build.sh update` moves an accepted VM forward to the
+checkout's commit without a build: the VM's checkout and its submodules (the
+medium, the optimizer) follow, and the room service restarts, with every pool client
+online first, and settles. It
+refuses a commit that changes what a build installed (the medium's daemon,
+console or radio module, `deploy/guest`, `controller-ui`, `scripts/container`);
+those need a rebuild.
+
 Do not delete another tester's VM or a shared pool. For same-source iteration,
 an optional stopped-VM snapshot preserves exact runtime state without another
 build. It is not a backup against pool loss or proof of reproducibility.

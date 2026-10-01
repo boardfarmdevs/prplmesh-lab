@@ -1,6 +1,6 @@
 # Current prplMesh lab
 
-Reviewed 29 September 2026. This is the source/checkpoint and last-tested
+Reviewed 1 October 2026. This is the source/checkpoint and last-tested
 deployment summary, not a live health monitor. See [operations](operations.md).
 
 ## Identity and release status
@@ -10,17 +10,41 @@ deployment summary, not a live health monitor. See [operations](operations.md).
 | Canonical branch | `main` |
 | Development checkout | `rev140:/home/rev/git/easymesh-labs/prplmesh-lab` (umbrella workspace) |
 | Last-tested build host checkout | `rev140:/home/rev/git/easymesh-labs/prplmesh-lab` |
-| Last-tested VM | `rev140:prpl-0929` (fresh, 29 Sep) |
+| Last-tested VM | `rev140:prpl-1001` (fresh, with prplMesh patch 0033, 1 Oct) |
 | Guest checkout | `/opt/prplmesh-lab` |
-| Platform | Ubuntu 24.04 / Linux 7 radio host, native prplMesh, userspace wmediumd |
+| Platform | Ubuntu 24.04 / Linux 7 radio host, native prplMesh, userspace wmediumd from easymesh-medium (the `medium` submodule); the optimizer from easymesh-optimizer (the `optimizer` submodule) |
 | Fixed pool | 100 clients; four Wi-Fi Agents and one wired Agent (`prpl-agent-05`, `extender_5`) |
 | Current classification | Fresh VM with the wired Agent, full suite passed (below) |
-| RDK peer | meta-cmf-bananapi-vcpe; last-tested VM `rev140:rdk-0929` |
+| RDK peer | meta-cmf-bananapi-vcpe; last-tested VM `rev140:rdk-1001` |
 
 Default selects ten private and ten IoT clients. Room loading changes presence,
 not permanent container/radio identities. Preserve disabled VM autostart.
 
 ## Qualification and remaining gaps
+
+**1 October, `prpl-1001` (fresh VM on rev140 at `abd4ddd`, the artifacts rebuilt
+with patch 0033):** artifacts 9 min, VM 49 min. The expanded acceptance and the
+optimizer check passed with six devices; the static, WebUI and browser sections
+67 of 67, from rev150; the geometry rooms all four, the recovery hold through
+its 150 s with no node lost; the catalog 18 of 27 rooms on rev140 and the other
+nine with the browser on rev150 (eight timed out loading, one kernel-client
+audit).
+
+**30 September, the optimizer split:** `prpl-0930` moved in place to the
+optimizer from easymesh-optimizer (`deploy/lxd-vm/build.sh update`) and passed a
+quick requalification: the offline suites, the default room settled with the
+optimizer converged, `tests/optimizer-dynamic.sh recommend` through the
+optimizer's CLI, default readiness and five optimizer rooms with the browser on
+rev150 (the easymesh-labs alignment plan, 6.5).
+
+**30 September, `prpl-0930` (fresh VM on rev140, the RF medium from
+easymesh-medium `036cd3f`):** the expanded acceptance and the optimizer check
+passed with six devices; the room catalog passed 18 of 27 rooms on rev140 and the
+other nine with the browser on rev150 (on rev140 they timed out in the browser,
+`waitForFunction` 45 s, with the host at load 15 to 20); the geometry rooms passed
+all four; the static, WebUI and browser sections passed 66 of 66, from rev150.
+On the way the build learned to compile the medium's Console on the host (the
+medium commits no binaries) and to force a restart whose shutdown times out.
 
 **29 September, `prpl-0929` (fresh VM on rev140, with the wired Agent):** the
 expanded acceptance and the optimizer check passed with six devices; the room

@@ -3,7 +3,7 @@
 const fs = require('node:fs');
 const path = require('node:path');
 const {execFileSync} = require('node:child_process');
-const {distribution} = require('./room-feature-acceptance.js');
+const {distribution} = require('../optimizer/acceptance/room-feature-acceptance.js');
 const {nativeObservations, startNativeTrace, nativeCpuSample, cpuWindow} = require('./native-controller-latency.js');
 const {installMetricObserver, nativeMetricObservations} = require('./controller-metric-latency.js');
 const {presentationFrames, presentationObservation} = require('./controller-presentation-latency.js');

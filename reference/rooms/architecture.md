@@ -33,14 +33,16 @@ a real constraint. Neither backend has a zero-outside-stack-latency guarantee.
 | --- | --- | --- |
 | `interactive --mode act --yes-act --profiling` | External policy, unassisted native BTM | Startup RF protected |
 | `interactive --mode stimulus --profiling` | No external client policy/candidate requests | Startup RF protected |
-| `interactive --mode stimulus --profiling --model-backhaul` | No external client policy | AP-to-AP RF follows world |
+| `interactive --model-backhaul` (any mode) | As the mode | AP-to-AP RF follows the room's geometry; native parent selection |
 
-The CLI entry point is `demo/room-demo`; inspect `--help` for all
+The CLI entry point is `rooms/room-service`; inspect `--help` for all
 options before replacing a service's command. These CLI modes are distinct from
 the browser's default URL. Serving-state and traffic observations remain active.
 
-`--model-backhaul` is restricted to stimulus profiling. It does not add a
-backhaul parent-selection algorithm; weak paths can disconnect nodes. Do not
+`--model-backhaul` overrides every room's backhaul RF with its geometry, in any
+mode, independent of the client policy (the room service is easymesh-optimizer's,
+shared with the RDK lab). It does not add a backhaul parent-selection algorithm:
+the stack's native parent selection decides, and weak paths can disconnect nodes. Do not
 silently restore a star to make such a test pass. An assisted backhaul demo
 must be labeled separately from native backhaul-policy evaluation.
 

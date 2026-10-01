@@ -8,7 +8,9 @@ steering adapters and deployment remain independent.
 <!-- labs block: the same in every repository of the EasyMesh labs, but for the Site line -->
 **Site:** <https://boardfarmdevs.github.io/prplmesh-lab/>.
 The [EasyMesh labs](https://boardfarmdevs.github.io/easymesh-labs/) serve three
-goals: EasyMesh optimizer development in a rich virtual lab, on both stacks
+goals: EasyMesh optimizer development
+([easymesh-optimizer](https://github.com/boardfarmdevs/easymesh-optimizer)) in a rich
+virtual lab, on both stacks
 ([RDK EasyMesh](https://boardfarmdevs.github.io/meta-cmf-bananapi-vcpe/),
 [prplMesh](https://boardfarmdevs.github.io/prplmesh-lab/)); unchanged OpenSync
 pods as EasyMesh agents under a local controller, without the OpenSync cloud
@@ -25,7 +27,7 @@ OVSDB ⇄ EasyMesh conversion. The rest is infrastructure and learning around th
 
 - [Current deployment, URLs, downloads and limits](docs/current-state.md)
 - [Install or operate a lab](docs/operations.md)
-- [Use the room and network topology](docs/live-room-demo/README.md)
+- [Use the room and network topology](docs/room-service/README.md)
 - [Interactive architecture and room sandbox: build/publish](explorer/README.md)
 - [Build artifacts, then a named VM](docs/build/README.md)
 - [Test tiers and host-side runner](docs/test/README.md)

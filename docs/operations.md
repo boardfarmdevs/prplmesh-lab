@@ -24,8 +24,8 @@ source deploy/lxd-vm/lab-config.sh demo-a
 VM=$PRPLMESH_VM_NAME
 lxc config get "$VM" boot.autostart
 lxc start "$VM"
-lxc exec "$VM" -- systemctl is-active prplmesh-lab.service prplmesh-room-demo.service
-lxc exec "$VM" -- journalctl -u prplmesh-lab.service -u prplmesh-room-demo.service -n 80 --no-pager
+lxc exec "$VM" -- systemctl is-active prplmesh-lab.service prplmesh-room-service.service
+lxc exec "$VM" -- journalctl -u prplmesh-lab.service -u prplmesh-room-service.service -n 80 --no-pager
 ```
 
 Start only a stopped VM; `lxc stop "$VM"` performs normal shutdown.
@@ -35,7 +35,7 @@ and room services come up automatically; there is no separate room launch.
 ## Browser use and reboot recovery
 
 Open the room and topology from current state. Load a room, wait for apply,
-then Play or drag. See the [room manual](live-room-demo/README.md).
+then Play or drag. See the [room manual](room-service/README.md).
 
 Proxy devices are persistent LXD configuration. Inspect these before changing
 forwarding after a reboot:
@@ -55,7 +55,7 @@ Do not add duplicate proxies or replace the native topology with fake entries.
 ## Tests and recovery
 
 The guest repository is `/opt/prplmesh-lab`. Stop
-`prplmesh-room-demo.service` before standalone acceptance/scenario tools so the
+`prplmesh-room-service.service` before standalone acceptance/scenario tools so the
 room cannot change RF concurrently. Restore it afterward even on test failure.
 The appliance `build.sh check` path can start the lab unit, which wants the
 room: verify the room is stopped **after** that startup, or run native acceptance
@@ -69,6 +69,17 @@ The privileged room provider pins the native controller's mount namespace for
 direct ubus calls. If the native controller container is restarted independently,
 restart the room service afterward. A dead or replaced namespace fails closed;
 it must not reuse registrations from the previous controller generation.
+
+Restart one Agent in the VM with `scripts/radio-lab.sh restart-agent N`: 1 to 4
+are the Wi-Fi Agents, 5 the wired one, each restarted on its own backhaul. Do it
+when the controller has dropped an Agent from its model while the Agent still
+runs: the room service then refuses to start, as its preflight counts every
+node. Stop the room first and start it afterward. The controller dropped the
+wired Agent up to a minute after a Wi-Fi Agent roamed off its backhaul BSS in
+`backhaul-wired-parent` (30 Sep); patch
+`prplmesh/0033-controller-scope-wired-neighbor-removal.patch` fixes that from
+the next VM build, and the geometry harness now holds recovery long enough to
+see it.
 
 Recovery verifies journal, daemon generation and stable inventory before
 restoring RF/client presence. Preserve a rejected journal and diagnose the

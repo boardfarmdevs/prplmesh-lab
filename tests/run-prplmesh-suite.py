@@ -13,6 +13,10 @@ import urllib.request
 
 
 ROOT = Path(__file__).resolve().parents[1]
+# the tests that live with the code they test: the medium's viewer (easymesh-medium) and
+# the room and optimizer acceptance tools (easymesh-optimizer)
+VIEWER_TESTS = ROOT / 'medium/configurator/tests/viewer'
+ACCEPTANCE = ROOT / 'optimizer/acceptance'
 PHASES = ('static', 'webui', 'browser', 'rf', 'rf-actions', 'rooms', 'live', 'soak')
 
 
@@ -46,7 +50,7 @@ def main():
     for variable in ('DISPLAY', 'WAYLAND_DISPLAY'):
         environment.pop(variable, None)
     environment['PYTHONPATH'] = ':'.join(str(ROOT / entry) for entry in (
-        'optimizer', 'demo', 'demo/tests', 'medium/configurator', 'tests'))
+        'optimizer', 'rooms', 'rooms/tests', 'medium/configurator', 'tests'))
     environment['PLAYWRIGHT_MODULE'] = 'playwright-core'
     records = []
     room_restore = False
@@ -97,7 +101,7 @@ def main():
     def install_helper(name):
         command = ['lxc', 'exec', '--mode', 'non-interactive', vm, '--',
                    'install', '-m', '0644', '/dev/stdin', '/tmp/' + name]
-        return ['bash', '-c', shlex.join(command) + ' < ' + shlex.quote(str(ROOT / 'tests' / name))]
+        return ['bash', '-c', shlex.join(command) + ' < ' + shlex.quote(str(ACCEPTANCE / name))]
 
     def native(script, *extra):
         return guest('env', 'PRPL_AGENT_COUNT=4', 'PRPL_CLIENT_COUNT=100', 'PRPL_TOPOLOGY=star',
@@ -120,13 +124,13 @@ def main():
 
     def stop_room():
         nonlocal room_restore, room_masked
-        result = subprocess.run(guest('systemctl', 'show', 'prplmesh-room-demo.service', '-p', 'ActiveState', '--value'),
+        result = subprocess.run(guest('systemctl', 'show', 'prplmesh-room-service.service', '-p', 'ActiveState', '--value'),
                                 capture_output=True, text=True, timeout=30)
         if result.returncode or result.stdout.strip() not in ('active', 'inactive'):
             record('live/room-state', 'failed', detail='room must be active or cleanly stopped')
             return False
         was_active = result.stdout.strip() == 'active'
-        mask_state = subprocess.run(guest('systemctl', 'is-enabled', 'prplmesh-room-demo.service'),
+        mask_state = subprocess.run(guest('systemctl', 'is-enabled', 'prplmesh-room-service.service'),
                                     capture_output=True, text=True, timeout=30).stdout.strip()
         if mask_state.startswith('masked'):
             record('live/room-state', 'failed', detail='room was already masked; resolve this before testing')
@@ -137,7 +141,7 @@ def main():
             return False
         room_masked = True
         room_restore = was_active
-        if not step('live/stop-room', guest('systemctl', 'stop', 'prplmesh-room-demo.service'), 180):
+        if not step('live/stop-room', guest('systemctl', 'stop', 'prplmesh-room-service.service'), 180):
             return False
         if not step('live/prepare-backhaul', guest('python3', '/opt/prplmesh-lab/tests/prepare-native-baseline.py',
                                                  '--yes-act', '--agents', '4'), 120):
@@ -156,12 +160,13 @@ def main():
             step('static/unattended-lxd', [sys.executable, 'tests/unattended-lxd.py'])
             step('static/thin-firstboot', ['bash', 'tests/thin-firstboot.sh'])
             step('static/python', [sys.executable, '-m', 'pytest', '--import-mode=importlib', '-q',
-                                  'medium/configurator/tests', 'optimizer/tests', 'demo/tests', 'tests'], 1200)
+                                  'medium/configurator/tests', 'optimizer/tests', 'optimizer/acceptance', 'rooms/tests', 'tests'], 1200)
             step('static/console-go', ['go', 'test', './...'], cwd=ROOT / 'medium/observer')
             if step('static/topology-assets', ['bash', 'controller-ui/prepare-web-assets.sh']):
                 step('static/topology-go', ['go', 'test', './...'], cwd=ROOT / 'controller-ui')
         if 'webui' in chosen:
-            for filename in sorted((ROOT / 'tests').glob('*-test.js')):
+            # this lab's dashboard tests, and the medium's viewer tests (easymesh-medium)
+            for filename in sorted((ROOT / 'tests').glob('*-test.js')) + sorted(VIEWER_TESTS.glob('*-test.js')):
                 if 'browser' in filename.name or filename.name == 'viewer-sidebar-layout-test.js':
                     continue
                 command = ['node', str(filename)]
@@ -172,14 +177,17 @@ def main():
                 elif filename.name == 'steering-cues-test.js':
                     command.append(str(topology / 'steering-cues.js'))
                 step('webui/' + filename.stem, command)
-            for filename in sorted((ROOT / 'tests').glob('test-*.js')):
+            # this lab's and the acceptance tools' JavaScript tests (easymesh-optimizer)
+            for filename in sorted((ROOT / 'tests').glob('test-*.js')) + sorted(ACCEPTANCE.glob('test-*.js')):
                 step('webui/' + filename.stem, ['node', str(filename)])
             step('webui/console-ng', ['node', '--test', 'medium/observer/web/ng/model.test.mjs'])
         needs_browser = bool(chosen & {'browser', 'rooms'})
         browser_ok = browser_ready() if needs_browser else False
         if 'browser' in chosen:
             if browser_ok and step('browser/assets', ['bash', 'controller-ui/prepare-web-assets.sh']):
-                files = sorted((ROOT / 'tests').glob('*browser-test.js')) + [ROOT / 'tests/viewer-sidebar-layout-test.js']
+                files = (sorted((ROOT / 'tests').glob('*browser-test.js')) + sorted(VIEWER_TESTS.glob('*browser-test.js'))
+                         + [VIEWER_TESTS / 'viewer-sidebar-layout-test.js']
+                         + sorted((ROOT / 'medium/observer/tests').glob('*browser-test.js')))
                 for filename in files:
                     if filename.name == 'webui-rf-hover-browser-test.js':
                         continue
@@ -210,7 +218,7 @@ def main():
                 console_url = endpoint('wmediumd-console')
         if 'rf-actions' in chosen:
             actions_ok = step('rf-actions/contracts', [sys.executable, '-m', 'pytest', '-q',
-                                                     'tests/test_load_acceptance.py'])
+                                                     'optimizer/acceptance/test_load_acceptance.py'])
             scenarios = ('clear', 'pressure', 'rescue')
             if live_ok and actions_ok:
                 for index, scenario in enumerate(scenarios):
@@ -221,7 +229,7 @@ def main():
                         '--rescue-snr', '32', '--background-packets-per-second', '300']
                     if not step('rf-actions/' + scenario, guest('env',
                         'PYTHONPATH=/opt/prplmesh-lab/optimizer:/opt/prplmesh-lab/medium/configurator',
-                        'python3', '/opt/prplmesh-lab/tests/load-policy-acceptance.py', '--stack', 'prpl',
+                        'python3', '/opt/prplmesh-lab/optimizer/acceptance/load-policy-acceptance.py', '--stack', 'prpl',
                         '--root', '/opt/prplmesh-lab', '--policy',
                         '/opt/prplmesh-lab/optimizer/configs/load-counter-guard-policy.yaml',
                         *workload, '--counter-case', scenario, '--yes-change-lab', '--output',
@@ -239,26 +247,27 @@ def main():
                 'optimizer/tests/test_counter_guard.py', 'optimizer/tests/test_counter_shadow.py',
                 'optimizer/tests/test_load_policy.py', 'optimizer/tests/test_policy.py',
                 'optimizer/tests/test_owner_observation.py', 'optimizer/tests/test_rf_observations.py',
-                'demo/tests/test_rf_property_coverage.py', 'demo/tests/test_rf_rooms.py', 'demo/tests/test_world_switch.py',
-                'demo/tests/test_traffic_experiment.py', 'demo/tests/test_rf_observation.py',
-                'tests/test_rf_property_rooms_smoke.py', 'tests/test_counter_guard_room_smoke.py',
-                'tests/test_native_retry_counters.py', 'tests/test_connected_model_repair.py',
+                'rooms/tests/test_rf_property_coverage.py', 'optimizer/tests/room/test_rf_rooms.py',
+                'optimizer/tests/room/test_world_switch.py', 'optimizer/tests/room/test_traffic_experiment.py',
+                'optimizer/tests/room/test_rf_observation.py',
+                'optimizer/acceptance/test_rf_property_rooms_smoke.py', 'optimizer/acceptance/test_counter_guard_room_smoke.py',
+                'optimizer/acceptance/test_native_retry_counters.py', 'tests/test_connected_model_repair.py',
                 'tests/test_candidate_event_memory.py', 'tests/test_neighbor_cache_memory.py',
                 'tests/test_frequency_slot_allocation.py',
                 'tests/test_console_ng_contract.py',
                 'medium/configurator/tests/test_rf_contract.py'])
-            contracts_ok = step('rf/viewer', ['node', 'tests/viewer-room-guide-test.js']) and contracts_ok
-            contracts_ok = step('rf/inspector', ['node', 'tests/viewer-rf-inspector-test.js']) and contracts_ok
+            contracts_ok = step('rf/viewer', ['node', 'medium/configurator/tests/viewer/viewer-room-guide-test.js']) and contracts_ok
+            contracts_ok = step('rf/inspector', ['node', 'medium/configurator/tests/viewer/viewer-rf-inspector-test.js']) and contracts_ok
             contracts_ok = step('rf/documentation', [sys.executable, 'tests/test_documentation.py']) and contracts_ok
             if live_ok and contracts_ok:
-                rooms_ok = step('rf/rooms', [sys.executable, 'tests/rf-property-rooms-smoke.py', '--yes-act',
+                rooms_ok = step('rf/rooms', [sys.executable, 'optimizer/acceptance/rf-property-rooms-smoke.py', '--yes-act',
                     '--host', 'local', '--vm', vm, '--room-url', room_url, '--output', str(output / 'rf-properties.json')], 240)
                 if rooms_ok:
-                    manifest_ok = step('rf/counter-manifest', guest('python3', '/opt/prplmesh-lab/tests/counter-guard-room-smoke.py',
+                    manifest_ok = step('rf/counter-manifest', guest('python3', '/opt/prplmesh-lab/optimizer/acceptance/counter-guard-room-smoke.py',
                         '--stack', 'prpl', '--yes-change-lab', '--output', f'/var/lib/prplmesh-lab/test-results/{stamp}-counter-manifest'), 1200)
                     if manifest_ok:
                         step('rf/counter-shadow', guest('env', 'PYTHONPATH=/opt/prplmesh-lab/optimizer:/opt/prplmesh-lab/medium/configurator',
-                            'python3', '/opt/prplmesh-lab/tests/native-retry-counter-acceptance.py', '--stack', 'prpl',
+                            'python3', '/opt/prplmesh-lab/optimizer/acceptance/native-retry-counter-acceptance.py', '--stack', 'prpl',
                             '--yes-change-lab', '--seconds', '8', '--shadow-counter-policy',
                             '/opt/prplmesh-lab/optimizer/configs/load-counter-guard-policy.yaml', '--output',
                             f'/var/lib/prplmesh-lab/test-results/{stamp}-counter-shadow'), 240)
@@ -281,9 +290,9 @@ def main():
                     except (OSError, ValueError):
                         worlds_root = 'medium/configurator/worlds'
                     record('rooms/worlds', 'passed', detail=worlds_root)
-                    step('rooms/catalog-play', ['node', 'tests/room-feature-acceptance.js', *common,
+                    step('rooms/catalog-play', ['node', 'optimizer/acceptance/room-feature-acceptance.js', *common,
                          '--yes-act', '--worlds', str(ROOT / worlds_root / 'golden'), '--output', str(output / 'rooms')], 14400)
-                    step('rooms/geometry-play', ['node', 'tests/room-backhaul-features.js', *common,
+                    step('rooms/geometry-play', ['node', 'optimizer/acceptance/room-backhaul-features.js', *common,
                          '--yes-act', 'true', '--output', str(output / 'backhaul')], 3600)
             else:
                 record('rooms/playback', 'blocked', detail='browser or matching-VM prerequisites unavailable')
@@ -315,7 +324,7 @@ def main():
     finally:
         for needed, name, command, timeout in (
             (room_masked, 'release-room-guard', guest('bash', '/tmp/suite-room-guard.sh', 'release'), 60),
-            (room_restore, 'start-room', guest('systemctl', 'start', 'prplmesh-room-demo.service'), 180),
+            (room_restore, 'start-room', guest('systemctl', 'start', 'prplmesh-room-service.service'), 180),
         ):
             if needed:
                 try:

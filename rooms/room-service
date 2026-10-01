@@ -1,0 +1,17 @@
+#!/usr/bin/env python3
+"""The prplMesh lab's entry point for the live room: the room service (room_service) is
+easymesh-optimizer's, pinned as optimizer; this directory holds the lab's room
+manifests and role bindings."""
+
+import sys
+from pathlib import Path
+
+
+HERE = Path(__file__).resolve().parent
+sys.path.insert(0, str(HERE.parent / "medium/configurator"))
+sys.path.insert(0, str(HERE.parent / "optimizer"))
+
+from room_service.cli import main
+
+
+raise SystemExit(main())

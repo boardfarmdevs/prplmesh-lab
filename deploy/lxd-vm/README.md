@@ -77,9 +77,9 @@ legacy bundles use `prpl-runtime-local`. Neither downloads runtime artifacts. Mo
 it with the selected instance name:
 
 ```sh
-lxc console prplmesh-0916 --show-log
-lxc exec prplmesh-0916 -- journalctl -fu prplmesh-lab.service
-lxc exec prplmesh-0916 -- prplmesh-lab-start status
+lxc console "$VM" --show-log
+lxc exec "$VM" -- journalctl -fu prplmesh-lab.service
+lxc exec "$VM" -- prplmesh-lab-start status
 ```
 
 Before creating any radios or containers, first boot checks the retained image's
@@ -96,17 +96,17 @@ without per-container root quotas; it does not replace the outer-host space chec
 
 When ready, use the URLs printed by import (not assumed legacy ports).
 The room server is
-started by `prplmesh-room-demo.service` with 100-client capacity; stop that
-service before starting a manual `demo/room-demo` session. The NBAPI adapter
+started by `prplmesh-room-service.service` with 100-client capacity; stop that
+service before starting a manual `rooms/room-service` session. The NBAPI adapter
 is internal on guest loopback port `8092`. Open the printed room URL for its
 built-in manual. The release's `INTERACTIVE.md` covers trusted-network access,
 automatic world loading, fixed-pool presence and RF recovery.
 Normal lifecycle is:
 
 ```sh
-lxc stop prplmesh-0916
-lxc start prplmesh-0916
-lxc config get prplmesh-0916 boot.autostart
+lxc stop "$VM"
+lxc start "$VM"
+lxc config get "$VM" boot.autostart
 ```
 
 Imported appliances default to `boot.autostart=false`. Manually starting the
@@ -115,7 +115,7 @@ The VM does not start automatically when the outer host reboots. Deleting it is
 destructive and must be explicit:
 
 ```sh
-lxc delete prplmesh-0916
+lxc delete "$VM"
 ```
 
 ## Release engineering

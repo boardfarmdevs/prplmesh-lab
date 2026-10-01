@@ -254,7 +254,7 @@ fi
 if [ "$FIRST_BOOT_PROVISIONING" = true ]; then
     lxc exec "$NAME" -- systemctl reset-failed prplmesh-lab.service
     lxc exec "$NAME" -- systemctl --no-block start prplmesh-lab.service
-    lxc exec "$NAME" -- systemctl --no-block start prplmesh-room-demo.service
+    lxc exec "$NAME" -- systemctl --no-block start prplmesh-room-service.service
 fi
 
 echo "LXD VM started: $NAME"

@@ -110,6 +110,15 @@ wired_agent_ordinals()
     seq "$((PROVISIONED_AGENT_COUNT + 1))" "$MESH_AGENT_COUNT"
 }
 
+is_wired_agent()
+{
+    local ordinal
+    for ordinal in $(wired_agent_ordinals); do
+        [ "$ordinal" = "$1" ] && return 0
+    done
+    return 1
+}
+
 client_name()
 {
     printf 'prpl-client-%02d' "$1"
@@ -704,6 +713,10 @@ start_wired_agent()
     # an Agent on a wired backhaul: eth1 (the backhaul network) in its br-lan, no backhaul
     # station, onboarding over Ethernet
     local ordinal=$1 name
+    is_wired_agent "$ordinal" || {
+        echo "agent $ordinal is not a wired Agent" >&2
+        exit 2
+    }
     name=$(agent_name "$ordinal")
     start_container "$name"
     echo "$name: wired backhaul"
@@ -715,10 +728,21 @@ start_wired_agent()
     wait_for_agent_controller "$name" "$ordinal"
 }
 
+# An Agent by its ordinal, started as it was provisioned: a Wi-Fi Agent (1 to
+# PROVISIONED_AGENT_COUNT) on its backhaul station, a wired one (after them) on eth1.
+start_mesh_agent()
+{
+    if is_wired_agent "$1"; then
+        start_wired_agent "$1"
+    else
+        start_agent "$1"
+    fi
+}
+
 stop_agent()
 {
     local ordinal=$1 name
-    require_count "$ordinal" "$PROVISIONED_AGENT_COUNT" agent
+    require_count "$ordinal" "$MESH_AGENT_COUNT" agent
     name=$(agent_name "$ordinal")
     [ "$(instance_state "$name")" = RUNNING ] || return 0
     lxc exec "$name" -- \
@@ -829,14 +853,14 @@ case "$ACTION" in
         "$ROOT/scripts/test-steering.sh"
         ;;
     start-agent)
-        start_agent "${2:?agent ordinal required}"
+        start_mesh_agent "${2:?agent ordinal required}"
         ;;
     stop-agent)
         stop_agent "${2:?agent ordinal required}"
         ;;
     restart-agent)
         stop_agent "${2:?agent ordinal required}"
-        start_agent "$2"
+        start_mesh_agent "$2"
         ;;
     restart-medium)
         stop_medium

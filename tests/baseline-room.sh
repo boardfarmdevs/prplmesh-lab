@@ -11,9 +11,9 @@ start_vm() { return 0; }
 run() {
     printf '%s\n' "$*" >> "$work/calls"
     case "$*" in
-        'systemctl show prplmesh-room-demo.service -p ActiveState --value') echo "$room_state" ;;
-        'systemctl stop prplmesh-room-demo.service') return "$stop_status" ;;
-        'systemctl start prplmesh-room-demo.service') return 0 ;;
+        'systemctl show prplmesh-room-service.service -p ActiveState --value') echo "$room_state" ;;
+        'systemctl stop prplmesh-room-service.service') return "$stop_status" ;;
+        'systemctl start prplmesh-room-service.service') return 0 ;;
         *'/tests/run-acceptance.sh') return "$audit_status" ;;
         'bash -c '*) echo 'client target' ;;
         *'/tests/optimizer-dynamic.sh recommend client target') return 0 ;;
@@ -27,11 +27,11 @@ for room_state in active activating inactive; do
         result=0
         check_vm || result=$?
         test "$result" = "$audit_status"
-        grep -Fq 'systemctl stop prplmesh-room-demo.service' "$work/calls"
+        grep -Fq 'systemctl stop prplmesh-room-service.service' "$work/calls"
         if [ "$room_state" != inactive ]; then
-            test "$(tail -1 "$work/calls")" = 'systemctl start prplmesh-room-demo.service'
+            test "$(tail -1 "$work/calls")" = 'systemctl start prplmesh-room-service.service'
         else
-            ! grep -Fq 'systemctl start prplmesh-room-demo.service' "$work/calls"
+            ! grep -Fq 'systemctl start prplmesh-room-service.service' "$work/calls"
         fi
         if [ "$audit_status" != 0 ]; then
             ! grep -Fq '/tests/optimizer-dynamic.sh' "$work/calls"

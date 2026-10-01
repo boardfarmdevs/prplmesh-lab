@@ -408,7 +408,7 @@ export const entries: Record<string, Entry> = {
       ['Features', 'Play, drag, room selection, RF guide, fullscreen'],
     ],
     ['configurator', 'optimizer', 'console'],
-    ['docs/live-room-demo/README.md', 'reference/rooms/catalog.md'],
+    ['docs/room-service/README.md', 'reference/rooms/catalog.md'],
   ),
   tests: entry(
     'Qualification gates',

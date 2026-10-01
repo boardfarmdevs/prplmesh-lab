@@ -221,7 +221,7 @@ import sys
 with open(os.environ["MONITORING_ACTIONS"], "a") as stream:
     stream.write(" ".join(sys.argv[1:]) + "\\n")
 if sys.argv[1] == "is-active":
-    print("active" if sys.argv[2] in ("easymesh-lab.service", "easymesh-room-demo.service") else "inactive")
+    print("active" if sys.argv[2] in ("easymesh-lab.service", "easymesh-room-service.service") else "inactive")
 ''')
     systemctl.chmod(0o755)
     client = tmp_path / "lxc"
@@ -232,7 +232,7 @@ if sys.argv[1] == "is-active":
     commands = actions.read_text().splitlines()
     if allowed:
         assert result.returncode == 0, result.stderr
-        assert commands[-3:] == ['stop easymesh-room-demo.service easymesh-lab.service', 'restart snap.lxd.daemon', 'start easymesh-room-demo.service easymesh-lab.service']
+        assert commands[-3:] == ['stop easymesh-room-service.service easymesh-lab.service', 'restart snap.lxd.daemon', 'start easymesh-room-service.service easymesh-lab.service']
     else:
         assert result.returncode != 0
         assert all(command.startswith('is-active ') for command in commands)

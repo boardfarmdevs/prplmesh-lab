@@ -69,6 +69,15 @@ MEDIUM_COMMIT=$(git -C "$ROOT" rev-parse HEAD:medium)
 MEDIUM_BUNDLE=$SOURCE_STAGE/easymesh-medium.bundle
 git -C "$ROOT/medium" bundle create "$MEDIUM_BUNDLE" HEAD
 git -C "$ROOT/medium" bundle verify "$MEDIUM_BUNDLE" >/dev/null
+# the optimizer at the commit this lab pins (the optimizer submodule)
+OPTIMIZER_COMMIT=$(git -C "$ROOT" rev-parse HEAD:optimizer)
+[ "$(git -C "$ROOT/optimizer" rev-parse HEAD 2>/dev/null)" = "$OPTIMIZER_COMMIT" ] || {
+    echo "optimizer is not at the pinned $OPTIMIZER_COMMIT: git submodule update --init optimizer" >&2
+    exit 1
+}
+OPTIMIZER_BUNDLE=$SOURCE_STAGE/easymesh-optimizer.bundle
+git -C "$ROOT/optimizer" bundle create "$OPTIMIZER_BUNDLE" HEAD
+git -C "$ROOT/optimizer" bundle verify "$OPTIMIZER_BUNDLE" >/dev/null
 rm -rf -- "$BUNDLE"
 mkdir -p "$BUNDLE"
 [ "$(lxc list "$NAME" -c t --format csv)" = VIRTUAL-MACHINE ] || {
@@ -123,11 +132,13 @@ else
     exit 1
 fi
 
-lxc exec "$NAME" -- systemctl stop prplmesh-room-demo.service
+lxc exec "$NAME" -- systemctl stop prplmesh-room-service.service
 lxc exec "$NAME" -- systemctl stop prplmesh-lab.service
 lxc file push "$SOURCE_BUNDLE" "$NAME/run/prplmesh-thin-source.bundle"
 lxc file push "$MEDIUM_BUNDLE" "$NAME/run/prplmesh-thin-medium.bundle"
-lxc exec "$NAME" -- env SOURCE_COMMIT="$SOURCE_COMMIT" MEDIUM_COMMIT="$MEDIUM_COMMIT" bash -c '
+lxc file push "$OPTIMIZER_BUNDLE" "$NAME/run/prplmesh-thin-optimizer.bundle"
+lxc exec "$NAME" -- env SOURCE_COMMIT="$SOURCE_COMMIT" MEDIUM_COMMIT="$MEDIUM_COMMIT" \
+    OPTIMIZER_COMMIT="$OPTIMIZER_COMMIT" bash -c '
     set -euo pipefail
     next=/opt/prplmesh-lab.thin-new
     previous=/opt/prplmesh-lab.ready-base
@@ -150,9 +161,11 @@ lxc exec "$NAME" -- env SOURCE_COMMIT="$SOURCE_COMMIT" MEDIUM_COMMIT="$MEDIUM_CO
     rm -rf -- "$next" "$previous"
     git clone /run/prplmesh-thin-source.bundle "$next"
     git -C "$next" config submodule.medium.url /run/prplmesh-thin-medium.bundle
-    git -c protocol.file.allow=always -C "$next" submodule update --init medium
+    git -C "$next" config submodule.optimizer.url /run/prplmesh-thin-optimizer.bundle
+    git -c protocol.file.allow=always -C "$next" submodule update --init medium optimizer
     [ "$(git -C "$next" rev-parse HEAD)" = "$SOURCE_COMMIT" ]
     [ "$(git -C "$next/medium" rev-parse HEAD)" = "$MEDIUM_COMMIT" ]
+    [ "$(git -C "$next/optimizer" rev-parse HEAD)" = "$OPTIMIZER_COMMIT" ]
     [ -z "$(git -C "$next" status --porcelain)" ]
     [ -d /opt/prplmesh-lab/build/wmediumd-source/.git ]
     [ -x /opt/prplmesh-lab/build/bin/wmediumd ]
@@ -179,6 +192,7 @@ lxc exec "$NAME" -- env SOURCE_COMMIT="$SOURCE_COMMIT" MEDIUM_COMMIT="$MEDIUM_CO
 '
 lxc file delete "$NAME/run/prplmesh-thin-source.bundle"
 lxc file delete "$NAME/run/prplmesh-thin-medium.bundle"
+lxc file delete "$NAME/run/prplmesh-thin-optimizer.bundle"
 [ "$(lxc exec "$NAME" -- git -C /opt/prplmesh-lab rev-parse HEAD)" = "$SOURCE_COMMIT" ]
 [ -z "$(lxc exec "$NAME" -- git -C /opt/prplmesh-lab status --porcelain)" ]
 lxc exec "$NAME" -- /opt/prplmesh-lab/scripts/radio-lab.sh stop
@@ -274,7 +288,7 @@ install -m 0644 "$ROOT/docs/release-notes.md" "$BUNDLE/RELEASE-NOTES.md"
 sed -e "s#](../README.md)#]($DOCS_URL/docs/README.md)#g" \
     -e "s#](../current-state.md)#]($DOCS_URL/docs/current-state.md)#g" \
     -e "s#](../../reference/#]($DOCS_URL/reference/#g" \
-    "$ROOT/docs/live-room-demo/README.md" > "$BUNDLE/INTERACTIVE.md"
+    "$ROOT/docs/room-service/README.md" > "$BUNDLE/INTERACTIVE.md"
 chmod 0644 "$BUNDLE/INTERACTIVE.md"
 cat > "$BUNDLE/release.env" <<EOF
 LAB_STACK=prplmesh
@@ -306,7 +320,7 @@ jq -n \
       defaults:{disk:$disk,port_assignment:"instance-name",autostart:false,
         port_offsets:{topology:0,wmediumd_console:1,room:2,lxd_ui:3,grafana:4,outer_metrics:5}},
       room:{interactive:true,profile_clients:20,automatic_start:true,profiling:true,adaptive_backhaul:false,
-            service:"prplmesh-room-demo.service"},
+            service:"prplmesh-room-service.service"},
       build:{storage_pool:$build_storage_pool},
       trim:{applied:true,report:"trim-report.txt"},
       first_boot:{provision:true,offline:true,initial_nested_instances:0},

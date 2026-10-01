@@ -13,7 +13,7 @@ From the physical LXD host, for an existing running VM:
 
 ```sh
 LAB_LXD_UI_PORT=48892 LAB_GRAFANA_PORT=48893 LAB_MONITORING_ALLOW_RESTART=1 \
-  bash observability/enable.sh rdkeasymesh-0913 192.168.2.140 rev140-rdk-0913
+  bash observability/enable.sh "$VM" HOST_IPV4 LAB_LABEL
 ```
 
 For a future thin release, `bash import.sh --monitoring` invokes
@@ -24,16 +24,15 @@ Only source templates are shipped, never an enabled installation's secrets.
 
 If optional setup fails after an import has created the VM, do not import it
 again. Fix the reported dependency/configuration, rerun `enable.sh` for that
-existing VM, then start `easymesh-lab.service` / `easymesh-room-demo.service`
-(RDK) or `prplmesh-lab.service` / `prplmesh-room-demo.service` (prplMesh) with
+existing VM, then start `easymesh-lab.service` / `easymesh-room-service.service`
+(RDK) or `prplmesh-lab.service` / `prplmesh-room-service.service` (prplMesh) with
 `lxc exec VM -- systemctl start ...`.
 
 - LXD UI: `https://HOST_IP:18892/` (inner LXD, not the physical host's LXD).
 - Grafana: `https://HOST_IP:18893/` (the LXD dashboard is the home page).
 - Override ports with `LAB_LXD_UI_PORT` and `LAB_GRAFANA_PORT` when labs share
   a physical host. Use explicit host IPv4, never wildcard public exposure.
-  The current rev140 lab uses `48892`/`48893`; `18892`/`18893` are the
-  helper defaults and old 0906 examples, not the active 0907 endpoints.
+  `18892`/`18893` are the helper defaults.
 - Prometheus and the authenticated LXD metrics endpoint remain VM-loopback
   only; no host-facing Prometheus port is created.
 
@@ -96,14 +95,14 @@ identity merely because its name is taken.
 
 ### Windows PowerShell / Chrome
 
-For the active rev140 lab, use the LAN endpoints without an SSH tunnel:
-`https://192.168.2.140:48892/ui/login/certificate-add` and
-`https://192.168.2.140:48893/login`. After checking the group, generating/
+On the lab's LAN, use the endpoints without an SSH tunnel:
+`https://HOST_IP:LXD_UI_PORT/ui/login/certificate-add` and
+`https://HOST_IP:GRAFANA_PORT/login`. After checking the group, generating/
 importing the browser certificate and selecting it in Chrome:
 
 ```powershell
-ssh -t rev@rev140 "lxc exec local:rdkeasymesh-0913 --mode=interactive -- lxc auth identity create local:tls/windows-chrome-ui --group admins"
-ssh rev@rev140 "lxc exec local:rdkeasymesh-0913 -- cat /opt/easymesh-observability/secrets/grafana-admin-password"
+ssh -t "$HOST" "lxc exec local:$VM --mode=interactive -- lxc auth identity create local:tls/windows-chrome-ui --group admins"
+ssh "$HOST" "lxc exec local:$VM -- cat /opt/easymesh-observability/secrets/grafana-admin-password"
 ```
 
 Both terminal options are necessary for interactive enrollment: without them
@@ -140,10 +139,7 @@ Run on the physical host after nested monitoring is running:
 bash observability/enable-outer-metrics.sh VM HOST_IPV4 HOST_CERT_DNS_NAME LAB_LABEL
 ```
 
-For current rev140 RDK 0907, `enable-rev140-outer-lxd-metrics.sh` supplies
-`rdkeasymesh-0913 192.168.2.140 rev140 rev140-rdk-0913` and refuses another
-hostname. It never targets the stopped 0906 VM. For prplMesh use the generic
-command with its actual VM and host certificate DNS SAN. The default outer
+Give it the lab's actual VM and the host certificate's DNS name (SAN). The default outer
 project is `default` (`LAB_OUTER_PROJECT` overrides it); the metrics port is
 8444 (`LAB_OUTER_METRICS_PORT` overrides it).
 
@@ -195,7 +191,7 @@ monitoring remains nested-only. Do not reimport an existing lab to add metrics.
 
 Open Grafana **Dashboards → EasyMesh → EasyMesh outer LXD VM**, UID
 `easymesh-lxd-outer`, using the same login. The nested dashboard stays home.
-On rev140: `https://192.168.2.140:48893/d/easymesh-lxd-outer`.
+On the lab host: `https://HOST_IP:GRAFANA_PORT/d/easymesh-lxd-outer`.
 Choose Host/Lab/Project/VM; allow 60–90 seconds for rate panels.
 
 - CPU execution excludes idle, I/O wait and steal. 100% means one vCPU;

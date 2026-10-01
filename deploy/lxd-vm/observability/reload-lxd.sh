@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 restart_units=()
-for unit in easymesh-room-demo.service prplmesh-room-demo.service easymesh-lab.service prplmesh-lab.service; do
+for unit in easymesh-room-service.service prplmesh-room-service.service easymesh-lab.service prplmesh-lab.service; do
     state=$(systemctl is-active "$unit" || true)
     case "$state" in
         active) restart_units+=("$unit") ;;

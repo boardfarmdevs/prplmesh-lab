@@ -72,6 +72,18 @@ including empty tables and exception paths. Compiled tests with allocation
 accounting and unpatched negative controls cover both fixes; neither changes
 candidate values, native timing or ARP filtering.
 
+`prplmesh/0033-controller-scope-wired-neighbor-removal.patch` keeps a wired
+Agent in the controller's model when a Wi-Fi Agent roams off its backhaul BSS
+and stops listing it as a 1905 neighbor. Unpatched, the controller removed the
+wired Agent on that report and never took it back while it kept answering
+(two of four `backhaul-wired-parent` runs, 30 Sep). Only the wired
+parent that the Ethernet neighbor graph inferred may now report a wired
+neighbor gone; with no known parent the Agent stays. Wireless neighbor removal
+is unchanged; upstream master has the same code. `tests/test_dead_neighbor_removal.py`
+compiles the function with and without the patch: the unpatched one must drop
+the wired Agent in the roam case, and both must remove a wired child its parent
+no longer reports.
+
 `prplmesh/0029-repair-connected-station-model-path.patch` repairs an empty
 NBAPI path for a station that the native database still marks connected.
 It requires the same current BSS, no departure barrier, and a matched topology

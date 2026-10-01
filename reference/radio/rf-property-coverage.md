@@ -68,13 +68,13 @@ or claims that a quieter target fixes reverse-link impairment.
 | Weak serving link | Existing signal rescue and its guards; high counters do not suppress rescue |
 
 Selecting a room alone does not enable this policy. The checked-in
-[native-counter-guard-room-profile manifest](../../demo/manifests/native-counter-guard-room-profile.json)
+[native-counter-guard-room-profile manifest](../../rooms/manifests/native-counter-guard-room-profile.json)
 selects `rf-asymmetric-ack`, its real client binding and the opt-in policy.
 Stop the room service before operating it; never start a second actuator:
 
 ```sh
-demo/room-demo interactive --mode recommend --profiling \
-  --manifest demo/manifests/native-counter-guard-room-profile.json
+rooms/room-service interactive --mode recommend --profiling \
+  --manifest rooms/manifests/native-counter-guard-room-profile.json
 ```
 
 On exit, restart the unchanged room service for default signal-only operation.
@@ -185,14 +185,14 @@ injected into the AP need not increment kernel RX drops. Held reverse-loss
 mode remains unsupported/unqualified; this experiment adds no native
 counter-mapping patch.
 
-The bounded [native counter acceptance](../../tests/native-retry-counter-acceptance.py)
+The bounded [native counter acceptance](../../optimizer/acceptance/native-retry-counter-acceptance.py)
 adds stronger supported *pulsed* downlink/ACK impairment on the currently
 associated Default client, independent of room geometry. It compares kernel
 and native deltas, confirms ownership before/after each trial, restores exact
 frequency overrides and restarts the unchanged room service:
 
 ```sh
-PYTHONPATH=optimizer:medium/configurator python3 tests/native-retry-counter-acceptance.py \
+PYTHONPATH=optimizer:medium/configurator python3 optimizer/acceptance/native-retry-counter-acceptance.py \
   --stack prpl --yes-change-lab --seconds 8 \
   --shadow-counter-policy optimizer/configs/load-counter-guard-policy.yaml \
   --output /tmp/native-counter-shadow-new
@@ -260,7 +260,7 @@ missing BSSs, departure and failure. This is separate from memory patches
 The `rf-actions` suite section runs three separate bounded cases on healthy
 paused Default-20: guarded load balancing, retry-pressure suppression with an
 otherwise eligible quieter target, and weak-signal rescue despite pressure.
-Use `tests/load-policy-acceptance.py --help` for direct diagnostics.
+Use `optimizer/acceptance/load-policy-acceptance.py --help` for direct diagnostics.
 The optional `--policy` selects the checked-in counter-guard policy;
 `--counter-case clear|pressure|rescue` selects the case.
 
@@ -580,12 +580,12 @@ with no lease, recording or external suite guard. Obtain `ROOM_URL` from the
 selected VM's proxy configuration. On the outer host:
 
 ```sh
-python3 tests/rf-property-rooms-smoke.py --yes-act --host local \
+python3 optimizer/acceptance/rf-property-rooms-smoke.py --yes-act --host local \
   --vm "$PRPLMESH_VM_NAME" --room-url "$ROOM_URL" --output /tmp/prpl-rf-rooms-new.json
-lxc exec "$PRPLMESH_VM_NAME" -- python3 /opt/prplmesh-lab/tests/counter-guard-room-smoke.py \
+lxc exec "$PRPLMESH_VM_NAME" -- python3 /opt/prplmesh-lab/optimizer/acceptance/counter-guard-room-smoke.py \
   --stack prpl --yes-change-lab --output /var/lib/prplmesh-lab/test-results/counter-manifest-new
 lxc exec "$PRPLMESH_VM_NAME" -- env PYTHONPATH=/opt/prplmesh-lab/optimizer:/opt/prplmesh-lab/medium/configurator \
-  python3 /opt/prplmesh-lab/tests/native-retry-counter-acceptance.py \
+  python3 /opt/prplmesh-lab/optimizer/acceptance/native-retry-counter-acceptance.py \
   --stack prpl --yes-change-lab --seconds 8 \
   --shadow-counter-policy /opt/prplmesh-lab/optimizer/configs/load-counter-guard-policy.yaml \
   --output /var/lib/prplmesh-lab/test-results/counter-shadow-new
@@ -604,7 +604,7 @@ existing static section also discovers the new pytest tests. The rooms
 section includes the new rooms in its broader catalog tests;
 use `rf` alone for this work, not a full catalog/soak.
 
-The standalone [live runner](../../tests/rf-property-rooms-smoke.py)
+The standalone [live runner](../../optimizer/acceptance/rf-property-rooms-smoke.py)
 uses the normal lease/revision protocol, refuses a held lease or suite room
 guard, saves timestamped samples and traffic phase results, and restores the
 paused Default in `finally`. It never starts another optimizer, retunes radios

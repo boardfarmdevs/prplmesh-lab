@@ -34,7 +34,15 @@ NESTED_SIZE=${PRPLMESH_NESTED_STORAGE_SIZE:-120GiB}
 usage()
 {
     cat <<EOF
-usage: $0 {build|status|urls|check|stop|start|restart|delete}
+usage: $0 {build|status|urls|check|update|stop|start|restart|delete}
+
+check is the acceptance of a lab as built: every Agent on the controller (a star backhaul),
+before a room has formed its own tree; after rooms have run, the room's readiness is the check.
+
+update moves an accepted VM forward to this checkout's commit in place, without a build:
+its checkout and submodules (the medium, the optimizer) follow, the room service restarts
+and settles. It refuses a commit that changes what a build installed (the medium's daemon,
+console or radio module, the guest's services, the controller UI, the containers' scripts).
 
 Clean-build inputs (default: archives under artifacts/; build-artifacts.sh creates them):
   PRPL_RUNTIME_DEPS_ARCHIVE=/path/to/prpl-runtime-deps-6.0.0.tar.gz
@@ -54,10 +62,33 @@ Site overrides:
   PRPLMESH_NESTED_STORAGE_DRIVER=btrfs (fresh VM container pool; or dir)
   PRPLMESH_NESTED_STORAGE_POOL=prpl-lab
   PRPLMESH_NESTED_STORAGE_SIZE=120GiB (sparse Btrfs capacity, not preallocation)
+  PRPLMESH_SHARED_HOST=0 (1: build and check although another lab VM runs on this host)
 EOF
 }
 
 exists() { lxc info "$NAME" >/dev/null 2>&1; }
+
+# Lab VMs share a host badly: with prpl-1001 running next to it, rdk-1001's 100-client
+# traffic check lost packets, and alone it passed (rev140, 1 Oct). A lab VM, prplMesh or
+# RDK, is one with a wmediumd Console proxy.
+other_running_labs()
+{
+    lxc list --format json | python3 -c '
+import json, sys
+print(" ".join(i["name"] for i in json.load(sys.stdin) if i["name"] != sys.argv[1]
+               and i["status"] == "Running" and "wmediumd-console" in (i.get("expanded_devices") or {})))' "$NAME"
+}
+
+require_host_to_itself()
+{
+    local others
+    [ "${PRPLMESH_SHARED_HOST:-0}" = 1 ] && return
+    others=$(other_running_labs)
+    [ -z "$others" ] || {
+        echo "another lab VM runs on this host ($others): stop it first, or set PRPLMESH_SHARED_HOST=1" >&2
+        exit 1
+    }
+}
 state() { lxc info "$NAME" 2>/dev/null | sed -n 's/^Status: //p'; }
 
 wait_agent()
@@ -112,12 +143,13 @@ stop_vm()
 
 check_vm() (
     local optimizer_pair optimizer_client optimizer_target
+    require_host_to_itself
     start_vm || return
     restore_room=false
-    trap 'result=$?; if "$restore_room"; then run systemctl start prplmesh-room-demo.service || result=$?; fi; exit "$result"' EXIT
-    room_state=$(run systemctl show prplmesh-room-demo.service -p ActiveState --value)
+    trap 'result=$?; if "$restore_room"; then run systemctl start prplmesh-room-service.service || result=$?; fi; exit "$result"' EXIT
+    room_state=$(run systemctl show prplmesh-room-service.service -p ActiveState --value)
     case "$room_state" in active|activating) restore_room=true ;; esac
-    run systemctl stop prplmesh-room-demo.service || return
+    run systemctl stop prplmesh-room-service.service || return
     run env PRPL_AGENT_COUNT=4 PRPL_CLIENT_COUNT="$CLIENTS" PRPL_TOPOLOGY=star \
         PROVISIONED_CLIENT_COUNT="$CLIENTS" HWSIM_RADIOS="$RADIOS" \
         PRPL_WMEDIUMD_CONFIG=/var/lib/prplmesh-lab/wmediumd.conf \
@@ -140,6 +172,132 @@ check_vm() (
         "$optimizer_client" "$optimizer_target"
 )
 
+# The optimizer: easymesh-optimizer at the commit this lab pins (the optimizer submodule).
+optimizer_bundle()
+{
+    local pinned
+    pinned=$(git -C "$ROOT" rev-parse HEAD:optimizer)
+    [ "$(git -C "$ROOT/optimizer" rev-parse HEAD 2>/dev/null)" = "$pinned" ] || {
+        echo "optimizer is not at the pinned $pinned: git submodule update --init optimizer" >&2
+        exit 1
+    }
+    test -z "$(git -C "$ROOT/optimizer" status --porcelain)"
+    git -C "$ROOT/optimizer" bundle create "$1" HEAD
+    git bundle verify "$1" >/dev/null
+}
+
+update_vm()
+(
+    local host_commit guest_commit guest_medium stage artifact i state=
+    exists
+    [ "$(state)" = RUNNING ] || { echo "$NAME is not running: $0 start" >&2; exit 1; }
+    wait_agent
+    host_commit=$(git -C "$ROOT" rev-parse HEAD)
+    test -z "$(git -C "$ROOT" status --porcelain)"
+    guest_commit=$(run git -C /opt/prplmesh-lab rev-parse HEAD)
+    [ "$guest_commit" != "$host_commit" ] || { echo "$NAME is at $host_commit already"; exit 0; }
+    git -C "$ROOT" merge-base --is-ancestor "$guest_commit" "$host_commit" || {
+        echo "$NAME is at $guest_commit, not an ancestor of $host_commit: build instead" >&2
+        exit 1
+    }
+    # What a build made from the checkout and installed. A change there needs a build.
+    guest_medium=$(git -C "$ROOT" rev-parse "$guest_commit:medium")
+    git -C "$ROOT/medium" diff --quiet "$guest_medium" HEAD -- wmediumd observer hwsim \
+        ':(exclude,glob)**/tests/**' ':(exclude,glob)**/*.md' || {
+        echo "the medium's daemon, console or radio module changed since $guest_medium: build instead" >&2
+        exit 1
+    }
+    git -C "$ROOT" diff --quiet "$guest_commit" "$host_commit" -- deploy/guest controller-ui \
+        scripts/container patches ':(exclude,glob)**/*.md' || {
+        echo "the guest's services, controller UI, container scripts or native patches changed since $guest_commit: build instead" >&2
+        exit 1
+    }
+    stage=$(mktemp -d /tmp/prplmesh-lxd-update.XXXXXX)
+    trap "rm -rf -- '$stage'" EXIT
+    git -C "$ROOT" bundle create "$stage/prplmesh-lab.bundle" HEAD
+    git bundle verify "$stage/prplmesh-lab.bundle" >/dev/null
+    git -C "$ROOT/medium" bundle create "$stage/easymesh-medium.bundle" HEAD
+    git bundle verify "$stage/easymesh-medium.bundle" >/dev/null
+    optimizer_bundle "$stage/easymesh-optimizer.bundle"
+    run install -d /opt/prplmesh-stage
+    for artifact in "$stage"/*.bundle; do
+        lxc file push "$artifact" "$NAME/opt/prplmesh-stage/$(basename "$artifact")"
+    done
+    run env COMMIT="$host_commit" bash -euo pipefail -c '
+        cd /opt/prplmesh-lab
+        test -z "$(git status --porcelain --untracked-files=no)"
+        git fetch -q /opt/prplmesh-stage/prplmesh-lab.bundle HEAD
+        test "$(git rev-parse FETCH_HEAD)" = "$COMMIT"
+        # A directory the commit turns into a submodule keeps only ignored files (bytecode).
+        for path in medium optimizer; do
+            [ ! -d "$path" ] || [ -e "$path/.git" ] || git clean -q -fdX -- "$path"
+        done
+        git merge -q --ff-only FETCH_HEAD
+        for path in medium optimizer; do
+            [ -e "$path/.git" ] || [ -z "$(ls -A "$path" 2>/dev/null)" ] || {
+                echo "$path holds untracked files; it cannot become a submodule" >&2
+                exit 1
+            }
+        done
+        git config submodule.medium.url /opt/prplmesh-stage/easymesh-medium.bundle
+        git config submodule.optimizer.url /opt/prplmesh-stage/easymesh-optimizer.bundle
+        git -c protocol.file.allow=always submodule update --init medium optimizer
+        for path in medium optimizer; do
+            test "$(git -C "$path" rev-parse HEAD)" = "$(git rev-parse "HEAD:$path")"
+        done
+        test -z "$(git status --porcelain)"
+        echo "$(git rev-parse --short HEAD): medium $(git -C medium rev-parse --short HEAD)," \
+            "optimizer $(git -C optimizer rev-parse --short HEAD)"
+    '
+    lxc config set "$NAME" user.prplmesh.source-commit "$host_commit"
+    run systemctl stop prplmesh-room-service.service
+    # The room's baseline is every pool client online: it pauses the clients a world
+    # leaves dormant and resumes them when its session ends, and its preflight counts all
+    # of them (as the RDK lab's gen/lab-bringup.sh room). A client still not associated
+    # after 30 s reconnects without its cached SAE keys (prpl-0930: stuck in its handshake).
+    run bash -c '
+        offline() {
+            for client in "$@"; do
+                [ "$(lxc exec "$client" -- wpa_cli -i wlan0 status 2>/dev/null |
+                    sed -n "s/^wpa_state=//p")" = COMPLETED ] || echo "$client"
+            done
+        }
+        waiting=$(offline $(lxc list -c n -f csv | grep "^prpl-client-"))
+        [ -n "$waiting" ] || exit 0
+        sleep 30
+        waiting=$(offline $waiting)
+        for client in $waiting; do
+            lxc exec "$client" -- sh -c "wpa_cli -i wlan0 disconnect; wpa_cli -i wlan0 pmksa_flush;
+                wpa_cli -i wlan0 reconnect" >/dev/null || true
+        done
+        for attempt in $(seq 12); do
+            [ -n "$waiting" ] || exit 0
+            sleep 5
+            waiting=$(offline $waiting)
+        done
+        echo "pool clients not online:" $waiting >&2
+        exit 1
+    '
+    run systemctl start prplmesh-room-service.service
+    # settled: the default room's 20 clients online, measured and converged
+    for i in $(seq 120); do
+        state=$(run bash -c 'curl -fsS --max-time 5 http://127.0.0.1:8891/api/demo/current | python3 -c "
+import json, sys
+d = json.load(sys.stdin); h = d.get(\"health\", {}); f = (d.get(\"optimizer\") or {}).get(\"fleet\") or {}
+ok = (h.get(\"healthy\") and h.get(\"api_total\") == 20 and h.get(\"expected_online_clients\") == 20
+      and f.get(\"converged\") and f.get(\"measurement_complete\") and f.get(\"clients_checked\") == 20)
+print(\"settled\" if ok else \"waiting\", d.get(\"scenario\"), h.get(\"api_total\"), f.get(\"clients_checked\"))
+sys.exit(0 if ok else 1)"' 2>/dev/null) && { echo "room $state"; exit 0; }
+        [ "$(run systemctl is-active prplmesh-room-service.service || true)" != failed ] || {
+            echo "room service failed (journalctl -u prplmesh-room-service.service)" >&2
+            exit 1
+        }
+        sleep 5
+    done
+    echo "room not settled after 10 min: ${state:-no answer}" >&2
+    exit 1
+)
+
 build_vm()
 (
     local stage bundle commit guest_ip artifact storage_pool boot_mode_error
@@ -147,6 +305,7 @@ build_vm()
         echo "source checkout must be clean" >&2
         exit 1
     }
+    require_host_to_itself
     for artifact in "$RUNTIME_DEPS" "$PRPL_INSTALL" "$HOSTAP_RUNTIME"; do
         [ -f "$artifact" ] || {
             echo "Missing $artifact; run bash deploy/lxd-vm/build-artifacts.sh first." >&2
@@ -196,10 +355,11 @@ PY
     # the Console is built here, as in the RDK lab: the medium does not commit binaries
     bash "$ROOT/medium/observer/build.sh" "$stage/wmediumd-console" >&2
     test -z "$(git -C "$ROOT/medium" status --porcelain)"
+    optimizer_bundle "$stage/easymesh-optimizer.bundle"
     cp --reflink=auto "$RUNTIME_DEPS" "$PRPL_INSTALL" "$HOSTAP_RUNTIME" "$stage/"
     (
         cd "$stage"
-        sha256sum prplmesh-lab.bundle easymesh-medium.bundle wmediumd-console \
+        sha256sum prplmesh-lab.bundle easymesh-medium.bundle easymesh-optimizer.bundle wmediumd-console \
             "$(basename "$RUNTIME_DEPS")" \
             "$(basename "$PRPL_INSTALL")" \
             "$(basename "$HOSTAP_RUNTIME")" > SHA256SUMS
@@ -256,11 +416,13 @@ PY
         rm -rf /opt/prplmesh-lab
         git clone prplmesh-lab.bundle /opt/prplmesh-lab
         git -C /opt/prplmesh-lab config submodule.medium.url /opt/prplmesh-stage/easymesh-medium.bundle
-        git -c protocol.file.allow=always -C /opt/prplmesh-lab submodule update --init medium
+        git -C /opt/prplmesh-lab config submodule.optimizer.url /opt/prplmesh-stage/easymesh-optimizer.bundle
+        git -c protocol.file.allow=always -C /opt/prplmesh-lab submodule update --init medium optimizer
         install -m 0755 wmediumd-console /opt/prplmesh-lab/medium/observer/wmediumd-console
     '
     [ "$(run git -C /opt/prplmesh-lab rev-parse HEAD)" = "$commit" ]
     [ "$(run git -C /opt/prplmesh-lab/medium rev-parse HEAD)" = "$medium" ]
+    [ "$(run git -C /opt/prplmesh-lab/optimizer rev-parse HEAD)" = "$(git -C "$ROOT" rev-parse HEAD:optimizer)" ]
     run install -d -m 0755 /var/lib/prplmesh-lab
     run python3 /opt/prplmesh-lab/scripts/generate-wmediumd-config.py \
         --radios "$RADIOS" --output /var/lib/prplmesh-lab/wmediumd.conf
@@ -268,7 +430,7 @@ PY
 PRPLMESH_LAB_PROFILE=$PROFILE
 PROVISIONED_AGENT_COUNT=4
 PROVISIONED_WIRED_AGENT_COUNT=${PRPL_WIRED_AGENTS:-1}
-$( [ "${PRPL_WIRED_AGENTS:-1}" -gt 0 ] && echo EASYMESH_ROOM_MANIFEST=demo/manifests/private-client-room-walk-wired.json )
+$( [ "${PRPL_WIRED_AGENTS:-1}" -gt 0 ] && echo EASYMESH_ROOM_MANIFEST=rooms/manifests/private-client-room-walk-wired.json )
 PROVISIONED_CLIENT_COUNT=$CLIENTS
 ACTIVE_AGENT_COUNT=4
 ACTIVE_CLIENT_COUNT=$CLIENTS
@@ -333,6 +495,7 @@ case "${1:-}" in
         ;;
     status) exists; lxc list "$NAME" -c nst4m; [ "$(state)" != RUNNING ] || run prplmesh-lab-start status ;;
     check) check_vm ;;
+    update) update_vm ;;
     urls)
         if exists; then
             lxc query "/1.0/instances/$NAME" | python3 -c '

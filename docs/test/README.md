@@ -14,7 +14,7 @@ For RF checks, set `ROOM_URL` to the live-room URL from
 `bash deploy/lxd-vm/build.sh urls`. Proxies usually bind the LAN IP, not localhost:
 
 ```sh
-python3 tests/rf-access-smoke.py \
+python3 optimizer/acceptance/rf-access-smoke.py \
   --room-url "$ROOM_URL" \
   --output "test-results/rf-access-$(date -u +%Y%m%dT%H%M%SZ).json"
 ```

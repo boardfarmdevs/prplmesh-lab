@@ -82,6 +82,6 @@ was not retained. The operator confirms normal fan operation; vent clearance
 and heatsink condition remain unverified. Do not claim a hardware repair.
 No usable fan-RPM sensor was exposed.
 
-`tests/room-feature-host-monitor.py` records the active turbo setting, readable
+`optimizer/acceptance/room-feature-host-monitor.py` records the active turbo setting, readable
 RAPL limits, temperatures and throttle deltas. Run it on the physical host;
 the outer-VM Grafana dashboard does not measure those host sensors.

@@ -51,7 +51,7 @@ def main():
         parser.error("requires --yes-act and 1..4 provisioned agents")
     if not Path("/run/prplmesh-suite-room-guard").is_dir():
         parser.error("requires the suite room guard")
-    if command("systemctl", "show", "prplmesh-room-demo.service", "-p", "ActiveState", "--value") != "inactive":
+    if command("systemctl", "show", "prplmesh-room-service.service", "-p", "ActiveState", "--value") != "inactive":
         parser.error("room service must be stopped before fixture setup")
     print(json.dumps(restore_parents(args.agents)))
 
