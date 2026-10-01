@@ -87,7 +87,8 @@ lxc export "$NAME" "$OUTPUT" --instance-only --compression zstd </dev/null
 printf 'archive_bytes=%s\n' "$(stat -c %s "$OUTPUT")" >> "$TRIM_REPORT"
 install -m 0755 "$ROOT/deploy/lxd-vm/import.sh" "$BUNDLE/import.sh"
 install -m 0644 "$ROOT/deploy/lxd-vm/instance-config.sh" "$BUNDLE/instance-config.sh"
-cp -a "$ROOT/deploy/lxd-vm/observability" "$BUNDLE/observability"
+cp -a "$ROOT/medium/lxd-monitoring" "$BUNDLE/observability"    # easymesh-medium's, one copy for both labs
+rm -rf "$BUNDLE/observability/tests"
 install -m 0755 "$ROOT/deploy/lxd-vm/install-host.sh" "$BUNDLE/install-host.sh"
 install -m 0755 "$ROOT/deploy/lxd-vm/package-release.sh" "$BUNDLE/package-release.sh"
 DOCS_URL="https://github.com/boardfarmdevs/prplmesh-lab/blob/$(git -C "$ROOT" rev-parse HEAD)"

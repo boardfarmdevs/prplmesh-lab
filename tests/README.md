@@ -26,18 +26,18 @@ or soak is needed. Backported code and RDK evidence do not qualify prpl live beh
 Room/topology UI regression checks (no live RF changes):
 
 ```sh
-node tests/webui-room-follow-test.js controller-ui/web/static/script.js
-node tests/steering-cues-test.js controller-ui/web/static/steering-cues.js
-node tests/steering-cues-browser-test.js controller-ui/web/static/steering-cues.js controller-ui/web/static/vendor/d3-7.9.0.min.js
+bash controller-ui/prepare-web-assets.sh    # the page, from medium/topology-ui
+medium/topology-ui/tests/run.sh controller-ui/web/static
+node medium/topology-ui/tests/steering-cues-browser-test.js controller-ui/web/static/steering-cues.js controller-ui/web/static/vendor/d3-7.9.0.min.js
 node medium/configurator/tests/viewer/viewer-room-guide-test.js
 node medium/configurator/tests/viewer/viewer-room-convergence-test.js
-node tests/webui-room-follow-browser-test.js controller-ui/web/static
+node medium/topology-ui/tests/webui-room-follow-browser-test.js controller-ui/web/static
 node medium/configurator/tests/viewer/viewer-room-guide-browser-test.js
 node medium/configurator/tests/viewer/viewer-room-convergence-browser-test.js
 node medium/configurator/tests/viewer/viewer-steering-resume-browser-test.js
 node medium/configurator/tests/viewer/pane-divider-browser-test.js
 PYTHONPATH=medium/configurator:optimizer python3 -m pytest optimizer/tests/room/test_room_layout.py optimizer/tests/room/test_server.py optimizer/tests/room/test_world_switch.py
-(cd controller-ui && bash prepare-web-assets.sh && go test -race ./...)
+(cd controller-ui && go test -race ./...)
 ```
 
 Steering protection tests `test_steering_safety.py` and

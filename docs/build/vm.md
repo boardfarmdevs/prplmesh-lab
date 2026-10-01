@@ -169,7 +169,7 @@ On the outer host, enable the already-supported optional monitoring bundle:
 
 ```sh
 HOST_IP=$(ip -4 route get 1.1.1.1 | awk '{for (field=1; field<=NF; field++) if ($field == "src") {print $(field+1); exit}}')
-bash deploy/lxd-vm/observability/enable.sh "$PRPLMESH_VM_NAME" "$HOST_IP"
+deploy/lxd-vm/monitoring.sh enable "$PRPLMESH_VM_NAME" "$HOST_IP"
 bash deploy/lxd-vm/build.sh urls
 ```
 

@@ -8,7 +8,7 @@
 | Portable LXD VM | [Import, profile selection and packaging](lxd-vm/README.md) |
 | Dedicated Linux radio host | [Bare-metal installation](bare-metal/README.md) |
 | Native source build | [From scratch](../docs/from-scratch.md) |
-| Inner LXD UI and inner/outer-VM Grafana | [Monitoring bundle](lxd-vm/observability/README.md) |
+| Inner LXD UI and inner/outer-VM Grafana | [Monitoring bundle](https://github.com/boardfarmdevs/easymesh-medium/blob/main/lxd-monitoring/README.md) |
 
 The VM owns Ubuntu/Linux, nested LXD, radio inventory, wmediumd, native prplMesh,
 Controller UI, Console and the live room. It needs no source-host mount.

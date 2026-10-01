@@ -1,6 +1,7 @@
 #!/bin/bash
+# The topology page this UI embeds (web/static, not tracked): easymesh-medium's
+# topology-ui assembled for prplMesh, from the medium this lab pins.
 set -euo pipefail
 cd "$(dirname "$0")"
-sha256sum -c web-vendor.tar.gz.sha256
-tar --no-same-owner -xzf web-vendor.tar.gz -C web/static
-(cd web/static; sha256sum -c vendor/SHA256SUMS)
+rm -rf web/static
+../medium/topology-ui/assemble.sh prplmesh web/static

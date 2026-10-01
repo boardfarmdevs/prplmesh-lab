@@ -193,12 +193,13 @@ Packaging trims the inner Btrfs filesystem before trimming the outer guest disk.
 
 Newly packaged releases accept `bash import.sh --monitoring`.
 For an existing running VM, execute
-`bash observability/enable.sh VM HOST_IPV4 LABEL` on its physical LXD host.
+`deploy/lxd-vm/monitoring.sh enable VM HOST_IPV4 LABEL` on its physical LXD host
+(an exported bundle: `bash observability/enable.sh VM HOST_IPV4 LABEL`).
 This installs the full bundled inner LXD UI and a provisioned Grafana container
-dashboard on HTTPS ports 18892 and 18893. Authentication is required, Prometheus
+dashboard on HTTPS, on the VM's port base +3 and +4. Authentication is required, Prometheus
 stays private, and VM autostart is unchanged. Omit the flag for the original
 offline/no-monitoring import. Existing immutable release archives are unchanged.
-See [first login and resource limits](observability/README.md) and the
+See [first login and resource limits](https://github.com/boardfarmdevs/easymesh-medium/blob/main/lxd-monitoring/README.md) and the
 [detailed reference](../../reference/observability/monitoring.md).
 Both backend installers support inner-container and outer-VM monitoring.
 See current state for enabled deployments; browser authentication is still required.

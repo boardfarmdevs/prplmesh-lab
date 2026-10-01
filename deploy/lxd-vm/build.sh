@@ -68,9 +68,9 @@ EOF
 
 exists() { lxc info "$NAME" >/dev/null 2>&1; }
 
-# Lab VMs share a host badly: with prpl-1001 running next to it, rdk-1001's 100-client
-# traffic check lost packets, and alone it passed (rev140, 1 Oct). A lab VM, prplMesh or
-# RDK, is one with a wmediumd Console proxy.
+# Lab VMs share a host badly: with prpl-1001 running next to it, 19 of rdk-1001's 100
+# clients lost packets in its build's traffic check, alone one did and later checks passed
+# (rev140, 1 Oct). A lab VM, prplMesh or RDK, is one with a wmediumd Console proxy.
 other_running_labs()
 {
     lxc list --format json | python3 -c '
@@ -202,9 +202,11 @@ update_vm()
     }
     # What a build made from the checkout and installed. A change there needs a build.
     guest_medium=$(git -C "$ROOT" rev-parse "$guest_commit:medium")
-    git -C "$ROOT/medium" diff --quiet "$guest_medium" HEAD -- wmediumd observer hwsim \
+    # (controller-ui embeds the topology page and the viewer modules it shares)
+    git -C "$ROOT/medium" diff --quiet "$guest_medium" HEAD -- wmediumd observer hwsim topology-ui \
+        $(sed 's|^|configurator/worlds/viewer/|' "$ROOT/medium/topology-ui/shared-modules") \
         ':(exclude,glob)**/tests/**' ':(exclude,glob)**/*.md' || {
-        echo "the medium's daemon, console or radio module changed since $guest_medium: build instead" >&2
+        echo "the medium's daemon, console, radio module or topology page changed since $guest_medium: build instead" >&2
         exit 1
     }
     git -C "$ROOT" diff --quiet "$guest_commit" "$host_commit" -- deploy/guest controller-ui \

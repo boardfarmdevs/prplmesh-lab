@@ -16,6 +16,7 @@ ROOT = Path(__file__).resolve().parents[1]
 # the tests that live with the code they test: the medium's viewer (easymesh-medium) and
 # the room and optimizer acceptance tools (easymesh-optimizer)
 VIEWER_TESTS = ROOT / 'medium/configurator/tests/viewer'
+TOPOLOGY_TESTS = ROOT / 'medium/topology-ui/tests'
 ACCEPTANCE = ROOT / 'optimizer/acceptance'
 PHASES = ('static', 'webui', 'browser', 'rf', 'rf-actions', 'rooms', 'live', 'soak')
 
@@ -165,18 +166,19 @@ def main():
             if step('static/topology-assets', ['bash', 'controller-ui/prepare-web-assets.sh']):
                 step('static/topology-go', ['go', 'test', './...'], cwd=ROOT / 'controller-ui')
         if 'webui' in chosen:
-            # this lab's dashboard tests, and the medium's viewer tests (easymesh-medium)
+            # the topology page's tests (easymesh-medium topology-ui) against the page this lab
+            # embeds, this lab's console model test, and the medium's viewer tests
+            if step('webui/topology-assets', ['bash', 'controller-ui/prepare-web-assets.sh']):
+                for filename in sorted(TOPOLOGY_TESTS.glob('*-test.js')):
+                    if 'browser' in filename.name:
+                        continue
+                    source = {'webui-rf-hover-test.js': 'room-topology.js',
+                              'steering-cues-test.js': 'steering-cues.js'}.get(filename.name, 'script.js')
+                    step('webui/' + filename.stem, ['node', str(filename), str(topology / source)])
             for filename in sorted((ROOT / 'tests').glob('*-test.js')) + sorted(VIEWER_TESTS.glob('*-test.js')):
                 if 'browser' in filename.name or filename.name == 'viewer-sidebar-layout-test.js':
                     continue
-                command = ['node', str(filename)]
-                if filename.name == 'webui-rf-hover-test.js':
-                    command.append(str(topology / 'room-topology.js'))
-                elif filename.name.startswith('webui-'):
-                    command.append(str(topology / 'script.js'))
-                elif filename.name == 'steering-cues-test.js':
-                    command.append(str(topology / 'steering-cues.js'))
-                step('webui/' + filename.stem, command)
+                step('webui/' + filename.stem, ['node', str(filename)])
             # this lab's and the acceptance tools' JavaScript tests (easymesh-optimizer)
             for filename in sorted((ROOT / 'tests').glob('test-*.js')) + sorted(ACCEPTANCE.glob('test-*.js')):
                 step('webui/' + filename.stem, ['node', str(filename)])
@@ -185,7 +187,7 @@ def main():
         browser_ok = browser_ready() if needs_browser else False
         if 'browser' in chosen:
             if browser_ok and step('browser/assets', ['bash', 'controller-ui/prepare-web-assets.sh']):
-                files = (sorted((ROOT / 'tests').glob('*browser-test.js')) + sorted(VIEWER_TESTS.glob('*browser-test.js'))
+                files = (sorted(TOPOLOGY_TESTS.glob('*browser-test.js')) + sorted(VIEWER_TESTS.glob('*browser-test.js'))
                          + [VIEWER_TESTS / 'viewer-sidebar-layout-test.js']
                          + sorted((ROOT / 'medium/observer/tests').glob('*browser-test.js')))
                 for filename in files:
@@ -300,7 +302,7 @@ def main():
             if live_ok:
                 step('live/console-ng', [sys.executable, 'medium/observer/check-ready.py', '--url', console_url], 90)
                 if browser_ok:
-                    step('live/rf-hover', ['node', 'tests/webui-rf-hover-browser-test.js', topology_url, str(output / 'rf-hover.json')])
+                    step('live/rf-hover', ['node', str(TOPOLOGY_TESTS / 'webui-rf-hover-browser-test.js'), topology_url, str(output / 'rf-hover.json')])
             if live_ok and stop_room():
                 acceptance_ok = True
                 if 'live' in chosen:

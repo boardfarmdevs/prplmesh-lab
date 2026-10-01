@@ -23,11 +23,12 @@ go build -o bin/easymesh-controller ./cmd/easymesh-controller
 bin/easymesh-controller
 ```
 
-The checked-in `web-vendor.tar.gz` contains pinned D3 7.9.0, Chart.js 3.9.1,
-Animate.css 4.1.1 and Font Awesome Free 6.4.0 assets, fonts, upstream licenses
-and checksums. Preparation verifies and expands these offline before Go embeds
-them. No runtime CDN access is required. The archive matches RDK's vendor
-payload; update both together and retain its upstream license files.
+The page is not kept here: `prepare-web-assets.sh` assembles
+[the medium's topology page](../medium/topology-ui/README.md) with its prplMesh
+profile (names, topology first, four live tabs, no charts or WebSocket) into
+`web/static`, which Go embeds. RDK's controller serves the same page. Its
+offline libraries (D3, Chart.js, Animate.css, Font Awesome) come verified with
+it; no runtime CDN access is required.
 
 Open `http://HOST-IP:8091/`. Network Topology is the default page and
 polls live controller data. Concurrent requests share only an in-flight source
@@ -97,7 +98,7 @@ unavailable, not zero. Shared-radio utilization is not additive or physical
 capacity. Client-heard beacon BSS Load stays separate in the room RF inspector.
 The tooltip refreshes while stationary and works with Follow room disabled.
 
-Focused checks: `node tests/webui-rf-hover-test.js controller-ui/web/static/room-topology.js`
+Focused checks: `node medium/topology-ui/tests/webui-rf-hover-test.js controller-ui/web/static/room-topology.js`
 from the repository root. The matching `webui-rf-hover-browser-test.js URL OUTPUT_PREFIX`
 checks live tooltips and browser-only stale/error fixtures without lab mutations.
 
