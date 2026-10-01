@@ -26,8 +26,8 @@ timings. The [room test plan](room-acceptance.md) owns invocation and gates.
 `optimizer/acceptance/room-feature-host-monitor.py` samples physical-host load separately.
 
 During a separately controlled moving-room test, run the read-only
-`tests/controller-render-latency.js --url TOPOLOGY_URL --seconds 90 --output NEW_DIR`
-from the directory containing `tests/` (RDK: `gen/`). It uses the same Playwright
+`optimizer/acceptance/controller-render-latency.js --url TOPOLOGY_URL --seconds 90 --output NEW_DIR`
+(easymesh-optimizer's) from the directory containing `optimizer/` (RDK: `gen/`). It uses the same Playwright
 environment variables as room acceptance. It measures a decoded controller
 response to the changed SVG-bound association identity across two animation frames,
 including removals; it does not measure native commit time, polling wait or

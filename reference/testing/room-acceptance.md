@@ -562,7 +562,7 @@ during scheduled movement. The tool only observes; the catalog or an operator
 owns playback. On RDK:
 
 ```sh
-node gen/tests/controller-render-latency.js \
+node gen/optimizer/acceptance/controller-render-latency.js \
   --scope metrics --url "$TOPOLOGY_URL" \
   --output /tmp/native-metrics-new --seconds 100 \
   --native-stack rdk --host "$HOST" --vm "$VM"
@@ -886,7 +886,7 @@ canvas mailbox preparation, and exact Chrome frame presentation feedback**:
 ```sh
 PLAYWRIGHT_MODULE=/path/to/playwright-core \
 CHROMIUM_PATH=/path/to/chromium-139.0.7258.5/chrome \
-node gen/tests/room-render-latency.js --url "$ROOM_URL" \
+node gen/optimizer/acceptance/room-render-latency.js --url "$ROOM_URL" \
   --output /tmp/rdk-room-render-new --seconds 65 \
   --native-stack rdk --host "$HOST" --vm "$VM"
 ```
