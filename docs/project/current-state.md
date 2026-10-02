@@ -2,7 +2,7 @@
 
 [Documents](../README.md)
 
-Reviewed 1 October 2026. This is the last-tested deployment, not a live health
+Reviewed 2 October 2026. This is the last-tested deployment, not a live health
 monitor. See [operations](../guides/operations.md).
 
 ## Identity
@@ -11,26 +11,26 @@ monitor. See [operations](../guides/operations.md).
 | --- | --- |
 | Branch | `main` |
 | Development and build checkout | `rev140:/home/rev/git/easymesh-labs/prplmesh-lab` (the easymesh-labs workspace) |
-| Last-tested VM | `rev140:prpl-1001` (stopped while rev140 builds the RDK lab: one lab at a time) |
+| Last-tested VM | `rev140:prpl-1002` (stopped while the RDK lab runs on rev140: one lab at a time) |
 | Guest checkout | `/opt/prplmesh-lab` |
 | Platform | Ubuntu 24.04 / Linux 7 radio host, native prplMesh, userspace wmediumd from easymesh-medium (the `medium` submodule); the optimizer from easymesh-optimizer (the `optimizer` submodule) |
 | Fixed pool | 100 clients; four Wi-Fi Agents and one wired Agent (`prpl-agent-05`, `extender_5`) |
-| RDK peer | meta-cmf-bananapi-vcpe; last-tested VM `rev140:rdk-1001` |
+| RDK peer | meta-cmf-bananapi-vcpe; last-tested VM `rev140:rdk-1002b` |
 
 Default selects ten private and ten IoT clients. Room loading changes presence,
 not permanent container or radio identities. Keep VM autostart disabled.
 
 ## Qualification
 
-`prpl-1001` was built from scratch on rev140 on 1 October, its native artifacts
-rebuilt with patch 0033 (the wired Agent stays in the controller's model). The
-expanded acceptance and the optimizer check passed with six devices; the static,
-WebUI and browser sections passed, from rev150; the geometry rooms passed all four,
-the recovery hold through its 150 s with no node lost; the catalog of 27 rooms
-passed, nine of them with the browser on rev150 (on rev140 they timed out loading
-in the browser while the host ran at load 15 to 20). Rebuilt later that day on the
-shared topology page, it requalified: readiness, the one-client handover room,
-`backhaul-wired-parent`, the world switch and the live RF hover.
+`prpl-1002` was built from scratch on rev140 on 2 October, from this repository as
+it is after its cleanup, its native artifacts rebuilt. The expanded acceptance (NBAPI
+steering, the 100-client data plane, process footprint) and the optimizer's dynamic
+recommendation passed in the build; with the browser on rev150, readiness, five rooms
+(`home-a-one-client-handover`, `band-upgrade-24-5`, `received-same-band-roam`,
+`large-room-perimeter-counter-roam`, `traffic-quieter-ap`), `backhaul-wired-parent`
+with its recovery hold and `fifty-client-counter-roam` passed. The full suite, the
+catalog of 27 rooms included, last ran on the VM of 1 October. The VM takes no
+automatic updates and no on-demand LXD install.
 
 The controller's memory stays bounded (about 43 to 44 MiB RSS, no growth over a
 90-second 20-client measurement); keep native patches 0026 to 0031 and the
@@ -53,11 +53,11 @@ their replacements pass.
 
 The last-tested VM's addresses, not a health promise:
 
-| View | `prpl-1001` |
+| View | `prpl-1002` |
 | --- | --- |
-| Live room | <http://192.168.2.140:46086/> |
-| Controller dashboard | <http://192.168.2.140:46084/> |
-| Console NG | <http://192.168.2.140:46085/> |
+| Live room | <http://192.168.2.140:48582/> |
+| Controller dashboard | <http://192.168.2.140:48580/> |
+| Console NG | <http://192.168.2.140:48581/> |
 
 Each new VM name receives its own ports. Proxies survive VM restarts; use a trusted
 LAN or VPN. Lab monitoring (in [easymesh-medium](https://vcpe.dev/easymesh-medium/))
