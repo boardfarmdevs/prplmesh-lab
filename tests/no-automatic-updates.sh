@@ -40,8 +40,29 @@ test "${calls[-1]}" = 'snap refresh --hold'
 grep -Fxq 'APT::Periodic::Update-Package-Lists "0";' "$tmp/99-lab-no-automatic-updates"
 grep -Fxq 'APT::Periodic::Unattended-Upgrade "0";' "$tmp/99-lab-no-automatic-updates"
 
-# in the build: sent to the guest, and before its first apt-get
-call=$(grep -n 'declare -f no_automatic_updates); no_automatic_updates' "$script" | head -1 | cut -d: -f1)
+# Ubuntu's on-demand LXD installer is masked too, and an install it started finishes first
+eval "$(sed -n '/^no_on_demand_lxd()/,/^}/p' "$script")"
+: > "$tmp/calls"
+echo 1 > "$tmp/runs-left"
+snap() {
+    echo "snap $*" >> "$tmp/calls"
+    [ "$1" = changes ] || return 0
+    local runs_left
+    runs_left=$(cat "$tmp/runs-left")
+    if [ "$runs_left" -gt 0 ]; then
+        echo $((runs_left - 1)) > "$tmp/runs-left"
+        echo '5    Doing   today at 20:37 UTC  -                   Install "lxd" snap from "5.21/stable/ubuntu-24.04" channel'
+    else
+        echo '5    Done    today at 20:37 UTC  today at 20:37 UTC  Install "lxd" snap from "5.21/stable/ubuntu-24.04" channel'
+    fi
+}
+no_on_demand_lxd
+test "$(head -1 "$tmp/calls")" = 'systemctl mask --now lxd-installer.socket'
+test "$(grep -c '^sleep 2$' "$tmp/calls")" = 1
+
+# in the build: both sent to the guest, and before its first apt-get
+call=$(grep -n 'declare -f no_automatic_updates no_on_demand_lxd); no_automatic_updates; no_on_demand_lxd' "$script" \
+    | head -1 | cut -d: -f1)
 first_apt=$(grep -n '^ *apt-get ' "$script" | head -1 | cut -d: -f1)
 test -n "$call" && test "$call" -lt "$first_apt"
-echo 'PASS: the lab VM takes no automatic updates, switched off before the first apt-get'
+echo 'PASS: the lab VM takes no automatic updates and no on-demand LXD, both before the first apt-get'

@@ -147,6 +147,16 @@ no_automatic_updates() {
     fi
 }
 
+# Ubuntu installs LXD on demand, from its own channel, the first time anything runs lxc or
+# lxd in the VM (lxd-installer). The lab installs its own LXD below: no on-demand install,
+# and one already under way finishes first. Runs in the guest.
+no_on_demand_lxd() {
+    systemctl mask --now lxd-installer.socket 2>/dev/null || true
+    while snap changes 2>/dev/null | grep -Eq '^[0-9]+ +(Do|Doing|Wait) .*Install "lxd"'; do
+        sleep 2
+    done
+}
+
 start_vm()
 {
     exists
@@ -416,7 +426,7 @@ PY
     lxc start "$NAME"
     wait_agent
 
-    run bash -euc "$(declare -f no_automatic_updates); no_automatic_updates"
+    run bash -euc "$(declare -f no_automatic_updates no_on_demand_lxd); no_automatic_updates; no_on_demand_lxd"
     run env DEBIAN_FRONTEND=noninteractive bash -c '
         apt-get update
         apt-get install -y --no-install-recommends ca-certificates curl git zstd
