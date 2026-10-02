@@ -127,6 +127,26 @@ run()
     lxc exec --mode non-interactive "$NAME" -- "$@" </dev/null
 }
 
+# A lab VM takes no automatic updates: an unattended upgrade restarts services under a
+# running lab. apt-get and snap refresh by hand keep working. Runs in the guest.
+no_automatic_updates() {
+    systemctl mask --now apt-daily.timer apt-daily-upgrade.timer
+    # a run in flight holds the dpkg lock: it finishes first
+    while systemctl show -p ActiveState --value apt-daily.service apt-daily-upgrade.service \
+        | grep -Eq '^(activating|active)$'; do
+        sleep 2
+    done
+    systemctl mask apt-daily.service apt-daily-upgrade.service
+    systemctl disable --now unattended-upgrades.service 2>/dev/null || true
+    printf '%s\n' 'APT::Periodic::Update-Package-Lists "0";' \
+        'APT::Periodic::Unattended-Upgrade "0";' \
+        > "${APT_CONF_DIR:-/etc/apt/apt.conf.d}/99-lab-no-automatic-updates"
+    if command -v snap >/dev/null 2>&1; then
+        snap wait system seed.loaded
+        snap refresh --hold
+    fi
+}
+
 start_vm()
 {
     exists
@@ -396,6 +416,7 @@ PY
     lxc start "$NAME"
     wait_agent
 
+    run bash -euc "$(declare -f no_automatic_updates); no_automatic_updates"
     run env DEBIAN_FRONTEND=noninteractive bash -c '
         apt-get update
         apt-get install -y --no-install-recommends ca-certificates curl git zstd

@@ -32,6 +32,10 @@ Start only a stopped VM; `lxc stop "$VM"` performs normal shutdown.
 Imports default to `boot.autostart=false`. Once manually started, the VM's lab
 and room services come up automatically; there is no separate room launch.
 
+The VM takes no automatic updates: an unattended upgrade restarts services under a
+running lab. Its build masks apt's daily timers and holds every snap; `apt-get` and
+`snap refresh` by hand keep working.
+
 ## Browser use and reboot recovery
 
 Open the room and topology from current state. Load a room, wait for apply,

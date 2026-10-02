@@ -8,12 +8,12 @@ Run rooms sequentially per lab; targeted checks exclude catalog/soak qualificati
 
 ## 0916 release recovery checks
 
-`demo-prpl`: the source of 21 September plus Python/verifier/room overlays; unchanged native binaries.
+`demo-prpl`: the 21 September source plus Python/verifier/room overlays; unchanged native binaries.
 Initial evidence: `test-results/rf-prpl-built-20260922T045334Z/`.
 The original build's 6 GHz BTM failure remains recorded.
 Branch-divider initial/branch/return, kernel ownership, both views and default
 twenty restoration pass with unchanged identities/policy. Five strict load/RSSI
-samples and Console NG's 115-radio room/survey checks also pass.
+samples and Console NG's 115-radio room/survey checks pass.
 
 Follow-up: `test-results/prpl-startup-followup/`. Per-station ubus dispatch returns
 `Not found` despite the station existing through root `_get`. Root `_exec`
@@ -37,11 +37,11 @@ peak with zero measured growth; drain-only failed. Partial-roster restarts
 were rejected, not used as memory evidence. See [controller memory](controller-memory.md)
 for retained failures, repeat/room qualification and exact workload boundaries.
 
-Historical **22/22** client rooms on the source of 16 September:
+Historical **22/22** client rooms on the 16 September source:
 `/home/rev/work/release-0916/evidence/prpl-clients-final/`; **3/3** geometry rooms:
 `prpl-native-roaming-geometry-reconciliation/` alongside it. Not fresh coverage.
 
-**Release remains held pending a fresh full 22+3 run on this native build.**
+**Release held pending a fresh full 22+3 run on this native build.**
 [Native policy and guards](room-coordination.md#native-backhaul-roaming-0916-qualification)
 describe native scans, rooted safety, reachability probes and reconciliation.
 
@@ -64,7 +64,7 @@ not by a temporarily missing `BackhaulDeviceID`. Parentless/reconnecting agents
 remain agents with unknown uplinks, rather than creating extra controller icons.
 Missing controller identity is explicitly unavailable. This addresses transient
 seven/eight-node drawings observed during otherwise successful client roams.
-The room's fullscreen and sidebar authority labels also follow the current
+The room's fullscreen and sidebar authority labels follow the current
 world's backhaul policy rather than the initial session profile.
 
 Run 22 client-policy rooms with `optimizer/acceptance/room-feature-acceptance.js` and three
@@ -95,7 +95,7 @@ SSID identities still fail. The original order-dependent failure is retained.
 The fresh release run exposed a real Linux-platform backhaul recovery defect:
 after a sustained modeled outage, the native manager searched for the hardcoded
 `test_beerocks_ssid` with open security instead of the configured mesh network.
-Its credential strings also retained fixed-buffer NUL padding, so supplicant
+Its credential strings retained fixed-buffer NUL padding, so supplicant
 commands stopped before the closing SSID/passphrase quote. Initial setup hid
 both defects by establishing the wireless link before starting the manager.
 
@@ -750,7 +750,7 @@ patch set, including ABI-changing RF patch 0014, before reusing a build tree.
 This host's matching tree is `/opt/prpl-build-0908` with source
 `/opt/prplMesh-0908`; the older `/opt/prpl-build-nl80211` is not equivalent.
 An initial mismatched-library deployment crashed fronthauls at HAL attachment;
-the correctly patched build resolves it. The raw build library also has build
+the correctly patched build resolves it. The raw build library has build
 directory RUNPATHs: deploy the CMake-installed library, not `out/lib` directly.
 Dependency resolution alone does not prove C++ ABI compatibility. Failed setup
 logs remain separate from room qualification. Do not reuse those binaries.
@@ -801,7 +801,7 @@ speedup claim. The first stationary-room batch now has eight calls rather than
 The full final catalog, not just this faster cold batch, must pass unchanged.
 Raw events and `registration-audit.json` retain counts and timestamp boundaries.
 
-Parallel registration also overlaps identical native query rosters. Responses
+Parallel registration overlaps identical native query rosters. Responses
 do not echo query MIDs, so these bursts cannot support exact per-request latency
 joins. `packet-group-audit.json` instead reconciles **17,798 queries and 17,798
 responses** by exact agent/opclass/roster, with no outstanding groups or orphan
@@ -947,7 +947,7 @@ an intrinsic stack-speed comparison. These 65-second profiles run alongside
 the respective full catalogs, without changing their gates. Capture receiver CPU is **0.116 / 0.353 s**
 over approximately 67 seconds for RDK/prpl. Native and Chrome traces have no
 lost events. Receiver resource evidence remains in each profile report.
-RDK's retained raw capture also passes the stricter RSSI/RCPI-conversion reaudit.
+RDK's retained raw capture passes the stricter RSSI/RCPI-conversion reaudit.
 
 This is native **controller RCPI-store → room presentation**, not RF generation
 or reception → controller timing, physical scanout, pixel-exact framebuffer
