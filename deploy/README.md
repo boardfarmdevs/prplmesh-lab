@@ -1,14 +1,14 @@
 # prplMesh deployment
 
-[Operations](../docs/operations.md) owns daily lifecycle and recovery;
-[current state](../docs/current-state.md) owns deployed URLs and release names.
+[Operations](../docs/guides/operations.md) owns daily lifecycle and recovery;
+[current state](../docs/project/current-state.md) owns deployed URLs and release names.
 
 | Deployment | Procedure |
 | --- | --- |
 | Portable LXD VM | [Import, profile selection and packaging](lxd-vm/README.md) |
 | Dedicated Linux radio host | [Bare-metal installation](bare-metal/README.md) |
-| Native source build | [From scratch](../docs/from-scratch.md) |
-| Inner LXD UI and inner/outer-VM Grafana | [Monitoring bundle](https://github.com/boardfarmdevs/easymesh-medium/blob/main/lxd-monitoring/README.md) |
+| Native source build | [From scratch](../docs/guides/build.md) |
+| Inner LXD UI and inner/outer-VM Grafana | Monitoring bundle (in [easymesh-medium](https://vcpe.dev/easymesh-medium/)) |
 
 The VM owns Ubuntu/Linux, nested LXD, radio inventory, wmediumd, native prplMesh,
 Controller UI, Console and the live room. It needs no source-host mount.

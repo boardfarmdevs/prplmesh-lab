@@ -1,6 +1,6 @@
 # prplMesh lab acceptance tests
 
-Start with the [host-side tiered runner](../docs/test/README.md). It selects a
+Start with the [host-side tiered runner](../docs/guides/test-suite.md). It selects a
 named VM, keeps the full-pool baseline stable across native tiers, restores
 the room once and records results. The individual tools below are for focused
 diagnostics; run mutating ones only in the documented command context.
@@ -14,12 +14,12 @@ native acceptance and provisioning tests.
 
 `live/controller-memory` follows native acceptance and precedes any soak:
 90-second RSS sampling, 100-client traffic and one-second native metrics.
-See [controller-memory contract](../reference/testing/controller-memory.md).
+See [controller-memory contract](../docs/reference/controller-memory.md).
 The suite requires clean matching sources; direct native helpers may run on an
 authorized dirty diagnostic runtime without weakening that source gate.
 
 For the two new RF rooms and native counter guard, use the focused `rf` tier
-or [direct bounded checks](../reference/radio/rf-property-coverage.md#direct-prpl-diagnostic-checks).
+or [direct bounded checks](../docs/records/rf-qualification.md#direct-prpl-diagnostic-checks).
 These retain native evidence and failure/restoration records; no long catalog
 or soak is needed. Backported code and RDK evidence do not qualify prpl live behavior.
 
@@ -92,7 +92,7 @@ expanded 105-instance capacity, fingerprint binding and pre-provision failure.
 They do not replace fresh-artifact 0→105/native100 acceptance.
 
 Phase 0 RF contract/provenance tests and the short read-only live audit are in
-the [RF assessment](https://github.com/boardfarmdevs/easymesh-medium/blob/main/docs/reference/virtual-rf-assessment.md#123-implemented-phase-0-truthfulness-baseline).
+the RF assessment (in [easymesh-medium](https://vcpe.dev/easymesh-medium/)).
 
 ## Netlink transport
 
@@ -180,8 +180,8 @@ The first two commands run on the outer host. Commands after the blank line run
 inside the VM. Root is needed for the snap-packaged nested LXD client. Never
 run an acceptance test against the outer host's LXD inventory by mistake.
 
-Use [operations](../docs/operations.md) for lifecycle and the
-[room catalog](../reference/rooms/catalog.md) for browser demonstrations.
+Use [operations](../docs/guides/operations.md) for lifecycle and the
+[room catalog](../docs/reference/room-catalog.md) for browser demonstrations.
 
 ## Observer-facing status
 
@@ -207,7 +207,7 @@ The tests compare three independent views instead of accepting a Web UI alone:
 `wmediumd-performance.py` separately measures daemon CPU/RSS and drives
 concurrent WLAN traffic from active clients. Its JSON output is intended for
 build and affinity comparisons; the
-[performance guide](../reference/testing/performance.md) explains the measurement
+[performance guide](../docs/reference/performance.md) explains the measurement
 boundaries. Keep accepted measurements with the corresponding run evidence.
 
 Run the complete currently active profile from the radio-lab VM:

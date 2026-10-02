@@ -34,7 +34,7 @@ def read(relative):
 
 def test_every_property_has_named_rooms_and_an_explicit_check_in_maintained_docs():
     assert set(DEMONSTRATIONS) == set(DEFINITIONS)
-    document = (ROOT / "reference/radio/rf-property-coverage.md").read_text()
+    document = (ROOT / "medium/docs/reference/rf-property-coverage.md").read_text()
     for row in property_catalog()["properties"]:
         demo = row["demonstration"]
         assert demo["check"] and demo["expectation"] and demo["rooms"]

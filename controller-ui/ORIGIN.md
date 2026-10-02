@@ -2,7 +2,7 @@
 
 This application is a host-native port of the RDK Unified EasyMesh EM CLI Web
 application. Its page started as a copy of RDK's patched
-`unified-wifi-mesh/src/rdkb-cli/static/` (0908 at layer commit `56a689f`, then
+`unified-wifi-mesh/src/rdkb-cli/static/` (the 0908 layer of 8 September, then
 synchronized by hand). Since 1 Oct 2026 there is one page for both labs,
 [the medium's topology-ui](../medium/topology-ui/README.md), and this UI
 assembles it with its prplMesh profile; its README says what the two copies

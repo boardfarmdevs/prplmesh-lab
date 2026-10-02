@@ -10,10 +10,14 @@ from urllib.parse import unquote, urlsplit
 
 
 ROOT = next(parent for parent in Path(__file__).resolve().parents if (parent / ".git").exists())
-RDK = (ROOT / "doc/easymesh").is_dir()
-HOME = ROOT / ("doc/easymesh" if RDK else "docs")
-REFERENCE = ROOT / ("doc/easymesh/reference" if RDK else "reference")
-TREES = (HOME,) if RDK else (HOME, REFERENCE)
+HOME = ROOT / "docs"
+TREES = (HOME,)
+# Introductions (concepts and guides) stay short; reference, records, proposals and
+# project documents may be long.
+INTRODUCTORY = ("concepts", "guides")
+SPECIAL_INTRODUCTORY_LIMITS = {
+    ROOT / "docs/concepts/steering-policy.md": (1600, "The steering policy guide is the complete operator control contract."),
+}
 
 
 def prose(content):
@@ -94,10 +98,10 @@ class DocumentationTests(unittest.TestCase):
         self.assertEqual(failures, [], "\n".join(failures))
 
     def test_packaged_document_inputs(self):
-        if RDK:
-            builder = (ROOT / "gen/vm/lxd/build.sh").read_text()
-            self.assertIn("doc/easymesh/release-notes.md", builder)
-            self.assertTrue((HOME / "release-notes.md").is_file())
+        builder = ROOT / "gen/vm/lxd/build.sh"
+        if builder.exists():
+            self.assertIn("docs/records/release-notes.md", builder.read_text())
+            self.assertTrue((HOME / "records/release-notes.md").is_file())
             return
         packager = (ROOT / "deploy/lxd-vm/package-thin.sh").read_text()
         start = packager.index('DOCS_URL=')
@@ -109,22 +113,24 @@ class DocumentationTests(unittest.TestCase):
             rendered = Path(directory, "INTERACTIVE.md").read_text()
             self.assertTrue(rendered.startswith("# Room and topology manual"))
             for target in targets(rendered):
+                if target.startswith(("https://vcpe.dev/", "https://mesh.vcpe.dev/")):
+                    continue  # another project's site
                 prefix = f"https://github.com/boardfarmdevs/prplmesh-lab/blob/{revision}/"
                 self.assertTrue(target.startswith(prefix), target)
                 self.assertTrue((ROOT / target[len(prefix):].split("#")[0]).is_file(), target)
         self.assertIn("README.md RELEASE-NOTES.md INTERACTIVE.md release.env", packager)
 
-    def test_reference_pages_are_indexed(self):
+    def test_documents_are_indexed(self):
+        index = HOME / "README.md"
         linked = {
             destination
-            for index in REFERENCE.rglob("README.md")
             for target in targets(index.read_text())
             if (destination := local_target(index, target)) is not None
         }
         unindexed = [
             str(path.relative_to(ROOT))
-            for path in REFERENCE.rglob("*.md")
-            if path != REFERENCE / "README.md" and path not in linked
+            for path in HOME.rglob("*.md")
+            if path != index and path not in linked
         ]
         self.assertEqual(sorted(unindexed), [])
 
@@ -145,11 +151,15 @@ class DocumentationTests(unittest.TestCase):
 
     def test_introductory_documents_stay_short(self):
         for document in documents():
-            limit = 10000 if REFERENCE in document.parents else 1400
+            kind = document.relative_to(HOME).parts[0] if HOME in document.parents else ""
+            limit = 1400 if kind in INTRODUCTORY else 10000
+            rationale = ""
             if document.name == "README.md":
                 limit = 650
+            if document in SPECIAL_INTRODUCTORY_LIMITS:
+                limit, rationale = SPECIAL_INTRODUCTORY_LIMITS[document]
             with self.subTest(document=str(document.relative_to(ROOT))):
-                self.assertLessEqual(len(document.read_text().split()), limit)
+                self.assertLessEqual(len(document.read_text().split()), limit, rationale)
 
     def test_no_raw_results_or_dated_report_dumps(self):
         for tree in TREES:

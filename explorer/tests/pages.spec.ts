@@ -16,6 +16,8 @@ test('component references are real prpl sources at the pinned revision', () => 
   }
 });
 
+const POSTERS = 'https://mesh.vcpe.dev/posters/img/';
+
 for (const prefix of ['', '/prplmesh-lab']) {
   test(`static navigation and assets at ${prefix || '/'}`, async ({
     page,
@@ -24,7 +26,13 @@ for (const prefix of ['', '/prplmesh-lab']) {
     const errors: string[] = [];
     const badRequests: string[] = [];
     page.on('pageerror', (error) => errors.push(error.message));
+    // The landing page shows the lab's cards from the labs' posters, images on the
+    // umbrella's site; stubbed here, and the only other host the pages may load from.
+    await page.route(`${POSTERS}*`, (route) =>
+      route.fulfill({ status: 200, contentType: 'image/jpeg', body: '' }),
+    );
     page.on('request', (request) => {
+      if (request.url().startsWith(POSTERS)) return;
       const url = new URL(request.url());
       if (url.hostname !== '127.0.0.1' || url.pathname.includes('/api/'))
         badRequests.push(request.url());
@@ -186,7 +194,7 @@ test('all room files ship and representative previews remain disconnected', asyn
       .getByRole('link', { name: 'public sandbox', exact: true }),
   ).toHaveAttribute(
     'href',
-    'https://boardfarmdevs.github.io/prplmesh-lab/viewer/?world=home-a-private-client-room-walk',
+    'https://vcpe.dev/prplmesh-lab/viewer/?world=home-a-private-client-room-walk',
   );
   expect(errors).toEqual([]);
   expect(unexpected).toEqual([]);

@@ -281,15 +281,14 @@ install -m 0755 "$ROOT/deploy/lxd-vm/install-host.sh" "$BUNDLE/install-host.sh"
 install -m 0755 "$ROOT/deploy/lxd-vm/package-release.sh" "$BUNDLE/package-release.sh"
 DOCS_URL="https://github.com/boardfarmdevs/prplmesh-lab/blob/$(git -C "$ROOT" rev-parse HEAD)"
 sed -e "s/0916/${RELEASE_ID}/g" \
-    -e "s#](../../docs/#]($DOCS_URL/docs/#g" \
-    -e "s#](../../reference/#]($DOCS_URL/reference/#g" "$ROOT/deploy/lxd-vm/README.md" \
+    -e "s#](../../docs/#]($DOCS_URL/docs/#g" "$ROOT/deploy/lxd-vm/README.md" \
     > "$BUNDLE/README.md"
 chmod 0644 "$BUNDLE/README.md"
-install -m 0644 "$ROOT/docs/release-notes.md" "$BUNDLE/RELEASE-NOTES.md"
+install -m 0644 "$ROOT/docs/records/release-notes.md" "$BUNDLE/RELEASE-NOTES.md"
 sed -e "s#](../README.md)#]($DOCS_URL/docs/README.md)#g" \
-    -e "s#](../current-state.md)#]($DOCS_URL/docs/current-state.md)#g" \
-    -e "s#](../../reference/#]($DOCS_URL/reference/#g" \
-    "$ROOT/docs/room-service/README.md" > "$BUNDLE/INTERACTIVE.md"
+    -e "s#](../reference/#]($DOCS_URL/docs/reference/#g" \
+    -e "s#](../project/#]($DOCS_URL/docs/project/#g" \
+    "$ROOT/docs/guides/room-manual.md" > "$BUNDLE/INTERACTIVE.md"
 chmod 0644 "$BUNDLE/INTERACTIVE.md"
 cat > "$BUNDLE/release.env" <<EOF
 LAB_STACK=prplmesh

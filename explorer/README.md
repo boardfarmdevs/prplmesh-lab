@@ -46,10 +46,10 @@ Pages source is **GitHub Actions**, and the `github-pages` environment must allo
 
 The deployment provides:
 
-- `https://boardfarmdevs.github.io/prplmesh-lab/`
-- `https://boardfarmdevs.github.io/prplmesh-lab/explorer/`
-- `https://boardfarmdevs.github.io/prplmesh-lab/viewer/`
-- `https://boardfarmdevs.github.io/prplmesh-lab/viewer/manual.html`
+- `https://vcpe.dev/prplmesh-lab/`
+- `https://vcpe.dev/prplmesh-lab/explorer/`
+- `https://vcpe.dev/prplmesh-lab/viewer/`
+- `https://vcpe.dev/prplmesh-lab/viewer/manual.html`
 
 Every push rebuilds the whole site together, avoiding stale viewer assets or
 missing room files. To preview the finished site locally:

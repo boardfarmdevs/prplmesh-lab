@@ -19,8 +19,8 @@ producers and complete delivery in the native build environment.
 These patches are copied into this independent experiment so the prplMesh lab
 does not build from or modify the RDK repository.
 
-The source versions were reviewed at RDK lab commit
-`c461c591afe8afef47d1b215fbcfbb09eb5abcb3`. They retain their original patch
+The source versions were reviewed against the RDK lab of
+27 August. They retain their original patch
 metadata. The hwsim patch applies to the Ubuntu Linux 7.0 source; the older
 Linux 6.8 strict-regdomain workaround is deliberately not imported because
 Linux 7.0 `regtest=5` already supplies the validated 6 GHz regulatory profile.
@@ -99,7 +99,7 @@ departed-client and original-code negative controls.
 notifications or two milliseconds per callback under the existing mutex.
 Events are preserved and the loop yields at the budget. It is paired with
 0028's producer-side reconciliation; draining alone failed matched-load RSS
-qualification. See [controller memory](../reference/testing/controller-memory.md)
+qualification. See [controller memory](../docs/reference/controller-memory.md)
 for negative controls, native evidence and the bounded regression command.
 
 `prplmesh/0027-release-nbapi-action-allocations.patch` gives temporary variants

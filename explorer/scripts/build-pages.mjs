@@ -45,12 +45,13 @@ const publicViewer = viewer.replace(
 );
 writeFileSync(path.join(output, 'viewer/index.html'), publicViewer);
 // The room manual is the medium's, shared by both labs: its public sandbox is ours here.
+// The pinned medium may name the RDK sandbox on either address of the labs' sites.
 const manualPath = path.join(output, 'viewer/manual.html');
 writeFileSync(
   manualPath,
   readFileSync(manualPath, 'utf8').replaceAll(
-    'https://boardfarmdevs.github.io/meta-cmf-bananapi-vcpe/viewer/',
-    'https://boardfarmdevs.github.io/prplmesh-lab/viewer/',
+    /https:\/\/(?:boardfarmdevs\.github\.io|vcpe\.dev)\/meta-cmf-bananapi-vcpe\/viewer\//g,
+    'https://vcpe.dev/prplmesh-lab/viewer/',
   ),
 );
 writeFileSync(path.join(output, '.nojekyll'), '');

@@ -93,7 +93,6 @@ install -m 0755 "$ROOT/deploy/lxd-vm/install-host.sh" "$BUNDLE/install-host.sh"
 install -m 0755 "$ROOT/deploy/lxd-vm/package-release.sh" "$BUNDLE/package-release.sh"
 DOCS_URL="https://github.com/boardfarmdevs/prplmesh-lab/blob/$(git -C "$ROOT" rev-parse HEAD)"
 sed -e "s#](../../docs/#]($DOCS_URL/docs/#g" \
-    -e "s#](../../reference/#]($DOCS_URL/reference/#g" \
     "$ROOT/deploy/lxd-vm/README.md" > "$BUNDLE/README.md"
 cat > "$BUNDLE/release.env" <<EOF
 LAB_STACK=prplmesh

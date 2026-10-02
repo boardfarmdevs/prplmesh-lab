@@ -1,38 +1,36 @@
-# prplMesh documentation
+# The prplMesh lab's documents
 
-Read the guide for your subsystem; the reference is not a required reading list.
-This is prplMesh's equivalent of RDK's `doc/easymesh/README.md`.
+[Repository](../README.md) · [Site](https://vcpe.dev/prplmesh-lab/)
 
-| Task / subsystem | Guide |
-| --- | --- |
-| Find running services, downloads and known limits | [Current state](current-state.md) |
-| Install, start, stop or recover | [Operations](operations.md) |
-| Understand the native stack and radio host | [Architecture](architecture.md) |
-| Use the room and topology | [Room manual](room-service/README.md) |
-| Choose a short demonstration | [Room catalog](../reference/rooms/catalog.md) |
-| Develop or diagnose external policy | [Optimizer reference](../reference/optimizer/README.md) |
-| Understand RF and the medium | [Radio reference](../reference/radio/README.md) |
-| Demonstrate every RF property and its policy boundary | [RF coverage](../reference/radio/rf-property-coverage.md) |
-| Open LXD UI and inner/outer Grafana dashboards | [Monitoring](../reference/observability/monitoring.md) |
-| Build native artifacts, then a named VM | [Build guide](build/README.md), [legacy entrypoint](from-scratch.md) |
-| Validate changes and room convergence | [Test tiers and runner](test/README.md), [testing reference](../reference/testing/README.md) |
-| Explore radios, packet paths and RF evidence | [Console NG manual](https://github.com/boardfarmdevs/easymesh-medium/blob/main/docs/console/guide.md) |
-| Browse offline architecture, topology and room previews | [Interactive Pages setup](../explorer/README.md) |
-| Find detailed contracts and proposals | [Reference index](../reference/README.md) |
+The [site](https://vcpe.dev/prplmesh-lab/) has the system explorer and the room sandbox.
+What both optimizer labs share is documented once, with its component: the RF medium,
+lab monitoring and the neighbor-rooms proposal in
+[easymesh-medium](https://vcpe.dev/easymesh-medium/); the optimizer, the room service
+and room access in [easymesh-optimizer](https://vcpe.dev/easymesh-optimizer/). This
+lab's documents are below.
 
-## Keeping this documentation small
+| Document | Kind | What it covers |
+| --- | --- | --- |
+| [Current state](project/current-state.md) | project | the last-tested VM, its qualification, addresses and limits |
+| [Architecture](concepts/architecture.md) | concept | the native stack and the radio host |
+| [Build](guides/build.md) | guide | the native artifacts from the pinned sources, then a named VM |
+| [Build and operate the VM](guides/build-vm.md) | guide | `deploy/lxd-vm/build.sh`: build, check, update, storage and clients |
+| [Operations](guides/operations.md) | guide | install, start, stop and recover |
+| [Room manual](guides/room-manual.md) | guide | the live room and the network topology |
+| [Test suite](guides/test-suite.md) | guide | the test tiers and the host-side runner |
+| [Software architecture](reference/software-architecture.md) | reference | prplMesh's processes, their interfaces and the lab's patches |
+| [Controller UI](reference/controller-ui.md) | reference | the host's EasyMesh controller dashboard |
+| [Topology adapter](reference/topology-adapter.md) | reference | the internal adapter from prplMesh's model to the dashboard and the optimizer |
+| [Medium backends](reference/medium-backends.md) | reference | the userspace and kernel data paths and how the lab selects one |
+| [Dynamic medium and optimizer](reference/dynamic-medium.md) | reference | driving the medium and the optimizer together in this lab |
+| [Room catalog](reference/room-catalog.md) | reference | every room and what to watch in it |
+| [Room acceptance](reference/room-acceptance.md) | reference | room correctness and convergence acceptance |
+| [Room coordination](reference/room-coordination.md) | reference | the room service's authority, leases and recovery in this lab |
+| [Performance](reference/performance.md) | reference | performance and failure attribution |
+| [Controller memory](reference/controller-memory.md) | reference | the native controller's memory qualification |
+| [RF qualification](records/rf-qualification.md) | record | the RF properties on native prplMesh: counter guard, ownership, load, the catalog |
+| [Release information](records/release-notes.md) | record | what a VM is built from; shipped in a packaged VM |
 
-- Update one owning subsystem guide instead of adding a document per fix/chat.
-- Keep deployed URLs, release locations and limitations only in current state.
-- Component READMEs own CLI/install instructions; link rather than copy them.
-- Put contracts in a reference category and add them to that category's index.
-  Proposed work is explicitly labeled under `reference/proposals/`.
-- Store raw JSON, logs, screenshots, videos and dated test reports with external
-  release/run evidence, retaining revisions, world hashes and failures.
-  Git history preserves superseded narratives; do not create an archive dump
-  in the active documentation tree.
-- After implementation, replace proposals with the actual contract and remove
-  completed milestones. Keep shared UI semantics aligned with RDK, but retain
-  backend-specific commands and qualifications locally.
-- Run `python3 tests/test_documentation.py` before submitting docs changes.
-  It checks local links, reference indexing and introductory-document budgets.
+Keep each subject in its owning document; put evidence (JSON, logs, screenshots)
+beside the release or test artifacts, not here. Run
+`python3 tests/test_documentation.py` before submitting documentation changes.

@@ -18,4 +18,4 @@ loading, Play and dragging. `stimulus`, `recommend` and explicitly confirmed
 `act` modes separate RF stimulus from optimizer authority. The optimizer's
 native BTM submission does not become another RF writer.
 
-See [the full operator manual](../docs/room-service/README.md).
+See [the full operator manual](../docs/guides/room-manual.md).

@@ -1,4 +1,4 @@
-export const revision = '68e9ee4a9233f9d9949cbd18b4a0de6d036f253b';
+export const revision = 'c0ae12ae177a1b1d9802d8bc00f45a4f07654173';
 export const source = (path: string) =>
   `https://github.com/boardfarmdevs/prplmesh-lab/${path ? 'blob' : 'tree'}/${revision}/${path}`;
 

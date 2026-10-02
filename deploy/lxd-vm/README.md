@@ -3,8 +3,8 @@
 LXD VM is the primary portable deployment. It keeps the Linux 7 radio host,
 nested containers, hwsim/wmediumd, prplMesh services, and UIs within one VM.
 
-For a new source build, use the [artifact-first build guide](../../docs/build/README.md)
-and [named VM lifecycle](../../docs/build/vm.md). Release import remains below.
+For a new source build, use the [artifact-first build guide](../../docs/guides/build.md)
+and [named VM lifecycle](../../docs/guides/build-vm.md). Release import remains below.
 New bundles select a reusable named pool and derived per-VM ports; use the
 printed URLs rather than assuming the legacy port examples below.
 
@@ -177,7 +177,7 @@ check. `thin-image-capacity.json` and `thin-capacity-check.json` are included in
 the bundle checksums; an older unmeasured runtime image cannot bypass this gate.
 
 New builds use the inner Btrfs pool and separate lean-client image described in
-[the VM build guide](../../docs/build/vm.md#efficient-inner-storage-and-clients).
+[the VM build guide](../../docs/guides/build-vm.md#efficient-inner-storage-and-clients).
 Schema-3 thin records bind both sanitized templates, using `prpl-client-01` for
 the client copy and rejecting a full mesh installation in that image. Both local
 images survive cleanup for offline first boot. Capacity budgets five mesh and
@@ -199,7 +199,7 @@ This installs the full bundled inner LXD UI and a provisioned Grafana container
 dashboard on HTTPS, on the VM's port base +3 and +4. Authentication is required, Prometheus
 stays private, and VM autostart is unchanged. Omit the flag for the original
 offline/no-monitoring import. Existing immutable release archives are unchanged.
-See [first login and resource limits](https://github.com/boardfarmdevs/easymesh-medium/blob/main/lxd-monitoring/README.md) and the
-[detailed reference](../../reference/observability/monitoring.md).
+See first login and resource limits (in [easymesh-medium](https://vcpe.dev/easymesh-medium/)) and the
+detailed reference (in [easymesh-medium](https://vcpe.dev/easymesh-medium/)).
 Both backend installers support inner-container and outer-VM monitoring.
 See current state for enabled deployments; browser authentication is still required.

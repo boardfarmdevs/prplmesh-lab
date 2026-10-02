@@ -10,16 +10,52 @@
     <title>prplMesh lab — Explore and learn</title>
     <style>
       :root {
-        color-scheme: dark;
+        color-scheme: light;
+        --ground: #f4f6f9;
+        --ink: #142033;
+        --text: #42536a;
+        --accent: #1f5fbf;
+        --focus: #1f63c6;
+        --card: #ffffff;
+        --card-hover: #eef3fa;
+        --card-line: #c9d6e8;
+        --rule: #d9e0ea;
         font-family: system-ui, sans-serif;
-        color: #e8eef8;
-        background: #0a101b;
+        color: var(--ink);
+        background: var(--ground);
+      }
+      @media (prefers-color-scheme: dark) {
+        :root:not([data-theme='light']) {
+          color-scheme: dark;
+          --ground: #0a101b;
+          --ink: #e8eef8;
+          --text: #b8c8df;
+          --accent: #8cbbff;
+          --focus: #b9d7ff;
+          --card: #101b2b;
+          --card-hover: #162841;
+          --card-line: #31527e;
+          --rule: #29394d;
+        }
+      }
+      :root[data-theme='dark'] {
+        color-scheme: dark;
+        --ground: #0a101b;
+        --ink: #e8eef8;
+        --text: #b8c8df;
+        --accent: #8cbbff;
+        --focus: #b9d7ff;
+        --card: #101b2b;
+        --card-hover: #162841;
+        --card-line: #31527e;
+        --rule: #29394d;
       }
       * {
         box-sizing: border-box;
       }
       body {
         margin: 0;
+        background: var(--ground);
       }
       main {
         max-width: 1080px;
@@ -27,7 +63,7 @@
         padding: 64px 24px;
       }
       .eyebrow {
-        color: #8cbbff;
+        color: var(--accent);
         letter-spacing: 0.12em;
         font-size: 13px;
       }
@@ -36,7 +72,7 @@
         margin-bottom: 16px;
       }
       p {
-        color: #b8c8df;
+        color: var(--text);
         line-height: 1.7;
       }
       nav {
@@ -48,19 +84,19 @@
       nav a {
         display: block;
         padding: 24px;
-        border: 1px solid #31527e;
+        border: 1px solid var(--card-line);
         border-radius: 14px;
-        background: #101b2b;
+        background: var(--card);
         text-decoration: none;
       }
       nav a:hover {
-        background: #162841;
+        background: var(--card-hover);
       }
       a {
-        color: #8cbbff;
+        color: var(--accent);
       }
       a:focus-visible {
-        outline: 3px solid #b9d7ff;
+        outline: 3px solid var(--focus);
         outline-offset: 5px;
       }
       nav h3 {
@@ -68,7 +104,7 @@
         margin-top: 0;
       }
       section {
-        border-top: 1px solid #29394d;
+        border-top: 1px solid var(--rule);
         margin-top: 44px;
       }
       section h2 {
@@ -76,7 +112,7 @@
         margin: 28px 0 8px;
       }
       li {
-        color: #b8c8df;
+        color: var(--text);
         line-height: 1.7;
       }
       .fits {
@@ -87,8 +123,40 @@
         margin-bottom: 0;
       }
       .note {
-        border-top: 1px solid #29394d;
+        border-top: 1px solid var(--rule);
         padding-top: 22px;
+      }
+      .posters {
+        display: grid;
+        grid-template-columns: minmax(0, 1.6fr) minmax(0, 1fr);
+        gap: 18px;
+        align-items: start;
+        margin: 32px 0 8px;
+      }
+      @media (max-width: 760px) {
+        .posters {
+          grid-template-columns: 1fr;
+        }
+      }
+      .posters a {
+        display: block;
+        text-decoration: none;
+      }
+      .posters img {
+        display: block;
+        width: 100%;
+        height: auto;
+        border: 1px solid var(--rule);
+        border-radius: 14px;
+      }
+      .posters a:hover img {
+        border-color: var(--accent);
+      }
+      .posters span {
+        display: block;
+        margin-top: 8px;
+        font-size: 14px;
+        color: var(--text);
       }
     </style>
   </head>
@@ -102,12 +170,28 @@
       </p>
       <p class="fits">
         Part of the <strong>EasyMesh optimizer</strong> goal, with the
-        <a href="https://boardfarmdevs.github.io/meta-cmf-bananapi-vcpe/">RDK EasyMesh lab</a>, the same lab on RDK-B. The
-        <a href="https://boardfarmdevs.github.io/emosa-lab/">EMOSA</a> and
-        <a href="https://boardfarmdevs.github.io/opensync-lab/">OpenSync</a> labs bring existing OpenSync
+        <a href="https://vcpe.dev/meta-cmf-bananapi-vcpe/">RDK EasyMesh lab</a>, the same lab on RDK-B. The
+        <a href="https://vcpe.dev/emosa-lab/">EMOSA</a> and
+        <a href="https://vcpe.dev/opensync-lab/">OpenSync</a> labs bring existing OpenSync
         pods into EasyMesh. The end goal is one EasyMesh system on wmediumd, with
         native EasyMesh agents and OpenSync pods working together.
       </p>
+      <div class="posters" aria-label="From the labs' posters">
+        <a href="https://mesh.vcpe.dev/posters/labs.html#prpl">
+          <picture>
+            <source srcset="https://mesh.vcpe.dev/posters/img/card-labs-prpl-dark.jpg" media="(prefers-color-scheme: dark)" />
+            <img src="https://mesh.vcpe.dev/posters/img/card-labs-prpl-light.jpg" width="1442" height="1070" alt="The prplMesh lab as built: prpl-1001, what runs inside it, where the optimizer runs and how to open it" />
+          </picture>
+          <span>The lab as built: prpl-1001, what runs inside it and how to open it · the labs poster ↗</span>
+        </a>
+        <a href="https://mesh.vcpe.dev/posters/map.html#prpl">
+          <picture>
+            <source srcset="https://mesh.vcpe.dev/posters/img/card-map-prpl-dark.jpg" media="(prefers-color-scheme: dark)" />
+            <img src="https://mesh.vcpe.dev/posters/img/card-map-prpl-light.jpg" width="916" height="876" alt="Where the prplMesh lab's parts live: the directories of its repository" />
+          </picture>
+          <span>Where its parts live, directory by directory · the map poster ↗</span>
+        </a>
+      </div>
       <section id="what">
         <h2>What it is</h2>
         <p>
@@ -148,13 +232,13 @@
       <section id="state">
         <h2>Current state</h2>
         <ul>
-          <li>Development checkpoint: fresh-VM and full-suite acceptance are pending.</li>
-          <li>The ordinary room catalog has passing evidence for all 24 rooms across two
-          runs; guarded load steering passed with a native BTM.</li>
-          <li>Still open: geometry isolation/recovery (an extender's 6 GHz inventory
-          disappeared) and pressure veto / weak-signal rescue (no complete live proof).</li>
+          <li>A VM built from scratch on 1 October passed the full suite: the expanded
+          acceptance with six devices, the static and browser checks, the four geometry
+          rooms and the catalog of 27 rooms.</li>
+          <li>The wired Agent stays in the controller's model (prplMesh patch 0033), and
+          the controller's memory stays bounded.</li>
         </ul>
-        <p><a href="https://github.com/boardfarmdevs/prplmesh-lab/blob/main/docs/current-state.md">The current state in full ↗</a></p>
+        <p><a href="https://github.com/boardfarmdevs/prplmesh-lab/blob/main/docs/project/current-state.md">The current state in full ↗</a></p>
       </section>
       <section id="run">
         <h2>Run it</h2>
@@ -162,14 +246,14 @@
         Start from a clean host with the bare-metal guide; the operations guide has
         the day-to-day commands.
         </p>
-        <p><a href="https://github.com/boardfarmdevs/prplmesh-lab/blob/main/deploy/bare-metal/README.md">Bare-metal guide ↗</a> · <a href="https://github.com/boardfarmdevs/prplmesh-lab/blob/main/docs/operations.md">Operations ↗</a></p>
+        <p><a href="https://github.com/boardfarmdevs/prplmesh-lab/blob/main/deploy/bare-metal/README.md">Bare-metal guide ↗</a> · <a href="https://github.com/boardfarmdevs/prplmesh-lab/blob/main/docs/guides/operations.md">Operations ↗</a></p>
       </section>
       <section id="reference">
         <h2>Reference</h2>
         <ul>
           <li><a href="https://github.com/boardfarmdevs/prplmesh-lab/blob/main/docs/README.md">Source documentation ↗</a></li>
-          <li><a href="https://github.com/boardfarmdevs/prplmesh-lab/blob/main/docs/current-state.md">Current state ↗</a></li>
-          <li><a href="https://github.com/boardfarmdevs/prplmesh-lab/blob/main/reference/radio/rf-property-coverage.md">RF qualification record ↗</a></li>
+          <li><a href="https://github.com/boardfarmdevs/prplmesh-lab/blob/main/docs/project/current-state.md">Current state ↗</a></li>
+          <li><a href="https://github.com/boardfarmdevs/prplmesh-lab/blob/main/docs/records/rf-qualification.md">RF qualification record ↗</a></li>
         </ul>
       </section>
     </main>

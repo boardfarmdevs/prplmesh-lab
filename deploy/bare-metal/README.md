@@ -12,7 +12,7 @@ cd prplmesh-lab
 ```
 
 Install the host packages and initialize LXD as described in
-[the source guide](../../docs/from-scratch.md). Build the native artifacts there,
+[the source guide](../../docs/guides/build.md). Build the native artifacts there,
 or copy the three checksummed prplMesh/hostap archives and their `SHA256SUMS`
 from an accepted release into `artifacts/`, then install them:
 

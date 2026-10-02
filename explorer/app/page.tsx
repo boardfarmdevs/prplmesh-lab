@@ -131,7 +131,7 @@ export default function Explorer() {
         </div>
       </section>
       <Tabs
-        className="workspace"
+        className="workspace dark"
         value={view}
         onValueChange={(value) => setView(String(value))}
       >
@@ -237,7 +237,7 @@ export default function Explorer() {
           if (!open) setSelected(null);
         }}
       >
-        <SheetContent className={`detail-sheet ${shown?.color || 'blue'}`}>
+        <SheetContent className={`detail-sheet dark ${shown?.color || 'blue'}`}>
           <SheetHeader>
             <span className="eyebrow">COMPONENT INSPECTOR</span>
             <SheetTitle>{shown?.title}</SheetTitle>
