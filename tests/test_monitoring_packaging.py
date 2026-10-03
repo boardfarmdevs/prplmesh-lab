@@ -32,12 +32,15 @@ def test_the_wrapper_runs_the_medium_bundle_with_this_vms_ports(tmp_path):
     (bundle / "enable.sh").write_text(
         'echo "$* base=$LAB_PORT_BASE ui=$LAB_LXD_UI_PORT grafana=$LAB_GRAFANA_PORT"\n'
     )
-    # hermetic: a host with no other instance, whether or not it has LXD
+    # hermetic: not the lab a caller configured (lab-config.sh, the suite), and a host with
+    # no other instance, whether or not it has LXD
     tools = tmp_path / "bin"
     tools.mkdir()
     (tools / "lxc").write_text('#!/bin/sh\n[ "$1" = list ] && echo "[]"\nexit 0\n')
     (tools / "lxc").chmod(0o755)
-    environment = {**os.environ, "PATH": f"{tools}:{os.environ['PATH']}"}
+    environment = {name: value for name, value in os.environ.items()
+                   if not name.startswith(("PRPLMESH_", "LAB_", "_PRPL"))}
+    environment["PATH"] = f"{tools}:{os.environ['PATH']}"
     expected = subprocess.run(
         ["bash", "-c", '. "$1" && prplmesh_instance_config prpl-1001 && echo "$PRPLMESH_PORT_BASE"',
          "-", str(LXD / "instance-config.sh")], capture_output=True, text=True, check=True, env=environment,
