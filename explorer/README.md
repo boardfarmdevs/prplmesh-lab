@@ -37,12 +37,11 @@ Generated assets, dependencies and browser evidence are ignored by Git.
 
 ## Publish
 
-The site is built and published by the Pages workflow
-(`.github/workflows/pages.yml`, the same in the five lab repositories) on every
-push to `main`: `pages/build` runs `npm ci`, `npm run build` and `npm test` here,
-and `pages/finish-site.py` adds the labs bar shared by the five lab sites. The
-Pages source is **GitHub Actions**, and the `github-pages` environment must allow
-`main`.
+The site is built and published by the labs' shared Pages workflow (called from
+`.github/workflows/pages.yml`) on every push to `main`: `pages/build` runs `npm ci`,
+`npm run build` and `npm test` here, and the umbrella's `pages/finish-site.py` adds the
+labs bar shared by the labs' sites. The Pages source is **GitHub Actions**, and the
+`github-pages` environment must allow `main`.
 
 The deployment provides:
 
@@ -55,7 +54,7 @@ Every push rebuilds the whole site together, avoiding stale viewer assets or
 missing room files. To preview the finished site locally:
 
 ```sh
-pages/build && python3 pages/finish-site.py
+pages/build && python3 ../easymesh-labs/pages/finish-site.py   # the umbrella, checked out next to this one
 python3 -m http.server -d dist/site 8000
 ```
 
