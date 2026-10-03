@@ -1,0 +1,42 @@
+# The lab's static tier without a lab (tests/run-prplmesh-suite.py static): the documentation,
+# the offline shell tests, the Python tests (the lab's, the medium's configurator, the
+# optimizer's) and the Go tests of the Console and the controller UI, with the medium and the
+# optimizer at the commits this repository pins. The runner fails on any step that does not
+# pass. The site and the explorer's tests: pages.yml.
+name: checks
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  static:
+    runs-on: ubuntu-24.04
+    env:
+      # the runner names the lab's URLs; the static tier never opens them
+      PRPLMESH_VM_NAME: ci
+      PRPLMESH_ROOM_DEMO_HOST_PORT: '0'
+      PRPLMESH_UI_HOST_PORT: '0'
+      PRPLMESH_WMEDIUMD_CONSOLE_HOST_PORT: '0'
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          submodules: true
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: pip install -q pytest
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.22'
+      - name: The static tier
+        run: python3 tests/run-prplmesh-suite.py static --output static-results
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: static-results
+          path: static-results/
