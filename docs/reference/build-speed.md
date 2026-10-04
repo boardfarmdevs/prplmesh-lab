@@ -63,6 +63,30 @@ rebuilt), `phases.tsv` (each phase's start and seconds), `summary.txt`, `exit-co
 failure, `failed-phase`. `latest-KIND-NAME` links the newest. The suite runner's
 `summary.json` carries the run's start, end and seconds and each section's seconds.
 
+## Measured
+
+rev140 (16 CPUs, 62 GiB), 4 October 2026, with another lab VM running beside the builds,
+from the builds' records. `prpl-fast-a` was first built cold, which made and published the
+base image (its build then stopped at the client image on a fault fixed since), then built
+again from that image, and passed its acceptance with Alpine clients:
+
+| Phase | Cold | From the base image |
+| --- | ---: | ---: |
+| inputs, create, start | 34 s | 57 s |
+| the base: kernel, packages, LXD, and the restart | 332 s | — |
+| publishing the base image (once per key; 1.35 GiB) | 382 s | — |
+| inputs pushed, nested storage | | 34 s |
+| the mesh and client images, the radio module, a restart | | 371 s |
+| the radio pool and 105 containers | | 382 s |
+| the guest's services, the controller UI | | 27 s |
+| the lab's start (100 clients associated) | | 728 s |
+| acceptance (100 of 100 clients reach the controller; the optimizer check) | | 1140 s |
+| total | | 2739 s (45.6 min) |
+
+The base image saves 5.5 minutes a build here (the prplMesh base is small: no WAN, no
+radio module). The native archives come from the store in 4 s instead of 15.5 minutes. A
+copy of the accepted lab on its Btrfs pool took 7 s, and the two labs share 13.9 GiB.
+
 ## The Alpine clients
 
 The client image is Alpine with the lab's own supplicant built for musl
