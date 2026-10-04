@@ -600,8 +600,9 @@ update_vm()
     if "$wmediumd"; then
         # as install-from-artifacts.sh builds it, from the medium the checkout now pins
         phase wmediumd
-        run bash -euc 'cd /opt/prplmesh-lab
-            medium/wmediumd/build-wmediumd.sh --source build/wmediumd-source --output build/bin'
+        run bash -euc 'root=/opt/prplmesh-lab
+            "$root/medium/wmediumd/build-wmediumd.sh" --source "$root/build/wmediumd-source" \
+                --output "$root/build/bin"'
     fi
     if "$console"; then
         phase console
@@ -611,11 +612,12 @@ update_vm()
     if "$radio"; then
         # as install-from-artifacts.sh builds it, from the stock sources again (REFETCH: the
         # build's patched tree is not patched twice; prpl-fast-c, 4 Oct); a live pool is never
-        # reloaded: the restart below loads the new module
+        # reloaded: the restart below loads the new module. The kernel's make takes absolute
+        # directories only.
         phase radio-module
-        run bash -euc 'cd /opt/prplmesh-lab
-            REFETCH=1 INSTALL_MODULE=1 medium/hwsim/build-hwsim.sh --source build/hwsim-source \
-                --cfg80211 build/cfg80211-source
+        run bash -euc 'root=/opt/prplmesh-lab
+            REFETCH=1 INSTALL_MODULE=1 "$root/medium/hwsim/build-hwsim.sh" \
+                --source "$root/build/hwsim-source" --cfg80211 "$root/build/cfg80211-source"
             depmod -a "$(uname -r)"'
     fi
     if "$services" || "$console"; then
