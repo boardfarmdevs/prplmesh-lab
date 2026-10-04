@@ -103,6 +103,15 @@ medium and steering. It has no room service (its unit needs the full roster), it
 acceptance checks its own roster, an update skips the room's settling, and packaging
 refuses it. Qualification and every room run need the full lab.
 
+## Update in place
+
+`bash deploy/lxd-vm/build.sh update` rebuilds what a commit changed of what a build installed
+(the guide says what), restarts the VM and lets the room settle; its record says what it
+rebuilt. An update that stops part-way is finished by running it again: it starts from the
+last commit a build or a whole update applied (`user.prplmesh.applied-commit`), not from the
+checkout it may have moved already. The radio module is built from the kernel's stock
+source each time.
+
 ## What a change needs
 
 `tests/affected-suites.py BASE` prints the least an accepted lab needs for a change
