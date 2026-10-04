@@ -63,6 +63,14 @@ rebuilt), `phases.tsv` (each phase's start and seconds), `summary.txt`, `exit-co
 failure, `failed-phase`. `latest-KIND-NAME` links the newest. The suite runner's
 `summary.json` carries the run's start, end and seconds and each section's seconds.
 
+## The Alpine clients
+
+The client image is Alpine with the lab's own supplicant built for musl
+([build and operate the VM](../guides/build-vm.md)). Set up the same way in a container on
+rev140 (3 October 2026), its root filesystem is 45.7 MB; the Ubuntu 22.04 client image it
+replaces was 366 MB. On the nested Btrfs pool the 100 clients share their image's blocks,
+so the gain is in the image itself, its build and what each client runs.
+
 ## A development lab
 
 `PRPLMESH_DEV_CLIENTS=20 bash deploy/lxd-vm/build.sh build` builds a lab with 20 clients
