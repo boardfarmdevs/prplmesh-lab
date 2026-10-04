@@ -85,7 +85,16 @@ again from that image, and passed its acceptance with Alpine clients:
 
 The base image saves 5.5 minutes a build here (the prplMesh base is small: no WAN, no
 radio module). The native archives come from the store in 4 s instead of 15.5 minutes. A
-copy of the accepted lab on its Btrfs pool took 7 s, and the two labs share 13.9 GiB.
+copy of the accepted lab on its Btrfs pool took 7 s, and the two labs share 13.9 GiB; the
+copy started on its own address and ports in 757 s.
+
+The copy was then updated to a commit that changed the medium's daemon, console and radio
+module, a guest service and a script the clients run: 18.9 minutes, of which 2.8 to build
+and install them (the radio module 150 s), 14.1 to restart and start the lab, and 2 for
+the room to settle with its 20 clients. It then passed `check` in full (100 of 100 clients
+over the data plane, the steering acceptance, the optimizer's recommend check). A build of
+the same commit takes the 45.6 minutes above. The first two attempts stopped at the radio
+module, on faults fixed since; the third resumed from the commit the copy was built at.
 
 ## The Alpine clients
 
