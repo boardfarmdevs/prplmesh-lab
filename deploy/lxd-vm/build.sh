@@ -228,9 +228,10 @@ snapd util-linux zstd'
 base_host() {
     export DEBIAN_FRONTEND=noninteractive
     apt-get update
-    # shellcheck disable=SC2086 # a list of packages
     apt-get install -y --no-install-recommends "linux-image-$KERNEL" "linux-modules-$KERNEL" \
-        "linux-headers-$KERNEL" $BASE_PACKAGES
+        "linux-headers-$KERNEL" ca-certificates curl git zstd
+    # shellcheck disable=SC2086 # a list of packages, with what they recommend
+    apt-get install -y $BASE_PACKAGES
     update-initramfs -u -k "$KERNEL"
     update-grub
     sed "s/^Types: deb$/Types: deb-src/" /etc/apt/sources.list.d/ubuntu.sources \
@@ -303,6 +304,7 @@ publish_base_image()        # publish_base_image ALIAS KEY: the base VM, stopped
         description="prplMesh lab base VM ($key)" </dev/null
     lxc start "$NAME"
     wait_agent
+    sync_guest_address
     if [ -n "${EASYMESH_ARTIFACT_PUBLISH:-}" ]; then
         exported=$(mktemp -d /tmp/prplmesh-base-export.XXXXXX)
         lxc image export "$alias" "$exported/" </dev/null
@@ -790,6 +792,8 @@ PY
         phase kernel-restart
         lxc restart "$NAME" --timeout 300
         wait_agent
+        # DHCP by the MAC from now on (base_host): the reservation follows if it moved
+        sync_guest_address
     fi
     [ "$(run uname -r)" = "$KERNEL" ]
     if ! "$from_base" && [ "$BASE_MODE" != off ]; then
@@ -858,6 +862,7 @@ EOF"
     run sync
     lxc restart "$NAME" --timeout 120 || lxc restart "$NAME" --force
     wait_agent
+    sync_guest_address
     phase radio-pool
     run bash /opt/prplmesh-lab/scripts/radio-lab.sh radio-pool
     phase deploy
