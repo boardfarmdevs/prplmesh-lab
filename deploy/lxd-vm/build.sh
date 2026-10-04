@@ -179,7 +179,7 @@ record_open()       # record_open KIND
         printf 'LAB=%s\nKIND=%s\nHOST=%s\nSTARTED=%s\n' "$NAME" "$kind" "$(hostname)" "$stamp"
         printf 'COMMIT=%s\nIMAGE=%s\nKERNEL=%s\n' "$(git -C "$ROOT" rev-parse HEAD)" "$IMAGE" "$KERNEL"
         printf 'CPUS=%s\nMEMORY=%s\nCLIENTS=%s\n' "$CPUS" "$MEMORY" "$CLIENTS"
-        printf 'STORAGE=%s\nSTORAGE_DRIVER=%s\nSHARED_HOST=%s\n' "$PRPLMESH_LXD_STORAGE" \
+        printf 'STORAGE=%s\nSTORAGE_DRIVER=%s\nSHARED_HOST=%s\n' "$(storage_pool)" \
             "$(storage_driver)" "${PRPLMESH_SHARED_HOST:-0}"
     } > "$record_dir/environment.txt"
     ln -sfn "$(basename "$record_dir")" "$RECORDS/latest-$kind-$NAME"
@@ -213,9 +213,14 @@ record_close()      # record_close STATUS
     record_dir=
 }
 
-storage_driver()    # the driver of this lab's pool, or the one a build would create
+storage_pool()      # the pool the VM is in (a copy's is its original's), or this lab's
 {
-    lxc storage show "$PRPLMESH_LXD_STORAGE" 2>/dev/null | awk '$1 == "driver:" {print $2; exit}' \
+    lxc config device get "$NAME" root pool 2>/dev/null | grep . || printf '%s\n' "$PRPLMESH_LXD_STORAGE"
+}
+
+storage_driver()    # the driver of that pool, or the one a build would create
+{
+    lxc storage show "$(storage_pool)" 2>/dev/null | awk '$1 == "driver:" {print $2; exit}' \
         | grep . || printf '%s\n' "${PRPLMESH_STORAGE_DRIVER:-dir}"
 }
 
