@@ -300,8 +300,12 @@ publish_base_image()        # publish_base_image ALIAS KEY: the base VM, stopped
         journalctl --vacuum-time=1s >/dev/null 2>&1 || true
         install -d /var/lib/prplmesh-lab
         printf "%s\n" "$1" > /var/lib/prplmesh-lab/base-image.key
+        snap stop lxd >/dev/null 2>&1 || true
         sync' bash "$key"
-    lxc stop "$NAME" --timeout 300
+    # the guest's nested LXD can hold its shutdown past the timeout (prpl-0930, and this
+    # publish on prpl-fast-a, 4 Oct): it is stopped and the disk synced, so a forced stop
+    # loses nothing
+    lxc stop "$NAME" --timeout 120 || lxc stop "$NAME" --force
     if lxc image info "$alias" >/dev/null 2>&1; then
         lxc image delete "$alias"
     fi
