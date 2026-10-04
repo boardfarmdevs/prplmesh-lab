@@ -6,8 +6,8 @@ SOURCE_IMAGE=${SOURCE_IMAGE:-}
 role=${1:-mesh}
 # The mesh nodes run Ubuntu 22.04 (the native archives' ABI), the clients Alpine.
 case "$role" in
-    mesh) default_alias=${PRPLMESH_RUNTIME_IMAGE:-prpl-runtime-local}; setup=setup-runtime-base.sh; default_builder=prpl-runtime-image-build; base='^ubuntu 22[.]04 LTS'; base_name='Ubuntu 22.04' ;;
-    client) default_alias=${PRPLMESH_CLIENT_IMAGE:-prpl-client-local}; setup=setup-client-base.sh; default_builder=prpl-client-image-build; base='^Alpine 3[.]22'; base_name='Alpine 3.22' ;;
+    mesh) default_alias=${PRPLMESH_RUNTIME_IMAGE:-prpl-runtime-local}; setup='setup-runtime-base.sh'; default_builder='prpl-runtime-image-build'; base='^ubuntu 22[.]04 LTS'; base_name='Ubuntu 22.04' ;;
+    client) default_alias=${PRPLMESH_CLIENT_IMAGE:-prpl-client-local}; setup='setup-client-base.sh'; default_builder='prpl-client-image-build'; base='^Alpine(linux)? 3[.]22'; base_name='Alpine 3.22' ;;
     *) echo "usage: $0 [mesh|client]" >&2; exit 2 ;;
 esac
 [[ $# -le 1 ]] || { echo "usage: $0 [mesh|client]" >&2; exit 2; }
