@@ -10,7 +10,9 @@ ROOT=${1:-/opt/prplmesh-lab}
 
 # A generic netplan survives LXD VM image import on a different host. DNS is
 # explicit because nested build/runtime nodes must not depend on a host-local
-# resolver stub.
+# resolver stub. DHCP identifies the guest by its NIC's MAC: a copy, an import or a
+# VM made from the base image shares a machine-id, and with it the default client
+# identity, by which the bridge's DHCP server would give two labs one lease.
 install -m 0600 /dev/stdin /etc/netplan/50-prplmesh-appliance.yaml <<'EOF'
 network:
   version: 2
@@ -19,6 +21,7 @@ network:
       match:
         name: "en*"
       dhcp4: true
+      dhcp-identifier: mac
       dhcp4-overrides:
         use-dns: false
       nameservers:

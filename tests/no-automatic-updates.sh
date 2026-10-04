@@ -60,9 +60,13 @@ no_on_demand_lxd
 test "$(head -1 "$tmp/calls")" = 'systemctl mask --now lxd-installer.socket'
 test "$(grep -c '^sleep 2$' "$tmp/calls")" = 1
 
-# in the build: both sent to the guest, and before its first apt-get
-call=$(grep -n 'declare -f no_automatic_updates no_on_demand_lxd); no_automatic_updates; no_on_demand_lxd' "$script" \
+# in the build: both sent to the guest and run before base_host, which holds its apt-get
+call=$(grep -n 'declare -f no_automatic_updates no_on_demand_lxd base_host); no_automatic_updates; no_on_demand_lxd; base_host"' "$script" \
     | head -1 | cut -d: -f1)
+test -n "$call"
+base_start=$(grep -n '^base_host()' "$script" | cut -d: -f1)
+base_end=$(awk -v start="$base_start" 'NR > start && /^}/ {print NR; exit}' "$script")
 first_apt=$(grep -n '^ *apt-get ' "$script" | head -1 | cut -d: -f1)
-test -n "$call" && test "$call" -lt "$first_apt"
+last_apt=$(grep -n '^ *apt-get ' "$script" | tail -1 | cut -d: -f1)
+test "$first_apt" -gt "$base_start" && test "$last_apt" -lt "$base_end"
 echo 'PASS: the lab VM takes no automatic updates and no on-demand LXD, both before the first apt-get'

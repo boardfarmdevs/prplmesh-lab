@@ -4,7 +4,10 @@ set -euo pipefail
 ordinal=${1:?client ordinal}
 cohort=${2:?private or iot}
 band=${3:-5}
-tar -C /usr/local -xzf /mnt/project/artifacts/hostap-runtime-2.10.tar.gz \
+# The supplicant built for the client's OS: Alpine (musl), or Ubuntu in an older image.
+archive=hostap-runtime-2.10.tar.gz
+[ ! -f /etc/alpine-release ] || archive=hostap-client-2.10-alpine.tar.gz
+tar -C /usr/local -xzf "/mnt/project/artifacts/$archive" \
     ./sbin/wpa_supplicant ./bin/wpa_cli
 
 case "$band" in

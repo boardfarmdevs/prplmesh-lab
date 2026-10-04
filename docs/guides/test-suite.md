@@ -73,6 +73,22 @@ See [RF action qualification](../records/rf-qualification.md#native-load-action-
 `all` runs those tiers in dependency order. These are functional/regression
 gates, not a hardware RF-capacity certification or an unlimited endurance soak.
 Failures and prerequisite blocks produce nonzero exit and are never passes.
+`summary.json` carries the run's start, end and seconds, and each section's seconds.
+
+### What a change needs
+
+`tests/affected-suites.py BASE [HEAD]` reads a change and prints the least the
+lab VM needs (nothing, `build.sh update`, `build.sh build`, or new native
+archives first) and the sections that can see it, with the paths that chose
+each one (`--json` for a script). It follows `medium` and `optimizer` into their
+own histories. Documents and the site need nothing; the medium, the optimizer,
+the rooms, the guest's services, the controller UI and the scripts the
+containers run an update and their sections; the container images' setup and
+the VM's own steps a build; the native patches and what the archives are built
+from new archives and every section; a path it does not know every section.
+Requalify a change with what it prints. Run every section and the soak at
+release points: a tag, a lab handed over, or new native archives. The map is
+`RULES` in the script; `tests/test_affected_suites.py` keeps its decisions.
 
 ## Live campaign
 

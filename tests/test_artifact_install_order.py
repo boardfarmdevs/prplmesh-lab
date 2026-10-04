@@ -31,7 +31,7 @@ def test_prepare_only_installs_without_touching_loaded_radios(tmp_path, argument
         tmp_path / "medium/hwsim/build-hwsim.sh": 'test "$INSTALL_MODULE" = 1; echo modules >> "$CALLS"',
         scripts / "radio-lab.sh": 'echo "$1" >> "$CALLS"',
         commands / "sudo": 'exec "$@"',
-        commands / "lxc": 'test "$*" = "image info prpl-ubuntu-22.04-base"',
+        commands / "lxc": 'case "$*" in "image info prpl-ubuntu-22.04-base"|"image info prpl-alpine-3.22-base") ;; *) exit 1 ;; esac',
         commands / "sha256sum": 'test "$*" = "-c SHA256SUMS"',
         commands / "depmod": 'echo depmod >> "$CALLS"',
         tmp_path / "build/bin/wmediumd": 'exit 0',
@@ -41,6 +41,7 @@ def test_prepare_only_installs_without_touching_loaded_radios(tmp_path, argument
         filename.chmod(0o755)
     environment = {**os.environ, "CALLS": str(log), "PATH": str(commands) + os.pathsep + os.environ["PATH"]}
     environment.pop("PRPL_BASE_IMAGE_ALIAS", None)
+    environment.pop("PRPL_CLIENT_BASE_IMAGE_ALIAS", None)
     result = subprocess.run(["bash", str(scripts / "install-from-artifacts.sh"), *arguments],
                             env=environment, capture_output=True, text=True)
     assert result.returncode == status, result.stdout + result.stderr

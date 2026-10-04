@@ -61,11 +61,23 @@ def main():
     topology_url = f"http://127.0.0.1:{environment['PRPLMESH_UI_HOST_PORT']}/"
     console_url = f"http://127.0.0.1:{environment['PRPLMESH_WMEDIUMD_CONSOLE_HOST_PORT']}/"
 
+    started_at = datetime.now(timezone.utc)
+
     def record(name, status, elapsed=0, detail=''):
         records.append(dict(name=name, status=status, seconds=round(elapsed, 3), detail=detail))
         print(f'[{status}] {name} ({elapsed:.1f}s) {detail}', flush=True)
         totals = {state: sum(row['status'] == state for row in records) for state in ('passed', 'failed', 'blocked')}
-        (output / 'summary.json').write_text(json.dumps(dict(vm=vm, totals=totals, results=records), indent=2) + '\n')
+        # the run's time and each section's (the part of a result's name before its '/')
+        section_seconds = {}
+        for row in records:
+            section = row['name'].split('/', 1)[0]
+            section_seconds[section] = round(section_seconds.get(section, 0) + row['seconds'], 1)
+        now = datetime.now(timezone.utc)
+        (output / 'summary.json').write_text(json.dumps(dict(
+            vm=vm, started=started_at.isoformat(timespec='seconds'),
+            finished=now.isoformat(timespec='seconds'),
+            seconds=round((now - started_at).total_seconds(), 1), section_seconds=section_seconds,
+            totals=totals, results=records), indent=2) + '\n')
         (output / 'results.tsv').write_text('name\tstatus\tseconds\tdetail\n' + ''.join(
             f"{row['name']}\t{row['status']}\t{row['seconds']}\t{row['detail']}\n" for row in records))
 
@@ -334,6 +346,9 @@ def main():
                     step('restore/' + name, command, timeout)
                 except (OSError, subprocess.SubprocessError, KeyboardInterrupt) as error:
                     record('restore/' + name + '-error', 'failed', detail=str(error).replace('\n', ' '))
+        summary = json.loads((output / 'summary.json').read_text()) if records else {}
+        for section, seconds in summary.get('section_seconds', {}).items():
+            print(f'{section:<16} {seconds:8.1f} s', flush=True)
         print(f'\nResults: {output / "summary.json"}', flush=True)
     return int(any(row['status'] != 'passed' for row in records))
 

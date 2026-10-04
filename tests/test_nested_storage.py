@@ -84,11 +84,14 @@ def test_clients_keep_pinned_supplicant_without_mesh_stack_or_ap_daemon():
     setup = (ROOT / "scripts/container/setup-client.sh").read_text()
     assert "prpl-install-nl80211-6.0.0.tar.gz" not in image
     assert "prpl-runtime-deps-6.0.0.tar.gz" not in image
+    assert "test ! -e /usr/local/sbin/hostapd" in image
+    # Alpine clients take the supplicant built for musl; an older Ubuntu image the glibc one
+    assert "test -f /etc/alpine-release" in image
     for source in (image, setup):
-        assert "hostap-runtime-2.10.tar.gz" in source
+        assert "hostap-client-2.10-alpine.tar.gz" in source
         assert "./sbin/wpa_supplicant ./bin/wpa_cli" in source
-    for dependency in ("iperf3", "tcpdump", "python3", "libssl3", "libnl-genl-3-200"):
+    assert "hostap-runtime-2.10.tar.gz" in setup
+    for dependency in ("iperf3", "tcpdump", "python3", "libssl3", "libnl3", "bash", "procps"):
         assert dependency in image
-    assert "--no-install-recommends" in image
-    assert "apt-get clean" in image
-    assert "apt-daily.timer" in image
+    assert "apk add --no-cache" in image
+    assert "rm -rf /var/cache/apk/*" in image

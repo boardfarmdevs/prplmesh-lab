@@ -18,6 +18,7 @@ lab's documents are below.
 | [Operations](guides/operations.md) | guide | install, start, stop and recover |
 | [Room manual](guides/room-manual.md) | guide | the live room and the network topology |
 | [Test suite](guides/test-suite.md) | guide | the test tiers and the host-side runner |
+| [Build speed](reference/build-speed.md) | reference | copies, the base VM image, the artifact store, build records, a development lab |
 | [Software architecture](reference/software-architecture.md) | reference | prplMesh's processes, their interfaces and the lab's patches |
 | [Controller UI](reference/controller-ui.md) | reference | the host's EasyMesh controller dashboard |
 | [Topology adapter](reference/topology-adapter.md) | reference | the internal adapter from prplMesh's model to the dashboard and the optimizer |

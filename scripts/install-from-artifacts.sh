@@ -3,6 +3,7 @@ set -euo pipefail
 
 ROOT=$(cd "$(dirname "$0")/.." && pwd)
 BASE_ALIAS=${PRPL_BASE_IMAGE_ALIAS:-prpl-ubuntu-22.04-base}
+CLIENT_BASE_ALIAS=${PRPL_CLIENT_BASE_IMAGE_ALIAS:-prpl-alpine-3.22-base}
 MODE=${1:-}
 case "$MODE" in
     ''|--prepare-only) [ "$#" -le 1 ] || exit 2 ;;
@@ -19,12 +20,16 @@ if ! lxc image info "$BASE_ALIAS" >/dev/null 2>&1; then
     # appliance build resolves the same container image on every x86 host.
     lxc image copy ubuntu:22.04/amd64 local: --alias "$BASE_ALIAS"
 fi
+# The clients are Alpine, as the RDK lab's (scripts/container/setup-client-base.sh).
+if ! lxc image info "$CLIENT_BASE_ALIAS" >/dev/null 2>&1; then
+    lxc image copy images:alpine/3.22/amd64 local: --alias "$CLIENT_BASE_ALIAS"
+fi
 
 if [ ! -x "$ROOT/build/bin/wmediumd" ]; then
     "$ROOT/medium/wmediumd/build-wmediumd.sh" --source "$ROOT/build/wmediumd-source" --output "$ROOT/build/bin"
 fi
 SOURCE_IMAGE=$BASE_ALIAS IMAGE_ALIAS=${PRPLMESH_RUNTIME_IMAGE:-prpl-runtime-local} "$ROOT/scripts/build-runtime-image.sh"
-SOURCE_IMAGE=$BASE_ALIAS IMAGE_ALIAS=${PRPLMESH_CLIENT_IMAGE:-prpl-client-local} "$ROOT/scripts/build-runtime-image.sh" client
+SOURCE_IMAGE=$CLIENT_BASE_ALIAS IMAGE_ALIAS=${PRPLMESH_CLIENT_IMAGE:-prpl-client-local} "$ROOT/scripts/build-runtime-image.sh" client
 
 sudo env INSTALL_MODULE=1 "$ROOT/medium/hwsim/build-hwsim.sh" --source "$ROOT/build/hwsim-source" --cfg80211 "$ROOT/build/cfg80211-source"
 sudo depmod -a "$(uname -r)"

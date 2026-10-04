@@ -7,6 +7,7 @@ ROOT=$(cd "$(dirname "$0")/.." && pwd)
 "$ROOT/scripts/create-build-container.sh"
 "$ROOT/scripts/build-prplmesh.sh" nl80211
 "$ROOT/scripts/package-build-artifacts.sh"
+"$ROOT/scripts/build-client-artifact.sh"
 "$ROOT/medium/wmediumd/build-wmediumd.sh" --source "$ROOT/build/wmediumd-source" --output "$ROOT/build/bin"
 IMAGE_ALIAS=${PRPLMESH_RUNTIME_IMAGE:-prpl-runtime-local} "$ROOT/scripts/build-runtime-image.sh"
 IMAGE_ALIAS=${PRPLMESH_CLIENT_IMAGE:-prpl-client-local} "$ROOT/scripts/build-runtime-image.sh" client

@@ -15,8 +15,9 @@ bash deploy/lxd-vm/build.sh status
 ```
 
 The checkout must be committed and clean. The builder transfers a verified
-bundle of its exact HEAD, not uncommitted files. It selects the three archives
-under `artifacts/`, verifies adjacent `SHA256SUMS`, creates the named storage
+bundle of its exact HEAD, not uncommitted files. It selects the four archives
+under `artifacts/` (the three native ones and the Alpine clients' supplicant;
+`deploy/lxd-vm/build-artifacts.sh` makes or fetches them), verifies adjacent `SHA256SUMS`, creates the named storage
 pool if missing, checks port conflicts, and refuses to replace an existing VM.
 It installs the pinned radio kernel, nested LXD, separate mesh/client images, patched
 hwsim/wmediumd, topology, room and **Console NG**. Native acceptance runs before
@@ -106,19 +107,23 @@ bash deploy/lxd-vm/build.sh build
 Commit the source first; reuse the existing verified native archives. No native
 prplMesh, hostap, or BPI image rebuild is required for these packaging changes.
 
-Five mesh containers use `prpl-runtime-local`; 100 clients use
-`prpl-client-local`. The lean client remains Ubuntu 22.04 for ABI compatibility,
-but omits the native controller/agent installation and AP daemon. It keeps the
-exact patched `wpa_supplicant`/`wpa_cli` from the checksummed hostap archive,
-including 6 GHz/SAE and BTM support, plus `iw`, traffic/capture tools and Python.
-Package-refresh services are disabled and package caches removed before publishing.
-It does not substitute the distribution's supplicant or change radio policy.
+Five mesh containers use `prpl-runtime-local` (Ubuntu 22.04, the native
+archives' ABI); 100 clients use `prpl-client-local`, an **Alpine** image as the
+RDK lab's clients. It has no native controller/agent installation and no AP
+daemon. Its `wpa_supplicant`/`wpa_cli` are the lab's own: hostap at the pinned
+commit with the lab's hostap patches, configured as the native build configures
+them (6 GHz/SAE, WNM/BTM, MBO), built for musl in a throwaway Alpine container
+(`scripts/build-client-artifact.sh`, archive `hostap-client-2.10-alpine.tar.gz`),
+plus `iw`, traffic/capture tools, Python and bash. The package cache is removed
+before publishing. It does not substitute the distribution's supplicant or
+change radio policy. `setup-client.sh` takes the supplicant built for the
+client's OS, so a VM built with the former Ubuntu client image keeps working.
 
 Both images are built automatically. To rebuild just the client image inside
-an isolated build VM, after installing the three verified archives:
+an isolated build VM, after installing the four verified archives:
 
 ```sh
-SOURCE_IMAGE=prpl-ubuntu-22.04-base bash scripts/build-runtime-image.sh client
+SOURCE_IMAGE=prpl-alpine-3.22-base bash scripts/build-runtime-image.sh client
 ```
 
 This updates the local image, not existing containers. Thin exports retain and
@@ -154,10 +159,20 @@ bash deploy/lxd-vm/build.sh build
 `bash deploy/lxd-vm/build.sh update` moves an accepted VM forward to the
 checkout's commit without a build: the VM's checkout and its submodules (the
 medium, the optimizer) follow, and the room service restarts, with every pool client
-online first, and settles. It
-refuses a commit that changes what a build installed (the medium's daemon,
-console or radio module, `deploy/guest`, `controller-ui`, `scripts/container`);
-those need a rebuild.
+online first, and settles. When the commit changes what a build installed from
+the checkout, the update rebuilds and installs it and restarts the VM: the
+medium's daemon, console and radio module, the guest's services, the controller
+UI, the scripts the containers run at start. It refuses only what a build alone
+makes: new native archives (the patches) and the container images' setup.
+`tests/affected-suites.py BASE` says which step and suite sections a change
+needs ([test tiers](test-suite.md)).
+
+`bash deploy/lxd-vm/build.sh copy NEW` copies a VM in its storage pool (seconds
+on Btrfs or ZFS) with its own identities, address and ports. A build starts from
+a base VM image when this host or the artifact store has one, fetches the
+archives by their inputs, and writes each phase's time to its record;
+`PRPLMESH_DEV_CLIENTS=20` builds a development lab with 20 clients. See
+[build speed](../reference/build-speed.md).
 
 Do not delete another tester's VM or a shared pool. For same-source iteration,
 an optional stopped-VM snapshot preserves exact runtime state without another
