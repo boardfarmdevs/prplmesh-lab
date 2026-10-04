@@ -112,6 +112,12 @@ medium and steering. It has no room service (its unit needs the full roster), it
 acceptance checks its own roster, an update skips the room's settling, and packaging
 refuses it. Qualification and every room run need the full lab.
 
+Measured on rev140 (4 October 2026, from the same base image as the full lab above):
+`prpl-fast-d` with 20 clients built and passed its acceptance (20 of 20 clients over the
+data plane, the steering acceptance, the optimizer's recommend check) in 24.2 minutes
+against the full lab's 45.6: its containers took 91 s instead of 382, the lab's start 9.6
+minutes instead of 12.1, the acceptance 5.0 instead of 19.0.
+
 ## Update in place
 
 `bash deploy/lxd-vm/build.sh update` rebuilds what a commit changed of what a build installed
