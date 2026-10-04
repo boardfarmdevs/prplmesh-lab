@@ -499,7 +499,7 @@ optimizer_bundle()
 
 update_vm()
 (
-    local host_commit guest_commit guest_medium stage artifact i state=
+    local host_commit guest_commit applied commit guest_medium stage artifact i state=
     local wmediumd=false console=false radio=false services=false restart=false
     exists
     [ "$(state)" = RUNNING ] || { echo "$NAME is not running: $0 start" >&2; exit 1; }
@@ -507,16 +507,23 @@ update_vm()
     host_commit=$(git -C "$ROOT" rev-parse HEAD)
     test -z "$(git -C "$ROOT" status --porcelain)"
     guest_commit=$(run git -C /opt/prplmesh-lab rev-parse HEAD)
-    [ "$guest_commit" != "$host_commit" ] || { echo "$NAME is at $host_commit already"; exit 0; }
-    git -C "$ROOT" merge-base --is-ancestor "$guest_commit" "$host_commit" || {
-        echo "$NAME is at $guest_commit, not an ancestor of $host_commit: build instead" >&2
-        exit 1
-    }
+    # What was last applied whole (by a build, or an update that finished its installs): an
+    # update that stopped part-way leaves the checkout ahead of it, and its rerun redoes the
+    # rest (prpl-fast-c, 4 Oct). A VM from before this record has its checkout.
+    applied=$(lxc config get "$NAME" user.prplmesh.applied-commit 2>/dev/null) || true
+    applied=${applied:-$guest_commit}
+    [ "$applied" != "$host_commit" ] || { echo "$NAME is at $host_commit already"; exit 0; }
+    for commit in "$applied" "$guest_commit"; do
+        git -C "$ROOT" merge-base --is-ancestor "$commit" "$host_commit" || {
+            echo "$NAME is at $commit, not an ancestor of $host_commit: build instead" >&2
+            exit 1
+        }
+    done
     # What a build made from the checkout and installed: the medium's daemon (built in the
     # guest), console (built here) and radio module (built in the guest), the guest's
     # services and the controller UI (which embeds the topology page and the viewer modules
     # it shares). An update makes and installs what changed of them, then restarts the VM.
-    guest_medium=$(git -C "$ROOT" rev-parse "$guest_commit:medium")
+    guest_medium=$(git -C "$ROOT" rev-parse "$applied:medium")
     git -C "$ROOT/medium" diff --quiet "$guest_medium" HEAD -- wmediumd \
         ':(exclude,glob)**/tests/**' ':(exclude,glob)**/*.md' || wmediumd=true
     git -C "$ROOT/medium" diff --quiet "$guest_medium" HEAD -- observer \
@@ -526,25 +533,25 @@ update_vm()
     git -C "$ROOT/medium" diff --quiet "$guest_medium" HEAD -- topology-ui \
         $(sed 's|^|configurator/worlds/viewer/|' "$ROOT/medium/topology-ui/shared-modules") \
         ':(exclude,glob)**/tests/**' ':(exclude,glob)**/*.md' || services=true
-    git -C "$ROOT" diff --quiet "$guest_commit" "$host_commit" -- deploy/guest controller-ui \
+    git -C "$ROOT" diff --quiet "$applied" "$host_commit" -- deploy/guest controller-ui \
         ':(exclude,glob)**/*.md' || services=true
     # The containers run their scripts from the checkout (/mnt/project) when they start, as
     # the lab's start runs radio-lab.sh: a restart takes them. Their images' setup and the
     # native patches need a build.
-    git -C "$ROOT" diff --quiet "$guest_commit" "$host_commit" -- scripts/container \
+    git -C "$ROOT" diff --quiet "$applied" "$host_commit" -- scripts/container \
         scripts/radio-lab.sh scripts/lib scripts/client-setup-with-retry.sh \
         ':(exclude)scripts/container/setup-runtime-base.sh' \
         ':(exclude)scripts/container/setup-client-base.sh' ':(exclude,glob)**/*.md' || restart=true
-    git -C "$ROOT" diff --quiet "$guest_commit" "$host_commit" -- patches \
+    git -C "$ROOT" diff --quiet "$applied" "$host_commit" -- patches \
         scripts/container/setup-runtime-base.sh scripts/container/setup-client-base.sh \
         ':(exclude,glob)**/*.md' || {
-        echo "the native patches or the container images' setup changed since $guest_commit: build instead" >&2
+        echo "the native patches or the container images' setup changed since $applied: build instead" >&2
         exit 1
     }
     ! "$wmediumd" && ! "$console" && ! "$radio" && ! "$services" || restart=true
     record_open update
-    printf 'FROM=%s\nWMEDIUMD=%s\nCONSOLE=%s\nRADIO_MODULE=%s\nSERVICES=%s\nRESTART=%s\n' \
-        "$guest_commit" "$wmediumd" "$console" "$radio" "$services" "$restart" \
+    printf 'FROM=%s\nCHECKOUT=%s\nWMEDIUMD=%s\nCONSOLE=%s\nRADIO_MODULE=%s\nSERVICES=%s\nRESTART=%s\n' \
+        "$applied" "$guest_commit" "$wmediumd" "$console" "$radio" "$services" "$restart" \
         >> "$record_dir/environment.txt"
     stage=$(mktemp -d /tmp/prplmesh-lxd-update.XXXXXX)
     trap 'record_close "$?"; rm -rf -- "$stage"' EXIT
@@ -625,6 +632,7 @@ update_vm()
         sync_guest_address
         run systemctl start prplmesh-lab.service
     fi
+    lxc config set "$NAME" user.prplmesh.applied-commit "$host_commit"
     if [ "$(lab_clients)" != "$(prplmesh_profile_clients "$PROFILE")" ]; then
         echo "a development lab ($(lab_clients) clients): no room service to settle"
         exit 0
@@ -778,6 +786,7 @@ PY
     fi
     lxc config set "$NAME" boot.autostart false
     lxc config set "$NAME" user.prplmesh.source-commit "$commit"
+    lxc config set "$NAME" user.prplmesh.applied-commit "$commit"
     lxc config set "$NAME" user.prplmesh.port-base "$PRPLMESH_PORT_BASE"
     lxd_set_device_property "$NAME" root size "$DISK"
     guest_ip=$(select_guest_ipv4)
