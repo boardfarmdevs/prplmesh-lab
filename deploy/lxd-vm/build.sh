@@ -602,11 +602,12 @@ update_vm()
         run chmod 0755 /opt/prplmesh-lab/medium/observer/wmediumd-console
     fi
     if "$radio"; then
-        # as install-from-artifacts.sh builds it; a live pool is never reloaded: the
-        # restart below loads the new module
+        # as install-from-artifacts.sh builds it, from the stock sources again (REFETCH: the
+        # build's patched tree is not patched twice; prpl-fast-c, 4 Oct); a live pool is never
+        # reloaded: the restart below loads the new module
         phase radio-module
         run bash -euc 'cd /opt/prplmesh-lab
-            INSTALL_MODULE=1 medium/hwsim/build-hwsim.sh --source build/hwsim-source \
+            REFETCH=1 INSTALL_MODULE=1 medium/hwsim/build-hwsim.sh --source build/hwsim-source \
                 --cfg80211 build/cfg80211-source
             depmod -a "$(uname -r)"'
     fi
