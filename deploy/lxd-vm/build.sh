@@ -896,6 +896,20 @@ EOF"
     run systemctl start prplmesh-lab.service
     phase acceptance
     check_vm
+    # The end of every build cleans up (easymesh-resources lab-storage W7): apt's lists and
+    # cache (the base step updates before it installs), the VM's journal bounded at 1 GiB
+    # (journald's default is 4 GiB on a lab disk), Docker's build cache where the VM has
+    # Docker, and the freed blocks returned to the host.
+    phase cleanup
+    run sh -eu -c '
+        apt-get clean
+        rm -rf /var/lib/apt/lists/*
+        install -d /etc/systemd/journald.conf.d
+        printf "[Journal]\nSystemMaxUse=1G\n" > /etc/systemd/journald.conf.d/50-lab.conf
+        systemctl restart systemd-journald
+        journalctl -q --vacuum-size=1G || true
+        if command -v docker >/dev/null; then docker builder prune -af >/dev/null || true; fi
+        fstrim -a >/dev/null || true'
     # package.sh reruns acceptance and exports only the instance. Avoid a
     # full disk copy on non-copy-on-write outer storage pools.
     trap - EXIT
