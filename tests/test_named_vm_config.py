@@ -18,9 +18,9 @@ class NamedVMConfigTests(unittest.TestCase):
         result = self.shell('''
 source deploy/lxd-vm/lab-config.sh demo-a
 first=$PRPLMESH_PORT_BASE
-test "$PRPLMESH_LXD_STORAGE" = demo-a-pool
+test "$PRPLMESH_LXD_STORAGE" = labs
 source deploy/lxd-vm/lab-config.sh demo-b
-test "$PRPLMESH_LXD_STORAGE" = demo-b-pool
+test "$PRPLMESH_LXD_STORAGE" = labs
 test "$PRPLMESH_PORT_BASE" != "$first"
 source deploy/lxd-vm/lab-config.sh demo-a
 test "$PRPLMESH_PORT_BASE" = "$first"
@@ -49,6 +49,18 @@ test "$PRPLMESH_LXD_STORAGE" = external-pool
             with self.subTest(expression=expression):
                 result = self.shell('source deploy/lxd-vm/instance-config.sh; ' + expression)
                 self.assertNotEqual(result.returncode, 0)
+
+    def test_new_pool_is_the_hosts_zfs_pool_or_a_dir_pool_on_request(self):
+        result = self.shell('''
+source deploy/lxd-vm/instance-config.sh
+calls=$(mktemp)
+lxc() { printf '%s\\n' "$*" >> "$calls"; test "$1 $2" != "storage show"; }
+prplmesh_ensure_storage labs
+PRPLMESH_STORAGE_DRIVER=dir prplmesh_ensure_storage demo-pool
+grep -Fx 'storage create labs zfs size=500GiB' "$calls"
+grep -Fx 'storage create demo-pool dir' "$calls"
+''')
+        self.assertEqual(result.returncode, 0, result.stderr)
 
     def test_existing_pool_is_not_recreated(self):
         result = self.shell('''

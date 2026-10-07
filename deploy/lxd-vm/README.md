@@ -51,7 +51,7 @@ may adjust `PRPLMESH_NESTED_LXD_READY_ATTEMPTS` and
 
 ## Site settings
 
-New imports use outer LXD network `lxdbr0`, a reusable `VM-NAME-pool`, and a
+New imports use outer LXD network `lxdbr0`, the host's ZFS pool for lab VMs `labs`, and a
 deterministic per-name port block. Older bundles without `instance-config.sh`
 retain legacy ports `8090`, `8091`, `18891`. Override explicitly when needed:
 

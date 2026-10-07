@@ -41,7 +41,9 @@ test -c /dev/kvm
 source deploy/lxd-vm/lab-config.sh demo-a
 ```
 
-LXD membership is root-equivalent. The helper selects `demo-a-pool` and a
+LXD membership is root-equivalent. The helper selects the host's ZFS pool for lab VMs,
+`labs` (copy-on-write snapshots and copies; `PRPLMESH_LXD_STORAGE=demo-a-pool
+PRPLMESH_STORAGE_DRIVER=dir` for a pool of the lab's own), and a
 deterministic, validated port block. It creates nothing until a build starts.
 Choose another name for a second VM; no scripts need editing.
 

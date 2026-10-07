@@ -95,7 +95,7 @@ Site overrides:
   PRPLMESH_ROOM_DEMO_HOST_PORT=$ROOM_PORT
   PRPLMESH_LXD_STORAGE=$PRPLMESH_LXD_STORAGE (retained on delete)
   PRPLMESH_PORT_BASE=$PRPLMESH_PORT_BASE
-  PRPLMESH_STORAGE_DRIVER=dir (new pools only; existing pools are reused)
+  PRPLMESH_STORAGE_DRIVER=zfs (new pools only, PRPLMESH_STORAGE_SIZE 500GiB sparse; existing pools are reused)
   PRPLMESH_NESTED_STORAGE_DRIVER=btrfs (fresh VM container pool; or dir)
   PRPLMESH_NESTED_STORAGE_POOL=prpl-lab
   PRPLMESH_NESTED_STORAGE_SIZE=120GiB (sparse Btrfs capacity, not preallocation)

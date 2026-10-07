@@ -8,7 +8,9 @@ prplmesh_instance_config()
         return 2
     }
     export PRPLMESH_VM_NAME=$name
-    export PRPLMESH_LXD_STORAGE=${PRPLMESH_LXD_STORAGE:-${PRPLMESH_LXD_STORAGE_POOL:-$name-pool}}
+    # the host's one ZFS pool for lab VMs (easymesh-resources lab-storage W2); a pool of the
+    # lab's own with PRPLMESH_LXD_STORAGE=<name>-pool PRPLMESH_STORAGE_DRIVER=dir
+    export PRPLMESH_LXD_STORAGE=${PRPLMESH_LXD_STORAGE:-${PRPLMESH_LXD_STORAGE_POOL:-labs}}
     [[ $PRPLMESH_LXD_STORAGE =~ ^[a-zA-Z][a-zA-Z0-9_.-]{0,62}$ ]] || {
         echo 'Invalid LXD storage pool name.' >&2
         return 2
@@ -44,11 +46,11 @@ PY
 
 prplmesh_ensure_storage()
 {
-    local pool=$1 driver=${PRPLMESH_STORAGE_DRIVER:-dir}
+    local pool=$1 driver=${PRPLMESH_STORAGE_DRIVER:-zfs}
     lxc storage show "$pool" >/dev/null 2>&1 && return 0
     case "$driver" in
         dir) lxc storage create "$pool" dir ;;
-        zfs|btrfs) lxc storage create "$pool" "$driver" size="${PRPLMESH_STORAGE_SIZE:-240GiB}" ;;
+        zfs|btrfs) lxc storage create "$pool" "$driver" size="${PRPLMESH_STORAGE_SIZE:-500GiB}" ;;
         *) echo 'Automatic pools support dir, zfs or btrfs; create other pools explicitly first.' >&2; return 2 ;;
     esac
 }
