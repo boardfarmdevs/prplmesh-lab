@@ -66,7 +66,8 @@ call=$(grep -n 'declare -f no_automatic_updates no_on_demand_lxd base_host); no_
 test -n "$call"
 base_start=$(grep -n '^base_host()' "$script" | cut -d: -f1)
 base_end=$(awk -v start="$base_start" 'NR > start && /^}/ {print NR; exit}' "$script")
-first_apt=$(grep -n '^ *apt-get ' "$script" | head -1 | cut -d: -f1)
-last_apt=$(grep -n '^ *apt-get ' "$script" | tail -1 | cut -d: -f1)
+# every apt-get that fetches (update, install); the build's last phase only cleans apt's cache
+first_apt=$(grep -n '^ *apt-get \(update\|install\)' "$script" | head -1 | cut -d: -f1)
+last_apt=$(grep -n '^ *apt-get \(update\|install\)' "$script" | tail -1 | cut -d: -f1)
 test "$first_apt" -gt "$base_start" && test "$last_apt" -lt "$base_end"
 echo 'PASS: the lab VM takes no automatic updates and no on-demand LXD, both before the first apt-get'
