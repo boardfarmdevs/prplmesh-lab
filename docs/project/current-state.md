@@ -11,19 +11,19 @@ monitor. See [operations](../guides/operations.md).
 | --- | --- |
 | Branch | `main` |
 | Development and build checkout | `rev140:/home/rev/git/easymesh-labs/prplmesh-lab` (the easymesh-labs workspace) |
-| Last-tested VM | `rev140:prpl-1002` (stopped while the RDK lab runs on rev140: one lab at a time) |
+| Last-tested VM | none runs now: a prplMesh lab is built on rev140 when needed (one lab at a time there); the last, `prpl-1002`, was removed on 7 October |
 | Guest checkout | `/opt/prplmesh-lab` |
 | Platform | Ubuntu 24.04 / Linux 7 radio host, native prplMesh, userspace wmediumd from easymesh-medium (the `medium` submodule); the optimizer from easymesh-optimizer (the `optimizer` submodule) |
 | Fixed pool | 100 clients; four Wi-Fi Agents and one wired Agent (`prpl-agent-05`, `extender_5`) |
-| RDK peer | meta-cmf-bananapi-vcpe; last-tested VM `rev140:rdk-1002b` |
+| RDK peer | meta-cmf-bananapi-vcpe; its labs are in the easymesh-labs lab configurations |
 
 Default selects ten private and ten IoT clients. Room loading changes presence,
 not permanent container or radio identities. Keep VM autostart disabled.
 
 ## Qualification
 
-`prpl-1002` was built from scratch on rev140 on 2 October, from this repository as
-it is after its cleanup, its native artifacts rebuilt. The expanded acceptance (NBAPI
+The last qualification, on `prpl-1002` (built from scratch on rev140 on 2 October, its
+native artifacts rebuilt): the expanded acceptance (NBAPI
 steering, the 100-client data plane, process footprint) and the optimizer's dynamic
 recommendation passed in the build; with the browser on rev150, readiness, five rooms
 (`home-a-one-client-handover`, `band-upgrade-24-5`, `received-same-band-roam`,
@@ -51,17 +51,11 @@ their replacements pass.
 
 ## Access
 
-The last-tested VM's addresses, not a health promise:
-
-| View | `prpl-1002` |
-| --- | --- |
-| Live room | <http://192.168.2.140:48582/> |
-| Controller dashboard | <http://192.168.2.140:48580/> |
-| Console NG | <http://192.168.2.140:48581/> |
-
-Each new VM name receives its own ports. Proxies survive VM restarts; use a trusted
-LAN or VPN. Lab monitoring (in [easymesh-medium](https://vcpe.dev/easymesh-medium/))
-covers the nested containers and the outer VM. This lab has no remote-access gateway.
+A built lab publishes its room, controller dashboard and Console NG as ports on its host,
+a block of its own per VM name ([VM lifecycle, storage and ports](../guides/build-vm.md)).
+Proxies survive VM restarts; use a trusted LAN or VPN. Lab monitoring (in
+[easymesh-medium](https://vcpe.dev/easymesh-medium/)) covers the nested containers and the
+outer VM.
 
 ## Boundaries
 
