@@ -786,6 +786,7 @@ PY
                 ;;
         esac
     fi
+    prplmesh_free_page_reporting "$NAME"
     lxc config set "$NAME" boot.autostart false
     lxc config set "$NAME" user.prplmesh.source-commit "$commit"
     lxc config set "$NAME" user.prplmesh.applied-commit "$commit"

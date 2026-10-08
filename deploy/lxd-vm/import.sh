@@ -171,6 +171,10 @@ if lxc config set "$NAME" boot.mode uefi-nosecureboot 2>/dev/null; then
 else
     lxc config set "$NAME" security.secureboot false
 fi
+# The guest's free pages back to the host (instance-config.sh, lab-memory M1), before first boot.
+if declare -F prplmesh_free_page_reporting >/dev/null; then
+    prplmesh_free_page_reporting "$NAME"
+fi
 if lxc config device show "$NAME" | grep -q '^canonical-source:'; then
     lxc config device remove "$NAME" canonical-source
 fi

@@ -55,6 +55,20 @@ prplmesh_ensure_storage()
     esac
 }
 
+# The balloon device reports the guest's free pages to the host (easymesh-resources lab-memory
+# M1), so the VM's QEMU on the host holds what the guest uses, not its peak. Set before the
+# first boot; on an existing VM it takes effect at its next start. LXD names the device
+# qemu_balloon in the QEMU config it writes.
+prplmesh_free_page_reporting()
+{
+    local instance=$1 conf value
+    conf=$(lxc config get "$instance" raw.qemu.conf </dev/null)
+    case $conf in *free-page-reporting*) return 0 ;; esac
+    value=$(printf '[device "qemu_balloon"]\nfree-page-reporting = "on"')
+    [ -z "$conf" ] || value=$(printf '%s\n%s' "$conf" "$value")
+    lxc config set "$instance" raw.qemu.conf "$value" </dev/null
+}
+
 prplmesh_check_ports()
 {
     local inventory

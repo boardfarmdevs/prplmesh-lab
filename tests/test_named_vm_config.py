@@ -70,6 +70,29 @@ prplmesh_ensure_storage demo-pool
 ''')
         self.assertEqual(result.returncode, 0, result.stderr)
 
+    def test_free_page_reporting_is_added_once_after_existing_settings(self):
+        result = self.shell('''
+source deploy/lxd-vm/instance-config.sh
+set_value=$(mktemp)
+raw=
+lxc() {
+    case "$1 $2 $4" in
+        'config get raw.qemu.conf') printf '%s' "$raw" ;;
+        'config set raw.qemu.conf') printf '%s' "$5" > "$set_value" ;;
+    esac
+}
+prplmesh_free_page_reporting demo
+test "$(cat "$set_value")" = "$(printf '[device "qemu_balloon"]\\nfree-page-reporting = "on"')"
+raw=$(printf '[global]\\nfoo = "1"')
+prplmesh_free_page_reporting demo
+test "$(cat "$set_value")" = "$(printf '[global]\\nfoo = "1"\\n[device "qemu_balloon"]\\nfree-page-reporting = "on"')"
+raw=$(cat "$set_value")
+: > "$set_value"
+prplmesh_free_page_reporting demo
+test ! -s "$set_value"
+''')
+        self.assertEqual(result.returncode, 0, result.stderr)
+
     def test_suite_list_is_offline_and_unknown_section_fails(self):
         result = self.shell('bash tests/run-prplmesh-suite.sh all --list')
         self.assertEqual(result.returncode, 0, result.stderr)
